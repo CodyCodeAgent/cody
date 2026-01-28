@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -14,23 +14,23 @@ from .core import Config, AgentRunner
 # Request/Response models
 class RunRequest(BaseModel):
     prompt: str
-    workdir: str | None = None
-    model: str | None = None
-    skills: list[str] | None = None
+    workdir: Optional[str] = None
+    model: Optional[str] = None
+    skills: Optional[list] = None
     stream: bool = False
 
 
 class RunResponse(BaseModel):
     status: str = "success"
     output: str
-    usage: dict | None = None
-    duration_ms: int | None = None
+    usage: Optional[dict] = None
+    duration_ms: Optional[int] = None
 
 
 class ToolRequest(BaseModel):
     tool: str
     params: dict
-    workdir: str | None = None
+    workdir: Optional[str] = None
 
 
 class ToolResponse(BaseModel):
@@ -75,7 +75,7 @@ async def run_agent(request: RunRequest):
         runner = AgentRunner(config=config, workdir=workdir)
         
         # Run agent
-        result = await runner.run(request.prompt, stream=False)
+        result = await runner.run(request.prompt)
         
         return RunResponse(
             output=result.output,
@@ -103,7 +103,7 @@ async def run_agent_stream(request: RunRequest):
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
             
-            async for text in runner.run(request.prompt, stream=True):
+            async for text in runner.run_stream(request.prompt):
                 # SSE format
                 yield f"data: {text}\n\n"
             

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 from pydantic_ai import Agent
 from .config import Config
 from .skill_manager import SkillManager
@@ -19,7 +20,7 @@ class CodyDeps:
 class AgentRunner:
     """Run Cody Agent with full context"""
     
-    def __init__(self, config: Config | None = None, workdir: Path | str | None = None):
+    def __init__(self, config: Optional[Config] = None, workdir: Optional[Path] = None):
         self.config = config or Config.load()
         self.workdir = Path(workdir) if workdir else Path.cwd()
         self.skill_manager = SkillManager(self.config)
@@ -60,21 +61,18 @@ class AgentRunner:
             skill_manager=self.skill_manager,
         )
     
-    async def run(self, prompt: str, stream: bool = False):
+    async def run(self, prompt: str):
         """Run agent with prompt"""
         deps = self._create_deps()
-        
-        if stream:
-            async with self.agent.run_stream(prompt, deps=deps) as result:
-                async for text in result.stream_text():
-                    yield text
-                
-                # Get final result
-                final_output = result.output if hasattr(result, 'output') else None
-                return final_output
-        else:
-            result = await self.agent.run(prompt, deps=deps)
-            return result
+        result = await self.agent.run(prompt, deps=deps)
+        return result
+    
+    async def run_stream(self, prompt: str):
+        """Run agent with streaming"""
+        deps = self._create_deps()
+        async with self.agent.run_stream(prompt, deps=deps) as result:
+            async for text in result.stream_text():
+                yield text
     
     def run_sync(self, prompt: str):
         """Run agent synchronously"""

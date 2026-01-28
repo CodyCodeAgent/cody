@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 class AuthConfig(BaseModel):
     """Authentication configuration"""
     type: Literal['oauth', 'api_key'] = 'api_key'
-    token: str | None = None
-    refresh_token: str | None = None
-    api_key: str | None = None
-    expires_at: datetime | None = None
+    token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    api_key: Optional[str] = None
+    expires_at: Optional[datetime] = None
 
 
 class SkillConfig(BaseModel):
@@ -37,8 +37,8 @@ class MCPConfig(BaseModel):
 
 class SecurityConfig(BaseModel):
     """Security configuration"""
-    allowed_commands: list[str] | None = None
-    restricted_paths: list[str] = Field(default_factory=list)
+    allowed_commands: Optional[list] = None
+    restricted_paths: list = Field(default_factory=list)
     require_confirmation: bool = True
 
 
@@ -51,7 +51,7 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
 
     @classmethod
-    def load(cls, path: Path | str | None = None) -> "Config":
+    def load(cls, path: Optional[Union[Path, str]] = None) -> "Config":
         """Load configuration from file"""
         if path is None:
             # Try project config first, then global
@@ -72,7 +72,7 @@ class Config(BaseModel):
         data = json.loads(path.read_text())
         return cls(**data)
     
-    def save(self, path: Path | str):
+    def save(self, path: Union[Path, str]):
         """Save configuration to file"""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)

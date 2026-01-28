@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 
 @dataclass
@@ -85,7 +85,7 @@ class SkillManager:
         # Default: all skills enabled
         return True
     
-    def get_skill(self, name: str) -> Skill | None:
+    def get_skill(self, name: str) -> Optional[Skill]:
         """Get skill by name"""
         return self.skills.get(name)
     
