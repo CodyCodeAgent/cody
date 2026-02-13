@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cody-ai"
-version = "0.4.0"
+version = "0.5.0"
 description = "AI coding assistant with RPC support, dynamic skills, and MCP integration"
 authors = [{name = "GouChao"}]
 readme = "README.md"
@@ -20,11 +20,13 @@ dependencies = [
     "pydantic>=2.0.0",
     "httpx>=0.27.0",
     "aiofiles>=24.0.0",
+    "textual>=0.80.0",
 ]
 
 [project.scripts]
 cody = "cody.cli:main"
 cody-server = "cody.server:run"
+cody-tui = "cody.tui:run_tui"
 
 [project.optional-dependencies]
 dev = [

@@ -115,7 +115,7 @@ def html_to_markdown(html: str) -> str:
 
 _DEFAULT_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (compatible; CodyBot/0.4.0; "
+        "Mozilla/5.0 (compatible; CodyBot/0.5.0; "
         "+https://github.com/SUT-GC/cody)"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

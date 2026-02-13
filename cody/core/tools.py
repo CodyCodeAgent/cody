@@ -191,8 +191,27 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
     """
     full_path = _resolve_and_check(ctx.deps.workdir, path)
 
+    # Record old content for undo
+    old_content = ""
+    if full_path.exists():
+        old_content = full_path.read_text()
+
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(content)
+
+    # Track in file history
+    if ctx.deps.file_history:
+        ctx.deps.file_history.record(path, old_content, content, operation="write")
+
+    # Audit log
+    if ctx.deps.audit_logger:
+        ctx.deps.audit_logger.log(
+            event="file_write",
+            tool_name="write_file",
+            args_summary=f"path={path}",
+            result_summary=f"Written {len(content)} bytes",
+            workdir=str(ctx.deps.workdir),
+        )
 
     return f"Written {len(content)} bytes to {path}"
 
@@ -222,6 +241,20 @@ async def edit_file(
 
     new_content = content.replace(old_text, new_text, 1)
     full_path.write_text(new_content)
+
+    # Track in file history
+    if ctx.deps.file_history:
+        ctx.deps.file_history.record(path, content, new_content, operation="edit")
+
+    # Audit log
+    if ctx.deps.audit_logger:
+        ctx.deps.audit_logger.log(
+            event="file_edit",
+            tool_name="edit_file",
+            args_summary=f"path={path}",
+            result_summary=f"Replaced text in {path}",
+            workdir=str(ctx.deps.workdir),
+        )
 
     return f"Edited {path}: replaced text"
 
@@ -449,7 +482,24 @@ async def patch(
         result_lines.append(original_lines[orig_idx])
         orig_idx += 1
 
-    full_path.write_text("".join(result_lines))
+    patched_content = "".join(result_lines)
+    full_path.write_text(patched_content)
+
+    # Track in file history
+    if ctx.deps.file_history:
+        original_content = "".join(original_lines)
+        ctx.deps.file_history.record(path, original_content, patched_content, operation="patch")
+
+    # Audit log
+    if ctx.deps.audit_logger:
+        ctx.deps.audit_logger.log(
+            event="file_edit",
+            tool_name="patch",
+            args_summary=f"path={path}",
+            result_summary=f"Patched {path}",
+            workdir=str(ctx.deps.workdir),
+        )
+
     return f"Patched {path} successfully"
 
 
@@ -547,9 +597,29 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
         if result.returncode != 0:
             output += f"\n[exit code: {result.returncode}]"
 
+        # Audit log
+        if ctx.deps.audit_logger:
+            ctx.deps.audit_logger.log(
+                event="command_exec",
+                tool_name="exec_command",
+                args_summary=f"command={command}",
+                result_summary=f"exit_code={result.returncode}",
+                workdir=str(ctx.deps.workdir),
+                success=result.returncode == 0,
+            )
+
         return output or "[no output]"
 
     except subprocess.TimeoutExpired:
+        if ctx.deps.audit_logger:
+            ctx.deps.audit_logger.log(
+                event="command_exec",
+                tool_name="exec_command",
+                args_summary=f"command={command}",
+                result_summary="timeout",
+                workdir=str(ctx.deps.workdir),
+                success=False,
+            )
         return "[ERROR] Command timed out after 30 seconds"
     except Exception as e:
         return f"[ERROR] {str(e)}"
@@ -840,3 +910,67 @@ async def lsp_hover(
         return info.content
     except Exception as e:
         return f"[ERROR] LSP hover failed: {e}"
+
+
+# ── File history tools ──────────────────────────────────────────────────────
+
+
+async def undo_file(ctx: RunContext['CodyDeps']) -> str:
+    """Undo the last file modification, restoring the file to its previous content"""
+    history = ctx.deps.file_history
+    if history is None:
+        return "[ERROR] File history not available"
+
+    change = history.undo()
+    if change is None:
+        return "Nothing to undo"
+
+    if ctx.deps.audit_logger:
+        ctx.deps.audit_logger.log(
+            event="file_edit",
+            tool_name="undo_file",
+            args_summary=f"path={change.file_path}",
+            result_summary=f"Undid {change.operation} on {change.file_path}",
+            workdir=str(ctx.deps.workdir),
+        )
+
+    return f"Undid {change.operation} on {change.file_path} (from {change.timestamp})"
+
+
+async def redo_file(ctx: RunContext['CodyDeps']) -> str:
+    """Redo a previously undone file modification"""
+    history = ctx.deps.file_history
+    if history is None:
+        return "[ERROR] File history not available"
+
+    change = history.redo()
+    if change is None:
+        return "Nothing to redo"
+
+    if ctx.deps.audit_logger:
+        ctx.deps.audit_logger.log(
+            event="file_edit",
+            tool_name="redo_file",
+            args_summary=f"path={change.file_path}",
+            result_summary=f"Redid {change.operation} on {change.file_path}",
+            workdir=str(ctx.deps.workdir),
+        )
+
+    return f"Redid {change.operation} on {change.file_path}"
+
+
+async def list_file_changes(ctx: RunContext['CodyDeps']) -> str:
+    """List recent file modifications that can be undone"""
+    history = ctx.deps.file_history
+    if history is None:
+        return "[ERROR] File history not available"
+
+    changes = history.list_changes()
+    if not changes:
+        return "No file changes recorded"
+
+    lines = [f"File changes ({len(changes)} undoable, {history.redo_count} redoable):"]
+    for c in changes:
+        lines.append(f"  [{c.operation}] {c.file_path} ({c.timestamp})")
+
+    return "\n".join(lines)

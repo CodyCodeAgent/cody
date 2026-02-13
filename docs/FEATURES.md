@@ -12,11 +12,11 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 **目标用户：**
 - **AI 系统/平台** — 通过 RPC Server / SDK 嵌入 Cody 引擎（**差异化优势**）
 - **自动化系统** — 集成到 CI/CD、代码审查、自动修复流程
-- **程序员** — 通过 CLI 直接使用（保证可用，也是最好的 dogfooding 方式）
+- **程序员** — 通过 CLI/TUI 直接使用（保证可用，也是最好的 dogfooding 方式）
 
 **核心价值：**
 - 高质量的 AI 编程引擎（工具准确、Agent 可靠）
-- 多种接入方式（Server/SDK/CLI 共享同一引擎）
+- 多种接入方式（Server/SDK/CLI/TUI 共享同一引擎）
 - 可扩展的 Skill 系统
 - 子 Agent 编排（任务分解、并行执行）
 
@@ -144,7 +144,7 @@ cody skills create <name>         # 创建新 Skill
 - 并行处理多个子任务
 - 专门化处理（编码/研究/测试分离）
 
-### 6. 双模式运行
+### 6. 三模式运行
 
 #### CLI 模式
 
@@ -173,6 +173,30 @@ cody config set key value         # 设置配置
 cody auth login                   # OAuth 登录
 cody auth status                  # 查看认证状态
 ```
+
+#### TUI 模式
+
+**全屏交互终端（基于 Textual）：**
+```bash
+# 启动 TUI
+cody tui
+
+# 继续上次会话
+cody tui --continue
+
+# 恢复指定会话
+cody tui --session <id>
+
+# 直接启动
+cody-tui
+```
+
+**功能：**
+- 流式响应实时显示
+- 多会话管理（新建/恢复/列出/切换）
+- 斜杠命令（/help, /new, /sessions, /clear, /quit）
+- 键盘快捷键（Ctrl+N 新会话, Ctrl+C 取消/退出, Ctrl+Q 退出）
+- 状态栏显示 Session、Model、目录、消息数
 
 #### RPC Server 模式
 
@@ -322,7 +346,8 @@ data: {"type": "done", "output": "完成"}
 - Pydantic AI
 - FastAPI（RPC Server）
 - Click（CLI）
-- Rich（终端 UI）
+- Textual（TUI）
+- Rich（终端渲染）
 
 **模型支持：**
 - Anthropic Claude（推荐）
@@ -382,7 +407,7 @@ cody "使用项目 B 的配置"
 | 功能 | Cody | OpenCode/Crush | Claude Code | Cursor | Aider |
 |------|------|---------------|-------------|--------|-------|
 | CLI 模式 | ✅ | ✅ | ✅ | ❌ | ✅ |
-| 交互式 TUI | ❌ | ✅（Bubble Tea） | ✅ | N/A | ❌ |
+| 交互式 TUI | ✅（Textual） | ✅（Bubble Tea） | ✅ | N/A | ❌ |
 | **RPC Server** | **✅ 核心优势** | ❌ | ❌ | ❌ | ❌ |
 | Skill 系统 | ✅ | ✅ | ❌ | ❌ | ❌ |
 | MCP 支持 | ✅ | ✅ | ✅ | ❌ | ❌ |
@@ -391,7 +416,7 @@ cody "使用项目 B 的配置"
 | 子 Agent | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 会话管理 | ✅（SQLite） | ✅（SQLite） | ✅ | ✅ | ✅ |
 | Web 搜索/抓取 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Undo/Redo | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Undo/Redo | ✅ | ✅ | ❌ | ✅ | ✅ |
 | GitHub 集成 | ❌ | ✅（PR/Issue 触发）| ✅ | ✅ | ✅ |
 | 开源 | ✅（MIT） | ✅（MIT） | ❌ | ❌ | ✅ |
 
@@ -420,13 +445,14 @@ cody "使用项目 B 的配置"
 
 ```
 CLI (薄壳) ──→ Core Engine (厚) ←── Server/SDK (薄壳)
+TUI (薄壳) ──↗
 ```
 
-CLI 和 Server 都只是 core 的接入层。我们的精力分配：
+CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 - **Core 引擎**（最高优先级） — 工具质量、Agent 能力、准确度，这是一切的基础
 - **Server + SDK**（差异化重点） — 可嵌入的交付方式，别人没有的东西
 - **子 Agent + MCP** — Python 生态天然适合 AI Agent 编排
-- **CLI** — 保证可用，不花大力气打磨 TUI（不跟 Charm/Anthropic 卷这个方向）
+- **CLI + TUI** — 两种终端交互方式，CLI 适合脚本/单次任务，TUI 适合交互式对话
 
 ---
 
@@ -510,14 +536,30 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] 大文件分块读取 — `chunk_file()` 带重叠的分块切割
 - [x] 智能上下文选择 — `select_relevant_context()` 关键词匹配评分，token 预算控制
 
-### v1.0.0 — 生产就绪
+### v0.5.0 — 安全与可靠性 ✅ 已完成
+
+> **本阶段目标：为生产环境夯实安全基础——认证、权限、审计、限流、可撤销。**
 
 **P3：安全与可靠性**
-- [ ] OAuth 2.0 认证（`AuthConfig` 已定义 oauth 字段，待实现实际流程）
-- [ ] 工具级权限系统（已有基础命令过滤和危险命令拦截，待实现 per-tool 细粒度权限）
-- [ ] 文件修改 undo/redo
-- [ ] 审计日志
-- [ ] 速率限制
+- [x] OAuth 2.0 认证 — `AuthManager` 支持 API Key 验证 + HMAC-SHA256 签名 token 签发/校验/刷新
+- [x] 工具级权限系统 — `PermissionManager` per-tool allow/deny/confirm，内置默认规则，支持用户覆盖
+- [x] 文件修改 undo/redo — `FileHistory` 记录 write/edit/patch 快照，undo/redo 栈
+- [x] 审计日志 — `AuditLogger` SQLite 持久化，8 种事件类型，query/count/clear
+- [x] 速率限制 — `RateLimiter` 滑动窗口算法，per-key 限流
+- [x] Server 三层中间件 — auth → rate_limit → audit，所有非公开端点自动拦截
+- [x] 新 API — `GET /audit` 查询审计日志
+- [x] 新工具 — `undo_file`, `redo_file`, `list_file_changes`
+
+**TUI 交互终端**
+- [x] Textual 全屏终端 UI — `CodyTUI` App，MessageBubble/StreamBubble/StatusLine 组件
+- [x] 流式响应 — 异步 `run_stream()` 实时输出
+- [x] 会话管理 — 新建/恢复/列出会话，Ctrl+N 快捷键
+- [x] 斜杠命令 — `/help`, `/new`, `/sessions`, `/clear`, `/quit`
+- [x] CLI 集成 — `cody tui` 命令 + `cody-tui` console_scripts 入口
+
+**v0.5.0 总计：418 个测试，ruff 零告警**
+
+### v1.0.0 — 生产就绪
 
 **P3：生态**
 - [ ] TypeScript SDK

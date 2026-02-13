@@ -469,6 +469,28 @@ def config_show():
     console.print_json(cfg.model_dump_json(indent=2))
 
 
+# ── TUI command ─────────────────────────────────────────────────────────────
+
+
+@main.command()
+@click.option('--model', help='AI model to use')
+@click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--session', 'session_id', default=None, help='Resume a session by ID')
+@click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
+def tui(model, workdir, session_id, continue_last):
+    """Launch interactive Terminal UI
+
+    Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
+
+    Examples:
+        cody tui
+        cody tui --model anthropic:claude-sonnet-4-0
+        cody tui --continue
+    """
+    from .tui import run_tui
+    run_tui(model=model, workdir=workdir, session_id=session_id, continue_last=continue_last)
+
+
 @config.command('set')
 @click.argument('key')
 @click.argument('value')
