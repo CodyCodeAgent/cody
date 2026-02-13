@@ -279,7 +279,7 @@ def test_run_agent_error():
 
 
 def test_run_stream():
-    """POST /run/stream returns SSE stream"""
+    """POST /run/stream returns SSE stream with JSON events"""
     async def fake_stream(prompt, message_history=None):
         for chunk in ["Hello", " ", "World"]:
             yield chunk
@@ -296,9 +296,10 @@ def test_run_stream():
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
     body = resp.text
-    assert "data: Hello" in body
-    assert "data: World" in body
-    assert "data: [DONE]" in body
+    assert '"type": "text"' in body
+    assert "Hello" in body
+    assert "World" in body
+    assert '"type": "done"' in body
 
 
 def test_run_stream_error():
@@ -317,7 +318,8 @@ def test_run_stream_error():
         })
 
     assert resp.status_code == 200
-    assert "[ERROR]" in resp.text
+    assert '"type": "error"' in resp.text
+    assert "stream broke" in resp.text
 
 
 # ── Request validation ───────────────────────────────────────────────────────
@@ -342,3 +344,174 @@ def test_tool_missing_params_field():
     client = TestClient(app)
     resp = client.post("/tool", json={"tool": "read_file"})
     assert resp.status_code == 422
+
+
+# ── Session endpoints ────────────────────────────────────────────────────────
+
+
+def test_create_session(tmp_path):
+    """POST /sessions creates a new session"""
+    with patch("cody.server._get_session_store") as mock_store_fn:
+        from cody.core.session import SessionStore
+        store = SessionStore(db_path=tmp_path / "test.db")
+        mock_store_fn.return_value = store
+
+        client = TestClient(app)
+        resp = client.post("/sessions?title=my+chat&model=test-model")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] == "my chat"
+    assert data["model"] == "test-model"
+    assert data["message_count"] == 0
+    assert len(data["id"]) == 12
+
+
+def test_list_sessions(tmp_path):
+    """GET /sessions lists recent sessions"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+    store.create_session(title="session 1")
+    store.create_session(title="session 2")
+
+    with patch("cody.server._get_session_store", return_value=store):
+        client = TestClient(app)
+        resp = client.get("/sessions")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["sessions"]) == 2
+
+
+def test_list_sessions_empty(tmp_path):
+    """GET /sessions returns empty list when no sessions"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+
+    with patch("cody.server._get_session_store", return_value=store):
+        client = TestClient(app)
+        resp = client.get("/sessions")
+
+    assert resp.status_code == 200
+    assert resp.json()["sessions"] == []
+
+
+def test_get_session_detail(tmp_path):
+    """GET /sessions/:id returns session with messages"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+    session = store.create_session(title="test chat")
+    store.add_message(session.id, "user", "hello")
+    store.add_message(session.id, "assistant", "hi there")
+
+    with patch("cody.server._get_session_store", return_value=store):
+        client = TestClient(app)
+        resp = client.get(f"/sessions/{session.id}")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == session.id
+    assert data["title"] == "test chat"
+    assert data["message_count"] == 2
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["role"] == "user"
+    assert data["messages"][0]["content"] == "hello"
+    assert data["messages"][1]["role"] == "assistant"
+
+
+def test_get_session_not_found(tmp_path):
+    """GET /sessions/:id returns 404 for nonexistent session"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+
+    with patch("cody.server._get_session_store", return_value=store):
+        client = TestClient(app)
+        resp = client.get("/sessions/nonexistent_id")
+
+    assert resp.status_code == 404
+
+
+def test_delete_session(tmp_path):
+    """DELETE /sessions/:id deletes session"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+    session = store.create_session(title="to delete")
+
+    with patch("cody.server._get_session_store", return_value=store):
+        client = TestClient(app)
+        resp = client.delete(f"/sessions/{session.id}")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+    assert store.get_session(session.id) is None
+
+
+def test_delete_session_not_found(tmp_path):
+    """DELETE /sessions/:id returns 404 for nonexistent session"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+
+    with patch("cody.server._get_session_store", return_value=store):
+        client = TestClient(app)
+        resp = client.delete("/sessions/nonexistent_id")
+
+    assert resp.status_code == 404
+
+
+# ── Run with session ─────────────────────────────────────────────────────────
+
+
+def test_run_with_session_id(tmp_path):
+    """POST /run with session_id uses session-aware run"""
+    from cody.core.session import SessionStore
+    store = SessionStore(db_path=tmp_path / "test.db")
+    session = store.create_session(title="test")
+
+    mock_result = MagicMock()
+    mock_result.output = "done with session"
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 10
+    mock_usage.output_tokens = 5
+    mock_usage.total_tokens = 15
+    mock_result.usage.return_value = mock_usage
+
+    with patch("cody.server.AgentRunner") as MockRunner:
+        instance = MockRunner.return_value
+        instance.run_with_session = AsyncMock(return_value=(mock_result, session.id))
+
+        with patch("cody.server._get_session_store", return_value=store):
+            client = TestClient(app)
+            resp = client.post("/run", json={
+                "prompt": "hello",
+                "session_id": session.id,
+            })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["output"] == "done with session"
+    assert data["session_id"] == session.id
+    # Verify run_with_session was called (not plain run)
+    instance.run_with_session.assert_called_once()
+
+
+def test_run_without_session_id():
+    """POST /run without session_id uses plain run (no session_id in response)"""
+    mock_result = MagicMock()
+    mock_result.output = "no session"
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 10
+    mock_usage.output_tokens = 5
+    mock_usage.total_tokens = 15
+    mock_result.usage.return_value = mock_usage
+
+    with patch("cody.server.AgentRunner") as MockRunner:
+        instance = MockRunner.return_value
+        instance.run = AsyncMock(return_value=mock_result)
+
+        client = TestClient(app)
+        resp = client.post("/run", json={"prompt": "hello"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["session_id"] is None
+    instance.run.assert_called_once()

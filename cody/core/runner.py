@@ -5,9 +5,16 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic_ai import Agent
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UserPromptPart,
+)
 
 from .config import Config
+from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from . import tools
 
@@ -71,6 +78,43 @@ class AgentRunner:
             skill_manager=self.skill_manager,
         )
 
+    # ── Session helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def messages_to_history(messages: list[Message]) -> list[ModelMessage]:
+        """Convert stored session messages to pydantic-ai ModelMessage format."""
+        history: list[ModelMessage] = []
+        for msg in messages:
+            if msg.role == "user":
+                history.append(ModelRequest(parts=[UserPromptPart(content=msg.content)]))
+            elif msg.role == "assistant":
+                history.append(ModelResponse(parts=[TextPart(content=msg.content)]))
+        return history
+
+    def prepare_session(
+        self,
+        store: SessionStore,
+        session_id: Optional[str] = None,
+    ) -> tuple[str, Optional[list[ModelMessage]]]:
+        """Load existing session or create a new one.
+
+        Returns (session_id, history_or_none).
+        """
+        if session_id:
+            session = store.get_session(session_id)
+            if not session:
+                raise ValueError(f"Session not found: {session_id}")
+            history = self.messages_to_history(session.messages) if session.messages else None
+            return session.id, history
+
+        session = store.create_session(
+            model=self.config.model,
+            workdir=str(self.workdir),
+        )
+        return session.id, None
+
+    # ── Core run methods ─────────────────────────────────────────────────────
+
     async def run(
         self,
         prompt: str,
@@ -103,3 +147,47 @@ class AgentRunner:
         deps = self._create_deps()
         result = self.agent.run_sync(prompt, deps=deps, message_history=message_history)
         return result
+
+    # ── Session-aware run methods ────────────────────────────────────────────
+
+    async def run_with_session(
+        self,
+        prompt: str,
+        store: SessionStore,
+        session_id: Optional[str] = None,
+    ) -> tuple:
+        """Run agent with automatic session persistence.
+
+        Returns (result, session_id). Creates a new session if session_id is None.
+        """
+        sid, history = self.prepare_session(store, session_id)
+        result = await self.run(prompt, message_history=history)
+        store.add_message(sid, "user", prompt)
+        store.add_message(sid, "assistant", result.output)
+        return result, sid
+
+    async def run_stream_with_session(
+        self,
+        prompt: str,
+        store: SessionStore,
+        session_id: Optional[str] = None,
+    ):
+        """Stream agent with automatic session persistence.
+
+        Yields text chunks. Saves user+assistant messages after stream completes.
+        Returns are yielded as (chunk, session_id) — session_id is in the first yield.
+        """
+        sid, history = self.prepare_session(store, session_id)
+        store.add_message(sid, "user", prompt)
+
+        chunks: list[str] = []
+        deps = self._create_deps()
+        async with self.agent.run_stream(
+            prompt, deps=deps, message_history=history
+        ) as result:
+            async for text in result.stream_text():
+                chunks.append(text)
+                yield text, sid
+
+        full_output = "".join(chunks)
+        store.add_message(sid, "assistant", full_output)

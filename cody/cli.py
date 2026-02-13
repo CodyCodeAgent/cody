@@ -212,15 +212,8 @@ def _get_input() -> str:
 
 def _build_history_from_session(session) -> list:
     """Convert stored session messages to pydantic-ai message format"""
-    from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart
-
-    history: list = []
-    for msg in session.messages:
-        if msg.role == "user":
-            history.append(ModelRequest(parts=[UserPromptPart(content=msg.content)]))
-        elif msg.role == "assistant":
-            history.append(ModelResponse(parts=[TextPart(content=msg.content)]))
-    return history
+    from .core.runner import AgentRunner
+    return AgentRunner.messages_to_history(session.messages)
 
 
 def _handle_command(cmd: str, session, store, console: Console) -> bool:
