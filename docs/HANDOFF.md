@@ -69,7 +69,7 @@ cody/
 │   ├── ARCHITECTURE.md      # 架构设计文档
 │   ├── FEATURES.md          # 功能清单 + 路线图
 │   └── HANDOFF.md           # 本文档
-├── skills/                  # 内置 Skills (git 等)
+├── skills/                  # 内置 Skills (git, github, docker, npm, python)
 ├── CONTRIBUTING.md          # 开发规范
 ├── pyproject.toml           # 构建配置
 └── README.md                # 项目简介
@@ -119,8 +119,10 @@ AgentRunner
 | Web | `webfetch`, `websearch` |
 | LSP | `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover` |
 | 文件历史 | `undo_file`, `redo_file`, `list_file_changes` |
+| 任务管理 | `todo_write`, `todo_read` |
+| 用户交互 | `question` |
 
-**安全机制：** 每个文件/命令工具内调用 `_resolve_and_check(workdir, path)` 做路径遍历防护，确保操作不会逃出 workdir。
+**安全机制：** 所有可变工具先调用 `_check_permission(ctx, tool_name)` 检查权限；文件/命令工具再调用 `_resolve_and_check(workdir, path)` 做路径遍历防护，确保操作不会逃出 workdir。
 
 ### 3.3 会话系统 (`core/session.py`)
 
@@ -141,6 +143,8 @@ AgentRunner
 3. `{install_dir}/skills/` — 内置
 
 每个 Skill 是一个目录，包含 `SKILL.md` 文档。AI Agent 通过 `list_skills()` 发现 skill，`read_skill()` 读取文档后学习使用。
+
+**内置 Skills：** git, github, docker, npm, python（5 个）
 
 启用/禁用通过 `config.skills.enabled` / `config.skills.disabled` 控制。
 
@@ -172,6 +176,8 @@ AgentRunner
 - `compact_messages()` — 接近 token 窗口限制时自动摘要压缩旧消息
 - `chunk_file()` — 大文件带重叠分块切割
 - `select_relevant_context()` — 关键词匹配 + token 预算控制
+
+Auto-compact 已接入 `AgentRunner.run()` 和 `run_stream()`，通过 `_compact_history_if_needed()` 方法自动触发。
 
 ### 3.9 结构化错误 (`core/errors.py`)
 
@@ -340,9 +346,9 @@ cody-server --port 9000       # 指定端口
 |------|------|------|
 | `docs/API.md` | 准确 | 与代码同步 |
 | `docs/FEATURES.md` | 准确 | 含完整路线图 |
-| `docs/ARCHITECTURE.md` | 部分过时 | 代码示例为伪代码设计稿，不是实际代码，结构图仍有参考价值 |
-| `CONTRIBUTING.md` | 部分过时 | 测试数量和模块状态表需更新 |
-| `README.md` | 准确 | 简洁介绍 |
+| `docs/ARCHITECTURE.md` | 准确 | 完整架构图、组件说明、数据流 |
+| `CONTRIBUTING.md` | 准确 | 包含完整模块测试状态表 |
+| `README.md` | 准确 | 全功能概览 |
 
 ### 测试注意
 
@@ -367,16 +373,14 @@ cody-server --port 9000       # 指定端口
 - [ ] **TypeScript SDK** — 目前只有 Python SDK
 - [ ] **GitHub 集成** — PR/Issue 触发自动化
 - [ ] **CI/CD 模板** — GitHub Actions 等集成模板
-- [ ] **更多内置 Skills** — 目前只有 git skill
 - [ ] **Docker 镜像** — 容器化部署
 
 ### 建议优先级
 
-1. **更多 Skills** — 丰富功能覆盖
-2. **TypeScript SDK** — 扩大用户群
-3. **Docker** — 简化部署
-4. **GitHub 集成** — PR/Issue 自动化
-5. **CI/CD 模板** — GitHub Actions 等
+1. **TypeScript SDK** — 扩大用户群
+2. **Docker** — 简化部署
+3. **GitHub 集成** — PR/Issue 自动化
+4. **CI/CD 模板** — GitHub Actions 等
 
 ---
 

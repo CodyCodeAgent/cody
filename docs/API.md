@@ -136,6 +136,16 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 | `search_files` | 模糊搜索文件名 |
 | `webfetch` | 抓取网页转 Markdown |
 | `websearch` | Web 搜索 |
+| `lsp_diagnostics` | LSP 诊断信息 |
+| `lsp_definition` | 跳转到定义 |
+| `lsp_references` | 查找引用 |
+| `lsp_hover` | 悬停信息 |
+| `undo_file` | 撤销上次文件修改 |
+| `redo_file` | 重做上次撤销 |
+| `list_file_changes` | 列出可撤销的文件修改 |
+| `todo_write` | 创建/更新任务清单（JSON） |
+| `todo_read` | 读取当前任务清单 |
+| `question` | 向用户提结构化选择题 |
 
 **HTTP 状态码：**
 - `200` - 成功

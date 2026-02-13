@@ -1,527 +1,267 @@
 # Cody - Architecture Design
 
-## 系统架构概览
+## System Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        用户/调用方                            │
-│         (CLI / Clawdbot / CI/CD / 其他 Agent)                │
-└─────────────┬───────────────────────────────────────────────┘
-              │
-              ├─ CLI 模式 (cody)
-              │     ↓
-              │  Click CLI → Agent Runner
-              │
-              └─ RPC 模式 (cody-server)
-                    ↓
-                  FastAPI → Agent Runner
-              │
-              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      Cody Core Engine                        │
+│                        Users / Callers                       │
+│         (CLI / TUI / Clawdbot / CI-CD / Other Agents)       │
+└──────┬──────────────┬──────────────┬────────────────────────┘
+       │              │              │
+  CLI (Click)    TUI (Textual)   RPC Server (FastAPI)
+  cody/cli.py    cody/tui.py    cody/server.py
+       │              │              │
+       └──────────────┴──────────────┘
+                      │
+         ┌────────────▼────────────┐
+         │    Python SDK           │
+         │    cody/client.py       │
+         │    (CodyClient /        │
+         │     AsyncCodyClient)    │
+         └────────────┬────────────┘
+                      │ (or direct)
+┌─────────────────────▼───────────────────────────────────────┐
+│                     Cody Core Engine                         │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │              Pydantic AI Agent                        │  │
-│  │  (Core orchestration + LLM interaction)               │  │
+│  │          AgentRunner (core/runner.py)                  │  │
+│  │  - Creates Pydantic AI Agent                          │  │
+│  │  - Registers 30+ tools                                │  │
+│  │  - Context compaction (auto)                          │  │
+│  │  - Session-aware run methods                          │  │
+│  │  - Assembles CodyDeps for dependency injection        │  │
+│  └──────────┬────────────────────────────────────────────┘  │
+│             │                                                │
+│  ┌──────────▼────────────────────────────────────────────┐  │
+│  │     Tool & Extension Layer                            │  │
+│  │  ┌──────────┬───────────┬──────────┬──────────────┐  │  │
+│  │  │ Built-in │ Skill     │ MCP      │ LSP          │  │  │
+│  │  │ Tools    │ System    │ Client   │ Client       │  │  │
+│  │  │          │           │          │              │  │  │
+│  │  │ file ops │ .cody/    │ stdio    │ pyright      │  │  │
+│  │  │ search   │ ~/.cody/  │ JSON-RPC │ tsserver     │  │  │
+│  │  │ exec     │ builtin/  │          │ gopls        │  │  │
+│  │  │ web      │ 5 skills  │ github   │              │  │  │
+│  │  │ todo     │           │ db, fs   │ diagnostics  │  │  │
+│  │  │ question │           │ etc.     │ definition   │  │  │
+│  │  │ undo/    │           │          │ references   │  │  │
+│  │  │ redo     │           │          │ hover        │  │  │
+│  │  └──────────┴───────────┴──────────┴──────────────┘  │  │
 │  └───────────────────────────────────────────────────────┘  │
-│                          ↓                                   │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │           Tool & Skill Manager                        │  │
-│  │  ┌──────────────┬────────────────┬─────────────────┐ │  │
-│  │  │ Built-in     │ Skill System   │ MCP Client      │ │  │
-│  │  │ Tools        │                │                 │ │  │
-│  │  │ - file ops   │ - .cody/skills │ - External      │ │  │
-│  │  │ - exec       │ - ~/.cody/     │   MCP Servers   │ │  │
-│  │  │ - git        │ - builtin/     │                 │ │  │
-│  │  └──────────────┴────────────────┴─────────────────┘ │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                          ↓                                   │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │          Sub-Agent Manager (Optional)                 │  │
-│  │  - Spawn specialized agents                           │  │
-│  │  - Manage agent lifecycle                             │  │
+│             │                                                │
+│  ┌──────────▼────────────────────────────────────────────┐  │
+│  │     Infrastructure Layer                              │  │
+│  │  ┌───────────┬───────────┬──────────┬─────────────┐  │  │
+│  │  │ Sub-Agent │ Session   │ Context  │ Security    │  │  │
+│  │  │ Manager   │ Store     │ Manager  │             │  │  │
+│  │  │           │           │          │ Permissions │  │  │
+│  │  │ spawn     │ SQLite    │ compact  │ Auth/OAuth  │  │  │
+│  │  │ kill      │ sessions  │ chunk    │ Audit Log   │  │  │
+│  │  │ wait      │ messages  │ select   │ Rate Limit  │  │  │
+│  │  │ 4 types   │ history   │ tokens   │ FileHistory │  │  │
+│  │  └───────────┴───────────┴──────────┴─────────────┘  │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
-              ↓
-┌─────────────────────────────────────────────────────────────┐
+              │
+┌─────────────▼───────────────────────────────────────────────┐
 │                  External Services                           │
-│  - Anthropic API (Claude)                                   │
-│  - OpenAI API                                               │
+│  - Anthropic / OpenAI / Google / DeepSeek APIs              │
 │  - File System                                              │
-│  - Shell Commands                                           │
-│  - MCP Servers                                              │
+│  - Shell / Subprocess                                       │
+│  - MCP Servers (GitHub, DB, FS, etc.)                       │
+│  - Language Servers (pyright, tsserver, gopls)               │
+│  - DuckDuckGo (web search)                                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 核心组件
+## Core Components
 
-### 1. Agent Runner
+### 1. AgentRunner (`core/runner.py`)
 
-**职责：**
-- 管理 Pydantic AI Agent 实例
-- 处理会话状态
-- 协调工具调用
-- 管理配置和认证
+The central orchestrator. Responsibilities:
+- Create Pydantic AI `Agent` with all tools registered
+- Assemble `CodyDeps` dataclass for dependency injection into tools
+- Auto-compact message history when approaching token limits
+- Provide `run()`, `run_stream()`, `run_sync()` execution methods
+- Session-aware variants: `run_with_session()`, `run_stream_with_session()`
+- Manage lifecycle of MCP and LSP clients
 
-**代码结构：**
-```python
-# core/runner.py
-class AgentRunner:
-    def __init__(self, config: Config):
-        self.config = config
-        self.agent = self._create_agent()
-        self.skill_manager = SkillManager()
-        self.mcp_client = MCPClient()
-        self.sub_agent_manager = SubAgentManager()
-    
-    async def run(self, prompt: str, context: RunContext) -> Result:
-        # 1. 加载配置和 skills
-        # 2. 初始化 Agent
-        # 3. 运行任务
-        # 4. 返回结果
-        pass
+**CodyDeps carries:**
+```
+Config, workdir, SkillManager, MCPClient, SubAgentManager,
+LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list
 ```
 
-### 2. Skill Manager
+### 2. Tool System (`core/tools.py`)
 
-**职责：**
-- 扫描和加载 Skills
-- 管理 Skill 优先级
-- 提供 Skill 查询接口
+All tools share the signature `async def tool(ctx: RunContext[CodyDeps], ...) -> str`.
 
-**优先级：**
-1. `.cody/skills/` - 项目级
-2. `~/.cody/skills/` - 用户级
-3. `{install}/skills/` - 内置
+**30+ tools across 11 categories:**
 
-**代码结构：**
-```python
-# core/skill_manager.py
-class SkillManager:
-    def __init__(self):
-        self.skills = {}
-        self._load_skills()
-    
-    def _load_skills(self):
-        # 按优先级扫描三个目录
-        for path in [project_skills, user_skills, builtin_skills]:
-            self._scan_directory(path)
-    
-    def get_skill(self, name: str) -> Skill:
-        return self.skills.get(name)
-    
-    def list_skills(self) -> list[str]:
-        return list(self.skills.keys())
+| Category | Tools | Permission |
+|----------|-------|------------|
+| File I/O | read_file, write_file, edit_file, list_directory | read=allow, write=confirm |
+| Search | grep, glob, search_files, patch | grep/glob=allow, patch=confirm |
+| Shell | exec_command | confirm |
+| Skills | list_skills, read_skill | allow |
+| Sub-Agent | spawn_agent, get_agent_status, kill_agent | spawn/kill=confirm, status=allow |
+| MCP | mcp_call, mcp_list_tools | call=confirm, list=allow |
+| Web | webfetch, websearch | allow |
+| LSP | lsp_diagnostics, lsp_definition, lsp_references, lsp_hover | allow |
+| File History | undo_file, redo_file, list_file_changes | undo/redo=confirm, list=allow |
+| Task Mgmt | todo_write, todo_read | allow |
+| User I/O | question | allow |
+
+**Security:** All mutating tools call `_check_permission(ctx, tool_name)` before execution. File tools call `_resolve_and_check(workdir, path)` for path traversal protection.
+
+### 3. Skill System (`core/skill_manager.py`)
+
+Three-tier priority loading:
+1. `.cody/skills/` — project-level (highest)
+2. `~/.cody/skills/` — user-level
+3. `{install}/skills/` — built-in
+
+Each skill is a directory with a `SKILL.md` doc. The AI discovers skills via `list_skills()` and reads documentation via `read_skill()`.
+
+**Built-in skills:** git, github, docker, npm, python
+
+### 4. Sub-Agent System (`core/sub_agent.py`)
+
+`SubAgentManager` orchestrates concurrent child agents:
+- 4 types: `code`, `research`, `test`, `generic` (each with different tool sets)
+- Max concurrency: 5 (via `asyncio.Semaphore`)
+- Default timeout: 300s per agent
+- Lifecycle: spawn → running → completed/failed/killed/timeout
+
+**Note:** `_execute()` uses delayed imports to break `runner → sub_agent → runner` circular dependency.
+
+### 5. MCP Client (`core/mcp_client.py`)
+
+Manages MCP server subprocesses via stdio JSON-RPC:
+- `start_all()` / `stop_all()` — batch lifecycle management
+- Tool discovery via `tools/list` JSON-RPC
+- `call_tool(server/tool, params)` — proxied tool calls
+- Process death detection with error recovery
+
+### 6. LSP Client (`core/lsp_client.py`)
+
+Manages language server processes with Content-Length framed JSON-RPC:
+- Python: pyright
+- TypeScript: typescript-language-server
+- Go: gopls
+- Capabilities: diagnostics, go-to-definition, find-references, hover
+
+### 7. Context Management (`core/context.py`)
+
+- `compact_messages(msgs, max_tokens)` — summarize old messages when approaching token limits
+- `chunk_file(path, chunk_size, overlap)` — split large files into overlapping chunks
+- `select_relevant_context(query, files, max_tokens)` — keyword scoring with token budget
+
+Auto-compaction is wired into `AgentRunner.run()` and `run_stream()`.
+
+### 8. Session System (`core/session.py`)
+
+SQLite-backed persistence:
+- `create_session()`, `get_session()`, `list_sessions()`, `delete_session()`
+- `add_message(session_id, role, content)` — append to conversation history
+- Default DB: `~/.cody/sessions.db`
+
+### 9. Security Stack
+
+| Component | Module | Purpose |
+|-----------|--------|---------|
+| Permissions | `core/permissions.py` | Per-tool allow/deny/confirm, enforced at tool call time |
+| Auth | `core/auth.py` | API Key verification + HMAC-SHA256 token issuance/validation |
+| Audit | `core/audit.py` | SQLite event log (tool_call, file_write, command_exec, etc.) |
+| Rate Limit | `core/rate_limiter.py` | Sliding window per-key throttling |
+| File History | `core/file_history.py` | Undo/redo stack for file modifications |
+| Path Safety | `core/tools.py` | `_resolve_and_check()` prevents symlink/traversal escapes |
+| Cmd Safety | `core/tools.py` | Dangerous command detection (rm -rf, dd, fork bomb) |
+
+Server wires these as middleware: auth → rate_limit → audit.
+
+---
+
+## Data Flows
+
+### CLI Mode
+
+```
+User Input → Click CLI (cli.py) → AgentRunner.run(prompt)
+  → Pydantic AI Agent → Tool calls → File/Exec/Skill/MCP/LSP
+  → Results → Agent → LLM → Final Output → Display
 ```
 
-### 3. Tool System
+### TUI Mode
 
-**内置工具：**
-```python
-# core/tools/file.py
-@cody_agent.tool
-async def read_file(ctx: RunContext, path: str) -> str:
-    """Read file contents"""
-    full_path = resolve_path(ctx.workdir, path)
-    validate_access(full_path)
-    return Path(full_path).read_text()
-
-@cody_agent.tool
-async def write_file(ctx: RunContext, path: str, content: str) -> str:
-    """Write content to file"""
-    full_path = resolve_path(ctx.workdir, path)
-    validate_access(full_path)
-    Path(full_path).write_text(content)
-    return f"Written to {path}"
+```
+User Input → Textual App (tui.py) → AgentRunner.run_stream_with_session()
+  → Pydantic AI Agent → Tool calls → ...
+  → Stream chunks → TUI StreamBubble → Real-time display
+  → Session auto-persisted to SQLite
 ```
 
-**Skill 元工具：**
-```python
-# core/tools/skill.py
-@cody_agent.tool
-async def list_skills(ctx: RunContext) -> list[str]:
-    """List available skills"""
-    return ctx.skill_manager.list_skills()
+### RPC Mode
 
-@cody_agent.tool
-async def read_skill(ctx: RunContext, skill_name: str) -> str:
-    """Read skill documentation"""
-    skill = ctx.skill_manager.get_skill(skill_name)
-    return skill.read_documentation()
+```
+HTTP POST /run → FastAPI (server.py) → AgentRunner.run_with_session()
+  → ... → JSON Response {output, session_id, usage}
+
+HTTP POST /run/stream → SSE stream
+  → ... → data: {"type":"text","content":"..."} events
+
+WS /ws → WebSocket bidirectional
+  → {"type":"run"} → stream → {"type":"text"} events
+  → {"type":"cancel"} → abort → {"type":"cancelled"}
 ```
 
-### 4. MCP Client
+### Sub-Agent Mode
 
-**职责：**
-- 连接和管理 MCP Servers
-- 代理工具调用
-- 处理 Server 生命周期
-
-**代码结构：**
-```python
-# core/mcp_client.py
-from pydantic_ai.mcp import MCPServer
-
-class MCPClient:
-    def __init__(self, config: MCPConfig):
-        self.servers = {}
-        self._load_servers(config)
-    
-    async def connect_server(self, name: str, server_config: dict):
-        server = MCPServer(
-            command=server_config['command'],
-            args=server_config['args'],
-            env=server_config.get('env', {})
-        )
-        await server.start()
-        self.servers[name] = server
-    
-    async def call_tool(self, server: str, tool: str, params: dict):
-        return await self.servers[server].call_tool(tool, params)
 ```
-
-### 5. Sub-Agent Manager
-
-**职责：**
-- 创建和管理子 Agent
-- 追踪子 Agent 状态
-- 资源管理和清理
-
-**代码结构：**
-```python
-# core/sub_agent.py
-class SubAgentManager:
-    def __init__(self):
-        self.agents = {}  # agent_id -> Agent
-    
-    async def spawn(self, task: str, agent_type: str) -> str:
-        """Spawn a sub-agent"""
-        agent_id = uuid.uuid4().hex
-        
-        # 创建专门化的 Agent
-        agent = self._create_agent_by_type(agent_type)
-        
-        # 后台运行
-        asyncio.create_task(self._run_agent(agent_id, agent, task))
-        
-        return agent_id
-    
-    async def _run_agent(self, agent_id: str, agent: Agent, task: str):
-        try:
-            result = await agent.run(task)
-            self.agents[agent_id] = {
-                'status': 'completed',
-                'result': result.output
-            }
-        except Exception as e:
-            self.agents[agent_id] = {
-                'status': 'failed',
-                'error': str(e)
-            }
+Main Agent → spawn_agent("task", "research") tool call
+  → SubAgentManager.spawn() → asyncio.create_task()
+  → Child Agent runs independently with subset of tools
+  → Main Agent polls via get_agent_status()
+  → Results aggregated into main conversation
 ```
 
 ---
 
-## 数据流
+## Configuration System
 
-### CLI 模式
+### Load Order (later overrides earlier)
 
-```
-用户输入
-  ↓
-Click CLI (cli.py)
-  ↓
-AgentRunner.run(prompt, workdir)
-  ↓
-Pydantic AI Agent
-  ↓ (tool calls)
-Tool Manager → File/Exec/Skill/MCP
-  ↓ (results)
-Agent → LLM → Final Output
-  ↓
-显示结果
-```
+1. Built-in defaults (Pydantic model defaults)
+2. Global config: `~/.cody/config.json`
+3. Project config: `.cody/config.json`
+4. CLI arguments / environment variables
 
-### RPC 模式
+### Key Config Models (`core/config.py`)
 
 ```
-HTTP Request (POST /run)
-  ↓
-FastAPI Handler (server.py)
-  ↓
-AgentRunner.run(prompt, context)
-  ↓
-Pydantic AI Agent
-  ↓ (tool calls)
-Tool Manager
-  ↓ (results)
-Agent → LLM → Final Output
-  ↓
-JSON Response / SSE Stream
-```
-
-### 子 Agent 模式
-
-```
-主 Agent 判断需要孵化
-  ↓
-调用 spawn_agent(task, type) 工具
-  ↓
-SubAgentManager.spawn()
-  ↓
-创建新 Agent 实例（独立工具集）
-  ↓
-后台运行（asyncio.create_task）
-  ↓
-完成后返回结果给主 Agent
-  ↓
-主 Agent 整合结果继续执行
+Config
+├── model: str                    # "anthropic:claude-sonnet-4-0"
+├── skills: SkillConfig           # enabled[], disabled[]
+├── mcp: MCPConfig                # servers[]
+├── permissions: PermissionsConfig # overrides{}, default_level
+├── security: SecurityConfig      # allowed_commands[], restricted_paths[]
+└── auth: AuthConfig              # type, token, api_key
 ```
 
 ---
 
-## 配置系统
+## Dependency Direction
 
-### 配置加载顺序
-
-1. 内置默认配置
-2. 全局配置 `~/.cody/config.json`
-3. 项目配置 `.cody/config.json`
-4. 命令行参数
-5. 环境变量
-
-**合并策略：** 后加载的覆盖先加载的
-
-### 配置结构
-
-```python
-# core/config.py
-from pydantic import BaseModel
-
-class AuthConfig(BaseModel):
-    type: Literal['oauth', 'api_key']
-    token: str | None = None
-    refresh_token: str | None = None
-    api_key: str | None = None
-    expires_at: datetime | None = None
-
-class SkillConfig(BaseModel):
-    enabled: list[str] = []
-    disabled: list[str] = []
-
-class MCPServerConfig(BaseModel):
-    name: str
-    command: str
-    args: list[str]
-    env: dict[str, str] = {}
-
-class MCPConfig(BaseModel):
-    servers: list[MCPServerConfig] = []
-
-class SecurityConfig(BaseModel):
-    allowed_commands: list[str] | None = None
-    restricted_paths: list[str] = []
-    require_confirmation: bool = True
-
-class Config(BaseModel):
-    model: str = 'anthropic:claude-sonnet-4-0'
-    auth: AuthConfig
-    skills: SkillConfig = SkillConfig()
-    mcp: MCPConfig = MCPConfig()
-    security: SecurityConfig = SecurityConfig()
 ```
+cli.py ──→
+tui.py ──→  core/*  ←── server.py
+             ↓
+         pydantic-ai, sqlite3, httpx, etc.
+```
+
+**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, or `server.py`. All functionality lives in core; shells just expose it.
 
 ---
 
-## 安全设计
-
-### 1. 命令执行安全
-
-**白名单机制：**
-```python
-ALLOWED_COMMANDS = ['git', 'npm', 'python', 'pip', 'docker']
-
-def validate_command(command: str) -> bool:
-    base_cmd = command.split()[0]
-    return base_cmd in ALLOWED_COMMANDS
-```
-
-**危险命令拦截：**
-```python
-DANGEROUS_PATTERNS = [
-    r'rm\s+-rf\s+/',
-    r'dd\s+if=.*of=/dev/',
-    r':\(\)\{.*\}',  # fork bomb
-]
-
-def is_dangerous(command: str) -> bool:
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, command):
-            return True
-    return False
-```
-
-### 2. 文件访问控制
-
-**路径验证：**
-```python
-def validate_file_access(path: str, workdir: str) -> bool:
-    resolved = Path(path).resolve()
-    workdir_resolved = Path(workdir).resolve()
-    
-    # 必须在工作目录内
-    return resolved.is_relative_to(workdir_resolved)
-```
-
-### 3. 资源限制
-
-**子 Agent 限制：**
-```python
-MAX_SUB_AGENTS = 5
-MAX_AGENT_RUNTIME = 300  # 5分钟
-
-async def spawn(self, task: str) -> str:
-    if len(self.agents) >= MAX_SUB_AGENTS:
-        raise TooManyAgentsError()
-    
-    # 设置超时
-    async with asyncio.timeout(MAX_AGENT_RUNTIME):
-        result = await agent.run(task)
-```
-
----
-
-## 性能优化
-
-### 1. 缓存策略
-
-**Skill 文档缓存：**
-```python
-from functools import lru_cache
-
-@lru_cache(maxsize=128)
-def load_skill_doc(skill_path: str) -> str:
-    return Path(skill_path).read_text()
-```
-
-**模型响应缓存（可选）：**
-```python
-# 对于确定性任务
-cache_key = f"{prompt}:{tools}:{model}"
-if cache_key in cache:
-    return cache[cache_key]
-```
-
-### 2. 并发处理
-
-**工具并行调用：**
-```python
-# Pydantic AI 自动支持并行工具调用
-# 当 LLM 返回多个工具调用时，会并发执行
-```
-
-**子 Agent 并行：**
-```python
-tasks = [
-    spawn_agent("task1", "code"),
-    spawn_agent("task2", "research")
-]
-results = await asyncio.gather(*tasks)
-```
-
----
-
-## 扩展性设计
-
-### 1. 插件系统
-
-**未来支持：**
-```python
-# plugins/custom_tool.py
-from cody import Tool
-
-class CustomTool(Tool):
-    name = "my_tool"
-    description = "Custom tool"
-    
-    async def run(self, ctx: RunContext, **kwargs):
-        # 实现
-        pass
-
-# 注册
-cody.register_plugin(CustomTool())
-```
-
-### 2. 自定义模型
-
-**支持自定义模型：**
-```python
-from pydantic_ai.models import Model
-
-class CustomModel(Model):
-    async def request(...):
-        # 实现
-        pass
-
-agent = Agent(CustomModel())
-```
-
----
-
-## 测试策略
-
-### 1. 单元测试
-
-```python
-# tests/test_tools.py
-async def test_read_file():
-    ctx = create_test_context()
-    result = await read_file(ctx, "test.txt")
-    assert "content" in result
-```
-
-### 2. 集成测试
-
-```python
-# tests/test_agent.py
-async def test_agent_flow():
-    agent = create_test_agent()
-    result = await agent.run("Create hello.py")
-    assert Path("hello.py").exists()
-```
-
-### 3. RPC 测试
-
-```python
-# tests/test_server.py
-async def test_api_endpoint():
-    client = TestClient(app)
-    response = client.post("/run", json={
-        "prompt": "test task"
-    })
-    assert response.status_code == 200
-```
-
----
-
-## 部署
-
-### 开发环境
-```bash
-pip install -e .
-cody-server --reload
-```
-
-### 生产环境
-```bash
-# Docker
-docker run -p 8000:8000 cody:latest
-
-# systemd
-systemctl start cody-server
-```
-
----
-
-**最后更新：** 2026-01-28
+**Last updated:** 2026-02-13
