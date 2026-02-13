@@ -5,6 +5,7 @@ from pathlib import Path
 from cody.core.tools import (
     read_file, write_file, edit_file, list_directory,
     grep, glob, patch, search_files,
+    _is_binary, _parse_gitignore, _is_gitignored, _iter_files,
 )
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
@@ -357,3 +358,264 @@ async def test_search_files_path_contains(tmp_path):
 
     result = await search_files(ctx, "api")
     assert "handler.py" in result
+
+
+# ── Binary file detection tests ─────────────────────────────────────────────
+
+
+def test_is_binary_with_text_file(tmp_path):
+    f = tmp_path / "hello.txt"
+    f.write_text("Hello, World!\n")
+    assert _is_binary(f) is False
+
+
+def test_is_binary_with_binary_file(tmp_path):
+    f = tmp_path / "data.bin"
+    f.write_bytes(b"some data\x00more data")
+    assert _is_binary(f) is True
+
+
+def test_is_binary_empty_file(tmp_path):
+    f = tmp_path / "empty"
+    f.write_bytes(b"")
+    assert _is_binary(f) is False
+
+
+def test_is_binary_utf8(tmp_path):
+    f = tmp_path / "utf8.txt"
+    f.write_text("你好世界\nこんにちは\n")
+    assert _is_binary(f) is False
+
+
+# ── Gitignore parsing tests ─────────────────────────────────────────────────
+
+
+def test_parse_gitignore(tmp_path):
+    (tmp_path / ".gitignore").write_text("*.pyc\n__pycache__/\n# comment\n\n*.log\n")
+    patterns = _parse_gitignore(tmp_path)
+    assert patterns == ["*.pyc", "__pycache__/", "*.log"]
+
+
+def test_parse_gitignore_missing(tmp_path):
+    patterns = _parse_gitignore(tmp_path)
+    assert patterns == []
+
+
+def test_is_gitignored_simple():
+    patterns = ["*.pyc", "*.log"]
+    assert _is_gitignored("foo.pyc", patterns) is True
+    assert _is_gitignored("foo.py", patterns) is False
+    assert _is_gitignored("app.log", patterns) is True
+
+
+def test_is_gitignored_dir_pattern():
+    patterns = ["build/"]
+    assert _is_gitignored("build", patterns, is_dir=True) is True
+    # File inside build dir: the dir pattern matches parent component
+    assert _is_gitignored("build/output.js", patterns) is True
+    # A file named "build" is NOT matched by a dir-only pattern
+    assert _is_gitignored("build", patterns, is_dir=False) is False
+
+
+def test_is_gitignored_negation():
+    patterns = ["*.log", "!important.log"]
+    assert _is_gitignored("debug.log", patterns) is True
+    assert _is_gitignored("important.log", patterns) is False
+
+
+def test_is_gitignored_anchored():
+    patterns = ["/dist"]
+    assert _is_gitignored("dist", patterns) is True
+    assert _is_gitignored("src/dist", patterns) is False
+
+
+def test_is_gitignored_nested_path():
+    patterns = ["docs/generated"]
+    assert _is_gitignored("docs/generated", patterns, is_dir=True) is True
+    assert _is_gitignored("other/generated", patterns, is_dir=True) is False
+
+
+# ── Default ignore tests (grep) ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_grep_skips_node_modules(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "app.js").write_text("const x = 1\n")
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    (nm / "index.js").write_text("const x = 2\n")
+
+    result = await grep(ctx, "const x")
+    assert "app.js" in result
+    assert "node_modules" not in result
+
+
+@pytest.mark.asyncio
+async def test_grep_skips_pycache(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "main.py").write_text("hello = True\n")
+    pc = tmp_path / "__pycache__"
+    pc.mkdir()
+    (pc / "main.cpython-311.pyc").write_bytes(b"\x00\x00compiled")
+
+    result = await grep(ctx, "hello")
+    assert "main.py:1:" in result
+    assert "__pycache__" not in result
+
+
+@pytest.mark.asyncio
+async def test_grep_skips_git_dir(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "code.py").write_text("real code\n")
+    git = tmp_path / ".git" / "objects"
+    git.mkdir(parents=True)
+    (git / "abc123").write_text("git internal\n")
+
+    result = await grep(ctx, "code")
+    assert "code.py" in result
+    assert ".git" not in result
+
+
+@pytest.mark.asyncio
+async def test_grep_skips_binary_files(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "readme.txt").write_text("hello world\n")
+    (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00more binary data")
+
+    result = await grep(ctx, "hello")
+    assert "readme.txt" in result
+    # Binary file should be skipped, not error
+    assert "image.png" not in result
+
+
+@pytest.mark.asyncio
+async def test_grep_respects_gitignore(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\ntemp/\n")
+    (tmp_path / "app.py").write_text("logging\n")
+    (tmp_path / "debug.log").write_text("logging\n")
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    (temp / "scratch.py").write_text("logging\n")
+
+    result = await grep(ctx, "logging")
+    assert "app.py" in result
+    assert "debug.log" not in result
+    assert "temp" not in result
+
+
+@pytest.mark.asyncio
+async def test_grep_gitignore_negation(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.log\n!important.log\n")
+    (tmp_path / "debug.log").write_text("error line\n")
+    (tmp_path / "important.log").write_text("error line\n")
+
+    result = await grep(ctx, "error line")
+    assert "debug.log" not in result
+    assert "important.log" in result
+
+
+# ── Default ignore tests (glob) ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_glob_skips_node_modules(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "app.js").write_text("")
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    (nm / "index.js").write_text("")
+
+    result = await glob(ctx, "**/*.js")
+    assert "app.js" in result
+    assert "node_modules" not in result
+
+
+@pytest.mark.asyncio
+async def test_glob_skips_hidden_dirs(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "main.py").write_text("")
+    hidden = tmp_path / ".hidden"
+    hidden.mkdir()
+    (hidden / "secret.py").write_text("")
+
+    result = await glob(ctx, "**/*.py")
+    assert "main.py" in result
+    assert ".hidden" not in result
+
+
+@pytest.mark.asyncio
+async def test_glob_respects_gitignore(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / ".gitignore").write_text("*.generated.py\n")
+    (tmp_path / "app.py").write_text("")
+    (tmp_path / "models.generated.py").write_text("")
+
+    result = await glob(ctx, "**/*.py")
+    assert "app.py" in result
+    assert "generated" not in result
+
+
+# ── Default ignore tests (search_files) ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_search_files_skips_node_modules(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "utils.js").write_text("")
+    nm = tmp_path / "node_modules" / "lodash"
+    nm.mkdir(parents=True)
+    (nm / "utils.js").write_text("")
+
+    result = await search_files(ctx, "utils")
+    lines = result.strip().split("\n")
+    assert len(lines) == 1
+    assert lines[0] == "utils.js"
+
+
+@pytest.mark.asyncio
+async def test_search_files_skips_hidden(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "config.py").write_text("")
+    vscode = tmp_path / ".vscode"
+    vscode.mkdir()
+    (vscode / "config.json").write_text("")
+
+    result = await search_files(ctx, "config")
+    assert "config.py" in result
+    assert ".vscode" not in result
+
+
+# ── iter_files tests ─────────────────────────────────────────────────────────
+
+
+def test_iter_files_prunes_ignored_dirs(tmp_path):
+    (tmp_path / "real.py").write_text("code")
+    nm = tmp_path / "node_modules" / "pkg"
+    nm.mkdir(parents=True)
+    (nm / "lib.js").write_text("code")
+    pc = tmp_path / "__pycache__"
+    pc.mkdir()
+    (pc / "mod.pyc").write_bytes(b"\x00compiled")
+
+    files = _iter_files(tmp_path, tmp_path, [])
+    names = [f.name for f in files]
+    assert "real.py" in names
+    assert "lib.js" not in names
+    assert "mod.pyc" not in names
+
+
+def test_iter_files_respects_gitignore(tmp_path):
+    (tmp_path / "app.py").write_text("code")
+    (tmp_path / "debug.log").write_text("log")
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "app.log").write_text("log")
+
+    files = _iter_files(tmp_path, tmp_path, ["*.log", "logs/"])
+    names = [f.name for f in files]
+    assert "app.py" in names
+    assert "debug.log" not in names
+    assert "app.log" not in names
