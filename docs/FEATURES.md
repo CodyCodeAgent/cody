@@ -447,7 +447,7 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] 路径遍历安全修复 — resolve() 防止 symlink 逃逸
 - [x] SQLite 会话持久化 — 对话历史存储、多会话管理
 - [x] CLI 交互模式 — `cody chat`、`--continue`、`--session`
-- [x] 81 个单元测试，ruff 零告警
+- [x] 81 个单元测试，ruff 零告警（现 144 个）
 
 ### v0.3.0 — 引擎化（⬅ 当前阶段，核心里程碑）
 
@@ -455,18 +455,20 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 > Server 和 SDK 是重点，CLI 功能冻结。
 
 **P0：Server API 完善**
-- [ ] Session API — `POST /sessions`, `GET /sessions`, `GET /sessions/:id`, `DELETE /sessions/:id`
-- [ ] 带会话的对话 — `POST /run` 支持 `session_id` 参数，自动持久化对话历史
-- [ ] 流式工具事件 — SSE 推送工具调用过程（`tool_start`, `tool_result`, `text_delta`, `done`）
-- [ ] WebSocket 双向通信 — 实时交互（用户中途提问/取消）
+- [x] Session API — `POST /sessions`, `GET /sessions`, `GET /sessions/:id`, `DELETE /sessions/:id`
+- [x] 带会话的对话 — `POST /run` 支持 `session_id` 参数，自动持久化对话历史
+- [x] SSE 结构化 JSON 事件 — `{type: text/done/error}`
+- [x] Server 完整测试 — 33 个端点测试
+- [x] Runner + Session 打通 — `run_with_session` / `run_stream_with_session`
 - [ ] 结构化错误响应 — 统一错误码和错误格式
-- [ ] Server 完整测试 — 每个端点都有测试（目前 0 个，不可接受）
+- [ ] WebSocket 双向通信 — 实时交互（用户中途提问/取消）
 
 **P0：Python SDK**
-- [ ] `CodyClient` 类 — `pip install cody-ai` 后可直接调用引擎
-- [ ] 同步 + 异步接口 — `client.run()` / `await client.arun()`
-- [ ] 流式响应 — `async for chunk in client.stream(...)`
-- [ ] 会话管理 — `client.create_session()`, `client.resume_session(id)`
+- [x] `CodyClient` / `AsyncCodyClient` — 同步 + 异步双客户端
+- [x] 核心方法 — `run()`, `stream()`, `tool()`, `health()`
+- [x] 会话管理 — `create_session()`, `list_sessions()`, `get_session()`, `delete_session()`
+- [x] 错误处理 — `CodyError`, `CodyConnectionError`, `CodyNotFoundError`
+- [x] 19 个 SDK 测试（12 sync + 7 async integration）
 - [ ] 连接管理 — 自动重连、超时、健康检查
 
 **P1：MCP Client 集成**
