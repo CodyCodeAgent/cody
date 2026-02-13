@@ -17,11 +17,24 @@
 cody/
 ├── core/           # 引擎核心（不依赖 CLI 或 Server）
 │   ├── config.py       # 配置管理
-│   ├── runner.py       # Agent 执行引擎
-│   ├── tools.py        # 内置工具（文件、搜索、命令）
+│   ├── runner.py       # Agent 执行引擎 + CodyDeps
+│   ├── tools.py        # 内置工具（文件、搜索、命令、todo、question）
 │   ├── session.py      # 会话管理（SQLite）
-│   └── skill_manager.py # Skill 加载与管理
+│   ├── skill_manager.py # Skill 加载与管理
+│   ├── sub_agent.py    # 子 Agent 编排
+│   ├── mcp_client.py   # MCP 协议客户端
+│   ├── lsp_client.py   # LSP 语言服务客户端
+│   ├── context.py      # 上下文管理（compact, chunk, select）
+│   ├── web.py          # Web 搜索 + 抓取
+│   ├── errors.py       # 结构化错误（ErrorCode, CodyAPIError）
+│   ├── audit.py        # 审计日志（SQLite）
+│   ├── auth.py         # OAuth 认证（HMAC-SHA256 token）
+│   ├── permissions.py  # 工具级权限（allow/deny/confirm）
+│   ├── file_history.py # 文件 undo/redo 快照
+│   └── rate_limiter.py # 滑动窗口限流
+├── skills/         # 内置 Skills（git, github, docker, npm, python）
 ├── server.py       # RPC Server（FastAPI），调用 core
+├── tui.py          # TUI 界面（Textual），调用 core
 └── cli.py          # CLI 界面（Click），调用 core
 ```
 
@@ -210,19 +223,25 @@ python3 -m pytest tests/ -v
 | core/lsp_client.py | 34 | 完善 |
 | server.py | 32 | 完善 |
 | core/web.py | 22 | 完善 |
-| core/sub_agent.py | 21 | 完善 |
+| core/sub_agent.py | 22 | 完善 |
 | client.py | 19 | 完善 |
-| client retry | 17 | 完善 |
+| client retry | 18 | 完善 |
 | core/context.py | 16 | 完善 |
 | cli.py | 16 | 基本覆盖 |
 | core/config.py | 15 | 完善 |
 | core/skill_manager.py | 14 | 完善 |
 | core/session.py | 14 | 完善 |
-| core/mcp_client.py | 14 | 完善 |
+| core/mcp_client.py | 15 | 完善 |
 | core/runner.py | 12 | 完善 |
 | core/errors.py | 11 | 完善 |
+| core/audit.py | 16 | 完善 |
+| core/auth.py | 14 | 完善 |
+| core/permissions.py | 14 | 完善 |
+| core/file_history.py | 16 | 完善 |
+| core/rate_limiter.py | 12 | 完善 |
+| tui.py | 10 | 基本覆盖 |
 | WebSocket | 7 | 基本覆盖 |
 
-**总计：315 个测试**
+**总计：418 个测试，ruff 零告警**
 
-**下一步重点：v1.0.0 — 认证、权限、TypeScript SDK（见 docs/FEATURES.md）**
+**下一步重点：v1.0.0 — TypeScript SDK、GitHub 集成、Docker 镜像（见 docs/FEATURES.md）**
