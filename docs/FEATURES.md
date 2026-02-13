@@ -386,11 +386,11 @@ cody "使用项目 B 的配置"
 | **RPC Server** | **✅ 核心优势** | ❌ | ❌ | ❌ | ❌ |
 | Skill 系统 | ✅ | ✅ | ❌ | ❌ | ❌ |
 | MCP 支持 | ✅ | ✅ | ✅ | ❌ | ❌ |
-| LSP 集成 | ❌ | ✅（30+ 语言） | ❌ | ✅（内置） | ❌ |
+| LSP 集成 | ✅ | ✅（30+ 语言） | ❌ | ✅（内置） | ❌ |
 | 多模型 | ✅ | ✅（75+ 提供商） | ❌ | ✅ | ✅ |
 | 子 Agent | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 会话管理 | ✅（SQLite） | ✅（SQLite） | ✅ | ✅ | ✅ |
-| Web 搜索/抓取 | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Web 搜索/抓取 | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Undo/Redo | ❌ | ✅ | ❌ | ✅ | ✅ |
 | GitHub 集成 | ❌ | ✅（PR/Issue 触发）| ✅ | ✅ | ✅ |
 | 开源 | ✅（MIT） | ✅（MIT） | ❌ | ❌ | ✅ |
@@ -491,22 +491,24 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 
 **v0.3.0 总计：214 个测试，ruff 零告警**
 
-### v0.4.0 — 智能化
+### v0.4.0 — 智能化 ✅ 已完成
+
+> **本阶段目标：让 Cody 拥有代码智能（LSP）、Web 能力和上下文管理能力。**
 
 **P2：LSP 集成**
-- [ ] LSP Client 框架
-- [ ] Python (pyright) / TypeScript / Go (gopls) 支持
-- [ ] LSP 诊断自动反馈给 LLM
-- [ ] go-to-definition、find-references 工具
+- [x] LSP Client 框架 — `LSPClient` 管理语言服务器进程，Content-Length 帧 JSON-RPC
+- [x] Python (pyright) / TypeScript (typescript-language-server) / Go (gopls) 支持
+- [x] LSP 诊断自动反馈给 LLM — `lsp_diagnostics(file_path)` 工具
+- [x] go-to-definition、find-references、hover 工具 — `lsp_definition()`, `lsp_references()`, `lsp_hover()`
 
 **P2：Web 能力**
-- [ ] `webfetch(url)` — 抓取网页转 Markdown
-- [ ] `websearch(query)` — 搜索引擎集成
+- [x] `webfetch(url)` — 抓取网页，HTML→Markdown 转换，支持 JSON/纯文本
+- [x] `websearch(query)` — DuckDuckGo HTML 搜索，无需 API Key
 
 **P2：上下文管理**
-- [ ] Auto Compact — 接近窗口限制时自动摘要压缩
-- [ ] 大文件分块读取
-- [ ] 智能上下文选择（只喂相关代码给 LLM）
+- [x] Auto Compact — `compact_messages()` 接近窗口限制时自动摘要压缩旧消息
+- [x] 大文件分块读取 — `chunk_file()` 带重叠的分块切割
+- [x] 智能上下文选择 — `select_relevant_context()` 关键词匹配评分，token 预算控制
 
 ### v1.0.0 — 生产就绪
 

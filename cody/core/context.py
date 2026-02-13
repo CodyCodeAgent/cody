@@ -1,0 +1,257 @@
+"""Context management for Cody agent.
+
+Handles:
+- Auto-compact: compress conversation history when approaching token limits
+- Large file chunking: split large files for reading
+- Smart context selection: only feed relevant code to the LLM
+"""
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
+
+# ── Token estimation ─────────────────────────────────────────────────────────
+
+# Rough estimate: ~4 chars per token for English, ~2 for CJK
+_CHARS_PER_TOKEN = 4
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough token count estimate (no tokenizer dependency)."""
+    return max(1, len(text) // _CHARS_PER_TOKEN)
+
+
+# ── Auto-compact ─────────────────────────────────────────────────────────────
+
+
+@dataclass
+class CompactResult:
+    """Result of context compaction."""
+    summary: str
+    original_messages: int
+    compacted_messages: int
+    estimated_tokens_saved: int
+
+
+def compact_messages(
+    messages: list[dict],
+    max_tokens: int = 100_000,
+    keep_recent: int = 4,
+) -> tuple[list[dict], Optional[CompactResult]]:
+    """Compact older messages into a summary when context grows too large.
+
+    Keeps the most recent `keep_recent` messages intact and summarizes the rest.
+    Returns (new_messages, compact_result_or_none).
+    """
+    total_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
+
+    if total_tokens <= max_tokens or len(messages) <= keep_recent:
+        return messages, None
+
+    # Split into old (to compact) and recent (to keep)
+    old_messages = messages[:-keep_recent]
+    recent_messages = messages[-keep_recent:]
+
+    # Build summary from old messages
+    summary_parts: list[str] = []
+    for msg in old_messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        # Truncate each message to a brief summary
+        brief = _summarize_message(content)
+        if brief:
+            summary_parts.append(f"[{role}] {brief}")
+
+    summary_text = "Previous conversation summary:\n" + "\n".join(summary_parts)
+
+    old_tokens = sum(estimate_tokens(m.get("content", "")) for m in old_messages)
+    summary_tokens = estimate_tokens(summary_text)
+
+    compacted = [{"role": "system", "content": summary_text}] + recent_messages
+
+    result = CompactResult(
+        summary=summary_text,
+        original_messages=len(messages),
+        compacted_messages=len(compacted),
+        estimated_tokens_saved=old_tokens - summary_tokens,
+    )
+
+    return compacted, result
+
+
+def _summarize_message(content: str, max_len: int = 200) -> str:
+    """Create a brief summary of a message."""
+    if not content:
+        return ""
+    # Remove code blocks
+    content = re.sub(r"```[\s\S]*?```", "[code block]", content)
+    # Remove excessive whitespace
+    content = re.sub(r"\s+", " ", content).strip()
+    if len(content) <= max_len:
+        return content
+    return content[:max_len] + "..."
+
+
+# ── Large file chunking ─────────────────────────────────────────────────────
+
+
+@dataclass
+class FileChunk:
+    """A chunk of a large file."""
+    path: str
+    start_line: int
+    end_line: int
+    content: str
+    total_lines: int
+    chunk_index: int
+    total_chunks: int
+
+
+def chunk_file(
+    file_path: Path,
+    chunk_size: int = 500,
+    overlap: int = 20,
+) -> list[FileChunk]:
+    """Split a large file into overlapping chunks.
+
+    Args:
+        file_path: Path to the file.
+        chunk_size: Lines per chunk.
+        overlap: Overlapping lines between chunks for context continuity.
+
+    Returns:
+        List of FileChunk objects.
+    """
+    try:
+        content = file_path.read_text(errors="ignore")
+    except (OSError, PermissionError):
+        return []
+
+    lines = content.splitlines(keepends=True)
+    total_lines = len(lines)
+
+    if total_lines <= chunk_size:
+        return [FileChunk(
+            path=str(file_path),
+            start_line=1,
+            end_line=total_lines,
+            content=content,
+            total_lines=total_lines,
+            chunk_index=0,
+            total_chunks=1,
+        )]
+
+    chunks: list[FileChunk] = []
+    step = chunk_size - overlap
+    starts = list(range(0, total_lines, step))
+    total_chunks = len(starts)
+
+    for idx, start in enumerate(starts):
+        end = min(start + chunk_size, total_lines)
+        chunk_lines = lines[start:end]
+        chunks.append(FileChunk(
+            path=str(file_path),
+            start_line=start + 1,
+            end_line=end,
+            content="".join(chunk_lines),
+            total_lines=total_lines,
+            chunk_index=idx,
+            total_chunks=total_chunks,
+        ))
+
+    return chunks
+
+
+# ── Smart context selection ──────────────────────────────────────────────────
+
+
+def select_relevant_context(
+    query: str,
+    files: dict[str, str],
+    max_tokens: int = 30_000,
+) -> list[tuple[str, str]]:
+    """Select the most relevant files/sections for a given query.
+
+    Scores files by keyword overlap with the query and returns
+    the highest-scoring files that fit within the token budget.
+
+    Args:
+        query: The user's question or task description.
+        files: Dict of {file_path: content}.
+        max_tokens: Maximum total tokens to include.
+
+    Returns:
+        List of (file_path, content) sorted by relevance.
+    """
+    query_words = set(_extract_keywords(query))
+
+    if not query_words:
+        # No meaningful keywords — return files by size (smallest first)
+        scored = [(len(content), path, content) for path, content in files.items()]
+        scored.sort()
+    else:
+        scored: list[tuple[float, str, str]] = []
+        for path, content in files.items():
+            score = _relevance_score(query_words, path, content)
+            scored.append((-score, path, content))  # negative for descending sort
+        scored.sort()
+
+    result: list[tuple[str, str]] = []
+    tokens_used = 0
+
+    for _, path, content in scored:
+        content_tokens = estimate_tokens(content)
+        if tokens_used + content_tokens > max_tokens:
+            # Try to include a truncated version
+            remaining_tokens = max_tokens - tokens_used
+            if remaining_tokens > 200:
+                truncated = content[: remaining_tokens * _CHARS_PER_TOKEN]
+                result.append((path, truncated + "\n... [truncated]"))
+            break
+        result.append((path, content))
+        tokens_used += content_tokens
+
+    return result
+
+
+def _extract_keywords(text: str) -> list[str]:
+    """Extract meaningful keywords from text."""
+    # Split on non-alphanumeric, filter short words and common ones
+    words = re.findall(r"[a-zA-Z_]\w{2,}", text.lower())
+    stopwords = {
+        "the", "and", "for", "that", "this", "with", "from", "are", "was",
+        "has", "have", "not", "but", "can", "all", "any", "use", "how",
+        "what", "when", "where", "which", "will", "would", "should", "could",
+        "into", "than", "then", "them", "they", "been", "being", "each",
+        "make", "like", "just", "over", "such", "take", "more", "some",
+    }
+    return [w for w in words if w not in stopwords]
+
+
+def _relevance_score(query_words: set, file_path: str, content: str) -> float:
+    """Score a file's relevance to a query."""
+    score = 0.0
+
+    # Check filename match
+    path_lower = file_path.lower()
+    for word in query_words:
+        if word in path_lower:
+            score += 5.0
+
+    # Check content match
+    content_lower = content.lower()
+    for word in query_words:
+        count = content_lower.count(word)
+        if count > 0:
+            score += min(count, 10) * 0.5  # cap per-word contribution
+
+    # Bonus for common important files
+    basename = Path(file_path).name.lower()
+    if basename in ("main.py", "app.py", "index.ts", "index.js", "main.go"):
+        score += 2.0
+    if basename in ("readme.md", "package.json", "pyproject.toml", "go.mod"):
+        score += 1.0
+
+    return score

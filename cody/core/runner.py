@@ -14,6 +14,7 @@ from pydantic_ai.messages import (
 )
 
 from .config import Config
+from .lsp_client import LSPClient
 from .mcp_client import MCPClient
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
@@ -29,6 +30,7 @@ class CodyDeps:
     skill_manager: SkillManager
     mcp_client: Optional[MCPClient] = None
     sub_agent_manager: Optional[SubAgentManager] = None
+    lsp_client: Optional[LSPClient] = None
 
 
 class AgentRunner:
@@ -50,6 +52,9 @@ class AgentRunner:
             workdir=self.workdir,
         )
 
+        # LSP client
+        self._lsp_client = LSPClient(workdir=self.workdir)
+
         # Create agent
         self.agent = self._create_agent()
 
@@ -60,10 +65,12 @@ class AgentRunner:
             deps_type=CodyDeps,
             system_prompt=(
                 "You are Cody, an AI coding assistant. "
-                "You have access to file operations, shell commands, and skills. "
+                "You have access to file operations, shell commands, skills, web search, "
+                "and code intelligence via LSP. "
                 "When you need to use a skill, first call list_skills() to see what's available, "
                 "then call read_skill(skill_name) to learn how to use it. "
                 "For complex tasks, you can spawn sub-agents using spawn_agent(). "
+                "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
                 "Always execute commands and file operations as needed to complete tasks."
             ),
         )
@@ -94,6 +101,16 @@ class AgentRunner:
             agent.tool(tools.mcp_call)
             agent.tool(tools.mcp_list_tools)
 
+        # Web tools
+        agent.tool(tools.webfetch)
+        agent.tool(tools.websearch)
+
+        # LSP tools
+        agent.tool(tools.lsp_diagnostics)
+        agent.tool(tools.lsp_definition)
+        agent.tool(tools.lsp_references)
+        agent.tool(tools.lsp_hover)
+
         return agent
 
     def _create_deps(self) -> CodyDeps:
@@ -104,6 +121,7 @@ class AgentRunner:
             skill_manager=self.skill_manager,
             mcp_client=self._mcp_client,
             sub_agent_manager=self._sub_agent_manager,
+            lsp_client=self._lsp_client,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -117,6 +135,16 @@ class AgentRunner:
         """Stop MCP servers."""
         if self._mcp_client:
             await self._mcp_client.stop_all()
+
+    # ── LSP lifecycle ─────────────────────────────────────────────────────────
+
+    async def start_lsp(self, language: str) -> bool:
+        """Start an LSP server for the given language."""
+        return await self._lsp_client.start(language)
+
+    async def stop_lsp(self) -> None:
+        """Stop all LSP servers."""
+        await self._lsp_client.stop_all()
 
     # ── Session helpers ──────────────────────────────────────────────────────
 
