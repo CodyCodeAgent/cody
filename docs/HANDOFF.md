@@ -10,10 +10,11 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 
 - **Core Engine** (`cody/core/`) — 所有功能逻辑所在，不依赖任何 CLI 或 Server 框架
 - **CLI** (`cody/cli.py`) — 基于 Click 的命令行壳子，调用 core
+- **TUI** (`cody/tui.py`) — 基于 Textual 的全屏交互终端界面，调用 core
 - **RPC Server** (`cody/server.py`) — 基于 FastAPI 的 HTTP/WS 服务端，调用 core
 - **Python SDK** (`cody/client.py`) — `CodyClient` (同步) + `AsyncCodyClient` (异步) 双客户端
 
-新功能 **必须** 先在 core/ 实现，然后在 Server 和/或 CLI 暴露。
+新功能 **必须** 先在 core/ 实现，然后在 Server、CLI 和/或 TUI 暴露。
 
 ### 技术栈
 
@@ -22,6 +23,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 | AI Agent | [pydantic-ai](https://ai.pydantic.dev/) |
 | HTTP Server | FastAPI + Uvicorn |
 | CLI | Click + Rich |
+| TUI | Textual |
 | 测试 | pytest + pytest-asyncio |
 | Lint | ruff (line-length=100, py39) |
 | 配置 | Pydantic BaseModel + JSON |
@@ -40,6 +42,7 @@ cody/
 ├── cody/
 │   ├── __init__.py          # 版本号 + SDK re-export
 │   ├── cli.py               # CLI 入口 (Click)
+│   ├── tui.py               # TUI 入口 (Textual)
 │   ├── client.py            # Python SDK (sync + async)
 │   ├── server.py            # RPC Server (FastAPI)
 │   └── core/
@@ -60,7 +63,7 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 406 个测试
+├── tests/                   # 418 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
@@ -278,6 +281,15 @@ python3 -m ruff check cody/ tests/
 python3 -m ruff check cody/ tests/ --fix  # 自动修复
 ```
 
+### 运行 TUI
+
+```bash
+cody tui                       # 启动全屏交互界面
+cody tui --continue            # 继续上次会话
+cody tui --session <id>        # 恢复指定会话
+cody-tui                       # 直接启动（console_scripts）
+```
+
 ### 运行 Server
 
 ```bash
@@ -310,6 +322,7 @@ cody-server --port 9000       # 指定端口
 | `test_permissions.py` | `core/permissions.py` |
 | `test_file_history.py` | `core/file_history.py` |
 | `test_rate_limiter.py` | `core/rate_limiter.py` |
+| `test_tui.py` | `tui.py` |
 
 ---
 
