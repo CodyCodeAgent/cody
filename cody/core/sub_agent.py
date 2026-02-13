@@ -236,6 +236,8 @@ class SubAgentManager:
         agent_type: AgentType,
     ) -> str:
         """Create and run a Pydantic AI agent for the task."""
+        # Deferred imports to break circular dependency:
+        # runner → sub_agent → runner. Do NOT move these to module level.
         from . import tools
         from .runner import CodyDeps
         from .skill_manager import SkillManager

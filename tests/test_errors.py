@@ -91,10 +91,9 @@ def test_tool_error_includes_details(tmp_path):
         "params": {"path": "../../../etc/passwd"},
         "workdir": str(tmp_path),
     })
-    assert resp.status_code == 500
+    assert resp.status_code == 403
     data = resp.json()
-    assert data["error"]["code"] == "TOOL_ERROR"
-    assert data["error"]["details"]["tool"] == "read_file"
+    assert data["error"]["code"] == "PERMISSION_DENIED"
 
 
 def test_run_error_structured():

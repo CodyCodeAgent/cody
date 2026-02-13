@@ -564,3 +564,11 @@ class CodyClient:
         """Delete a session."""
         resp = self._retry(self._client.delete, f"/sessions/{session_id}")
         _handle_error(resp)
+
+    # ── Skills ───────────────────────────────────────────────────────────────
+
+    def list_skills(self) -> list[dict]:
+        """List available skills."""
+        resp = self._retry(self._client.get, "/skills")
+        _handle_error(resp)
+        return resp.json()["skills"]

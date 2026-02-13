@@ -23,9 +23,8 @@ class RunRequest(BaseModel):
     prompt: str
     workdir: Optional[str] = None
     model: Optional[str] = None
-    skills: Optional[list] = None
+    skills: Optional[list[str]] = None
     session_id: Optional[str] = None
-    stream: bool = False
 
 
 class RunResponse(BaseModel):
@@ -157,9 +156,11 @@ async def run_agent(request: RunRequest):
         )
 
     except ValueError as e:
-        _raise_structured(
-            ErrorCode.SESSION_NOT_FOUND, str(e), status_code=404
-        )
+        msg = str(e)
+        if "Session not found" in msg:
+            _raise_structured(ErrorCode.SESSION_NOT_FOUND, msg, status_code=404)
+        else:
+            _raise_structured(ErrorCode.INVALID_PARAMS, msg, status_code=400)
     except CodyAPIError:
         raise
     except Exception as e:
@@ -247,6 +248,12 @@ async def call_tool(request: ToolRequest):
         _raise_structured(
             ErrorCode.PERMISSION_DENIED, str(e), status_code=403
         )
+    except ValueError as e:
+        msg = str(e)
+        if "Access denied" in msg or "outside working directory" in msg:
+            _raise_structured(ErrorCode.PERMISSION_DENIED, msg, status_code=403)
+        else:
+            _raise_structured(ErrorCode.INVALID_PARAMS, msg, status_code=400)
     except CodyAPIError:
         raise
     except Exception as e:
@@ -405,16 +412,19 @@ async def delete_session(session_id: str):
 # ── Sub-Agent ────────────────────────────────────────────────────────────────
 
 
-# Module-level sub-agent manager (shared across requests)
+# Sub-agent manager factory. Uses a lock to ensure safe lazy init.
 _sub_agent_manager = None
+_sub_agent_lock = asyncio.Lock()
 
 
-def _get_sub_agent_manager():
+async def _get_sub_agent_manager():
     global _sub_agent_manager
     if _sub_agent_manager is None:
-        from .core.sub_agent import SubAgentManager
-        config = Config.load()
-        _sub_agent_manager = SubAgentManager(config=config, workdir=Path.cwd())
+        async with _sub_agent_lock:
+            if _sub_agent_manager is None:
+                from .core.sub_agent import SubAgentManager
+                config = Config.load()
+                _sub_agent_manager = SubAgentManager(config=config, workdir=Path.cwd())
     return _sub_agent_manager
 
 
@@ -428,7 +438,7 @@ class SpawnRequest(BaseModel):
 async def spawn_agent(request: SpawnRequest):
     """Spawn a sub-agent"""
     try:
-        manager = _get_sub_agent_manager()
+        manager = await _get_sub_agent_manager()
         agent_id = await manager.spawn(
             request.task, request.type, request.timeout
         )
@@ -453,7 +463,7 @@ async def spawn_agent(request: SpawnRequest):
 @app.get("/agent/{agent_id}")
 async def get_agent_status(agent_id: str):
     """Get sub-agent status"""
-    manager = _get_sub_agent_manager()
+    manager = await _get_sub_agent_manager()
     result = manager.get_status(agent_id)
     if result is None:
         _raise_structured(
@@ -474,7 +484,7 @@ async def get_agent_status(agent_id: str):
 @app.delete("/agent/{agent_id}")
 async def kill_agent(agent_id: str):
     """Kill a running sub-agent"""
-    manager = _get_sub_agent_manager()
+    manager = await _get_sub_agent_manager()
     result = manager.get_status(agent_id)
     if result is None:
         _raise_structured(

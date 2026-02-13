@@ -20,7 +20,7 @@ class MCPTool:
     """A tool exposed by an MCP server."""
     name: str
     description: str
-    input_schema: dict
+    input_schema: dict[str, Any]
     server_name: str
 
 
@@ -31,7 +31,7 @@ class _ServerProcess:
     process: Optional[asyncio.subprocess.Process] = None
     tools: list[MCPTool] = field(default_factory=list)
     _request_id: int = 0
-    _pending: dict = field(default_factory=dict)
+    _pending: dict[int, asyncio.Future] = field(default_factory=dict)
     _reader_task: Optional[asyncio.Task] = None
 
     def next_id(self) -> int:

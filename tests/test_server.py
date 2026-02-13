@@ -120,7 +120,8 @@ def test_tool_path_traversal(tmp_path):
         "params": {"path": "../../../etc/passwd"},
         "workdir": str(tmp_path),
     })
-    assert resp.status_code == 500
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "PERMISSION_DENIED"
     assert "outside" in resp.json()["error"]["message"].lower()
 
 

@@ -223,7 +223,7 @@ class AgentRunner:
         prompt: str,
         store: SessionStore,
         session_id: Optional[str] = None,
-    ) -> tuple:
+    ) -> tuple[object, str]:
         """Run agent with automatic session persistence.
 
         Returns (result, session_id). Creates a new session if session_id is None.

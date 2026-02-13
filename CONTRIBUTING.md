@@ -207,8 +207,22 @@ python3 -m pytest tests/ -v
 | 模块 | 测试数 | 状态 |
 |------|--------|------|
 | core/tools.py | 51 | 完善 |
-| core/session.py | 14 | 完善 |
+| core/lsp_client.py | 34 | 完善 |
+| server.py | 32 | 完善 |
+| core/web.py | 22 | 完善 |
+| core/sub_agent.py | 21 | 完善 |
+| client.py | 19 | 完善 |
+| client retry | 17 | 完善 |
+| core/context.py | 16 | 完善 |
 | cli.py | 16 | 基本覆盖 |
-| server.py | **0** | **需要补测试** |
+| core/config.py | 15 | 完善 |
+| core/skill_manager.py | 14 | 完善 |
+| core/session.py | 14 | 完善 |
+| core/mcp_client.py | 14 | 完善 |
+| core/runner.py | 12 | 完善 |
+| core/errors.py | 11 | 完善 |
+| WebSocket | 7 | 基本覆盖 |
 
-**下一步重点：Server 测试 + Server API 完善**
+**总计：315 个测试**
+
+**下一步重点：v1.0.0 — 认证、权限、TypeScript SDK（见 docs/FEATURES.md）**

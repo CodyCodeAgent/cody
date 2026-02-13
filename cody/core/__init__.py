@@ -7,12 +7,14 @@ from .lsp_client import LSPClient
 from .mcp_client import MCPClient
 from .runner import AgentRunner
 from .session import SessionStore
+from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
 
 __all__ = [
     "Config",
     "AgentRunner",
     "SessionStore",
+    "SkillManager",
     "CodyAPIError",
     "ErrorCode",
     "ErrorDetail",
