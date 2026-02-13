@@ -19,12 +19,21 @@ Usage:
         result = await client.run("create hello.py")
         async for chunk in client.stream("explain this code"):
             print(chunk.content, end="")
+
+    # Auto-reconnect (enabled by default)
+    client = CodyClient("http://localhost:8000", max_retries=3)
 """
 
+import asyncio
+import json
+import time
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Iterator, Optional
+from typing import AsyncIterator, Callable, Iterator, Optional, TypeVar
 
 import httpx
+
+
+T = TypeVar("T")
 
 
 # ── Response types ───────────────────────────────────────────────────────────
@@ -77,9 +86,10 @@ class ToolResult:
 
 class CodyError(Exception):
     """Base error for Cody SDK."""
-    def __init__(self, message: str, status_code: int = 0):
+    def __init__(self, message: str, status_code: int = 0, code: Optional[str] = None):
         self.message = message
         self.status_code = status_code
+        self.code = code
         super().__init__(message)
 
 
@@ -93,18 +103,70 @@ class CodyNotFoundError(CodyError):
     pass
 
 
+class CodyTimeoutError(CodyError):
+    """Request timed out."""
+    pass
+
+
+# ── Retry helpers ────────────────────────────────────────────────────────────
+
+_RETRYABLE_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)
+
+
+def _should_retry(exc: Exception) -> bool:
+    return isinstance(exc, _RETRYABLE_ERRORS)
+
+
+def _backoff_delay(attempt: int, base: float = 0.5, max_delay: float = 8.0) -> float:
+    """Exponential backoff: 0.5s, 1s, 2s, 4s, 8s (capped)."""
+    return min(base * (2 ** attempt), max_delay)
+
+
+# ── Shared error extraction ─────────────────────────────────────────────────
+
+
+def _extract_error(resp: httpx.Response) -> tuple[str, Optional[str]]:
+    """Extract message and error code from response."""
+    try:
+        body = resp.json()
+    except Exception:
+        return resp.text, None
+    # Structured format: {"error": {"code": "...", "message": "..."}}
+    if "error" in body and isinstance(body["error"], dict):
+        return body["error"].get("message", resp.text), body["error"].get("code")
+    # Legacy format: {"detail": "..."}
+    return body.get("detail", resp.text), None
+
+
+def _handle_error(resp: httpx.Response) -> None:
+    if resp.status_code < 400:
+        return
+    message, code = _extract_error(resp)
+    if resp.status_code == 404:
+        raise CodyNotFoundError(message, status_code=404, code=code)
+    raise CodyError(message, status_code=resp.status_code, code=code)
+
+
 # ── Async client ─────────────────────────────────────────────────────────────
 
 
 class AsyncCodyClient:
-    """Async Python client for Cody RPC Server."""
+    """Async Python client for Cody RPC Server.
+
+    Args:
+        base_url: Server URL.
+        timeout: Request timeout in seconds.
+        max_retries: Max retry attempts on transient failures (0 = no retry).
+    """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
         timeout: float = 120.0,
+        max_retries: int = 3,
     ):
         self.base_url = base_url.rstrip("/")
+        self.max_retries = max_retries
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=timeout,
@@ -119,23 +181,28 @@ class AsyncCodyClient:
     async def close(self):
         await self._client.aclose()
 
-    def _handle_error(self, resp: httpx.Response) -> None:
-        if resp.status_code == 404:
-            detail = resp.json().get("detail", "Not found")
-            raise CodyNotFoundError(detail, status_code=404)
-        if resp.status_code >= 400:
-            detail = resp.json().get("detail", resp.text)
-            raise CodyError(detail, status_code=resp.status_code)
+    # ── Internal retry helpers ────────────────────────────────────────────
+
+    async def _retry(self, fn: Callable, *args, **kwargs):
+        """Call *fn* with retry + exponential backoff on transient errors."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(1 + self.max_retries):
+            try:
+                return await fn(*args, **kwargs)
+            except _RETRYABLE_ERRORS as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    await asyncio.sleep(_backoff_delay(attempt))
+        raise CodyConnectionError(
+            f"Cannot connect to {self.base_url} after {self.max_retries + 1} attempts: {last_exc}"
+        )
 
     # ── Health ───────────────────────────────────────────────────────────────
 
     async def health(self) -> dict:
         """Check server health."""
-        try:
-            resp = await self._client.get("/health")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.get, "/health")
+        _handle_error(resp)
         return resp.json()
 
     # ── Run ──────────────────────────────────────────────────────────────────
@@ -157,11 +224,8 @@ class AsyncCodyClient:
         if session_id is not None:
             body["session_id"] = session_id
 
-        try:
-            resp = await self._client.post("/run", json=body)
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.post, "/run", json=body)
+        _handle_error(resp)
 
         data = resp.json()
         usage_data = data.get("usage") or {}
@@ -194,18 +258,17 @@ class AsyncCodyClient:
 
         try:
             async with self._client.stream("POST", "/run/stream", json=body) as resp:
-                self._handle_error(resp)
+                _handle_error(resp)
                 async for line in resp.aiter_lines():
                     if not line.startswith("data: "):
                         continue
-                    import json
                     data = json.loads(line[6:])
                     yield StreamChunk(
                         type=data.get("type", "text"),
                         content=data.get("content", ""),
                         session_id=data.get("session_id"),
                     )
-        except httpx.ConnectError as e:
+        except _RETRYABLE_ERRORS as e:
             raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
 
     # ── Tool ─────────────────────────────────────────────────────────────────
@@ -222,11 +285,8 @@ class AsyncCodyClient:
         if workdir:
             body["workdir"] = workdir
 
-        try:
-            resp = await self._client.post("/tool", json=body)
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.post, "/tool", json=body)
+        _handle_error(resp)
 
         return ToolResult(result=resp.json()["result"])
 
@@ -239,14 +299,11 @@ class AsyncCodyClient:
         workdir: str = "",
     ) -> SessionInfo:
         """Create a new session."""
-        try:
-            resp = await self._client.post(
-                "/sessions",
-                params={"title": title, "model": model, "workdir": workdir},
-            )
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(
+            self._client.post, "/sessions",
+            params={"title": title, "model": model, "workdir": workdir},
+        )
+        _handle_error(resp)
 
         data = resp.json()
         return SessionInfo(
@@ -261,11 +318,8 @@ class AsyncCodyClient:
 
     async def list_sessions(self, limit: int = 20) -> list[SessionInfo]:
         """List recent sessions."""
-        try:
-            resp = await self._client.get("/sessions", params={"limit": limit})
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.get, "/sessions", params={"limit": limit})
+        _handle_error(resp)
 
         return [
             SessionInfo(
@@ -282,11 +336,8 @@ class AsyncCodyClient:
 
     async def get_session(self, session_id: str) -> SessionDetail:
         """Get session with messages."""
-        try:
-            resp = await self._client.get(f"/sessions/{session_id}")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.get, f"/sessions/{session_id}")
+        _handle_error(resp)
 
         data = resp.json()
         return SessionDetail(
@@ -302,39 +353,38 @@ class AsyncCodyClient:
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
-        try:
-            resp = await self._client.delete(f"/sessions/{session_id}")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.delete, f"/sessions/{session_id}")
+        _handle_error(resp)
 
     # ── Skills ───────────────────────────────────────────────────────────────
 
     async def list_skills(self) -> list[dict]:
         """List available skills."""
-        try:
-            resp = await self._client.get("/skills")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = await self._retry(self._client.get, "/skills")
+        _handle_error(resp)
         return resp.json()["skills"]
 
 
-# ── Sync client (wraps async) ────────────────────────────────────────────────
+# ── Sync client ──────────────────────────────────────────────────────────────
 
 
 class CodyClient:
     """Synchronous Python client for Cody RPC Server.
 
-    Wraps AsyncCodyClient for convenience in non-async code.
+    Args:
+        base_url: Server URL.
+        timeout: Request timeout in seconds.
+        max_retries: Max retry attempts on transient failures (0 = no retry).
     """
 
     def __init__(
         self,
         base_url: str = "http://localhost:8000",
         timeout: float = 120.0,
+        max_retries: int = 3,
     ):
         self.base_url = base_url.rstrip("/")
+        self.max_retries = max_retries
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout,
@@ -349,21 +399,26 @@ class CodyClient:
     def __exit__(self, *args):
         self.close()
 
-    def _handle_error(self, resp: httpx.Response) -> None:
-        if resp.status_code == 404:
-            detail = resp.json().get("detail", "Not found")
-            raise CodyNotFoundError(detail, status_code=404)
-        if resp.status_code >= 400:
-            detail = resp.json().get("detail", resp.text)
-            raise CodyError(detail, status_code=resp.status_code)
+    # ── Internal retry helpers ────────────────────────────────────────────
+
+    def _retry(self, fn: Callable, *args, **kwargs):
+        """Call *fn* with retry + exponential backoff on transient errors."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(1 + self.max_retries):
+            try:
+                return fn(*args, **kwargs)
+            except _RETRYABLE_ERRORS as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    time.sleep(_backoff_delay(attempt))
+        raise CodyConnectionError(
+            f"Cannot connect to {self.base_url} after {self.max_retries + 1} attempts: {last_exc}"
+        )
 
     def health(self) -> dict:
         """Check server health."""
-        try:
-            resp = self._client.get("/health")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(self._client.get, "/health")
+        _handle_error(resp)
         return resp.json()
 
     def run(
@@ -383,11 +438,8 @@ class CodyClient:
         if session_id is not None:
             body["session_id"] = session_id
 
-        try:
-            resp = self._client.post("/run", json=body)
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(self._client.post, "/run", json=body)
+        _handle_error(resp)
 
         data = resp.json()
         usage_data = data.get("usage") or {}
@@ -420,18 +472,17 @@ class CodyClient:
 
         try:
             with self._client.stream("POST", "/run/stream", json=body) as resp:
-                self._handle_error(resp)
+                _handle_error(resp)
                 for line in resp.iter_lines():
                     if not line.startswith("data: "):
                         continue
-                    import json
                     data = json.loads(line[6:])
                     yield StreamChunk(
                         type=data.get("type", "text"),
                         content=data.get("content", ""),
                         session_id=data.get("session_id"),
                     )
-        except httpx.ConnectError as e:
+        except _RETRYABLE_ERRORS as e:
             raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
 
     def tool(
@@ -446,11 +497,8 @@ class CodyClient:
         if workdir:
             body["workdir"] = workdir
 
-        try:
-            resp = self._client.post("/tool", json=body)
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(self._client.post, "/tool", json=body)
+        _handle_error(resp)
         return ToolResult(result=resp.json()["result"])
 
     def create_session(
@@ -460,14 +508,11 @@ class CodyClient:
         workdir: str = "",
     ) -> SessionInfo:
         """Create a new session."""
-        try:
-            resp = self._client.post(
-                "/sessions",
-                params={"title": title, "model": model, "workdir": workdir},
-            )
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(
+            self._client.post, "/sessions",
+            params={"title": title, "model": model, "workdir": workdir},
+        )
+        _handle_error(resp)
 
         data = resp.json()
         return SessionInfo(
@@ -482,11 +527,8 @@ class CodyClient:
 
     def list_sessions(self, limit: int = 20) -> list[SessionInfo]:
         """List recent sessions."""
-        try:
-            resp = self._client.get("/sessions", params={"limit": limit})
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(self._client.get, "/sessions", params={"limit": limit})
+        _handle_error(resp)
 
         return [
             SessionInfo(
@@ -503,11 +545,8 @@ class CodyClient:
 
     def get_session(self, session_id: str) -> SessionDetail:
         """Get session with messages."""
-        try:
-            resp = self._client.get(f"/sessions/{session_id}")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(self._client.get, f"/sessions/{session_id}")
+        _handle_error(resp)
 
         data = resp.json()
         return SessionDetail(
@@ -523,8 +562,5 @@ class CodyClient:
 
     def delete_session(self, session_id: str) -> None:
         """Delete a session."""
-        try:
-            resp = self._client.delete(f"/sessions/{session_id}")
-        except httpx.ConnectError as e:
-            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
-        self._handle_error(resp)
+        resp = self._retry(self._client.delete, f"/sessions/{session_id}")
+        _handle_error(resp)

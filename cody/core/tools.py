@@ -583,3 +583,121 @@ async def read_skill(ctx: RunContext['CodyDeps'], skill_name: str) -> str:
         raise ValueError(f"Skill not found: {skill_name}")
 
     return skill.documentation
+
+
+# ── Sub-agent tools ──────────────────────────────────────────────────────────
+
+
+async def spawn_agent(
+    ctx: RunContext['CodyDeps'],
+    task: str,
+    agent_type: str = "generic",
+) -> str:
+    """Spawn a sub-agent to handle a task in the background
+
+    Args:
+        task: Task description for the sub-agent
+        agent_type: Type of agent — "code", "research", "test", or "generic"
+    """
+    manager = ctx.deps.sub_agent_manager
+    if manager is None:
+        return "[ERROR] Sub-agent system not available"
+
+    try:
+        agent_id = await manager.spawn(task, agent_type)
+        return f"Sub-agent spawned: {agent_id} (type={agent_type})"
+    except RuntimeError as e:
+        return f"[ERROR] {e}"
+
+
+async def get_agent_status(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
+    """Check the status of a sub-agent
+
+    Args:
+        agent_id: ID of the sub-agent to check
+    """
+    manager = ctx.deps.sub_agent_manager
+    if manager is None:
+        return "[ERROR] Sub-agent system not available"
+
+    result = manager.get_status(agent_id)
+    if result is None:
+        return f"[ERROR] Unknown agent: {agent_id}"
+
+    lines = [
+        f"Agent: {result.agent_id}",
+        f"Status: {result.status}",
+    ]
+    if result.output:
+        lines.append(f"Output: {result.output}")
+    if result.error:
+        lines.append(f"Error: {result.error}")
+    if result.completed_at:
+        lines.append(f"Completed: {result.completed_at}")
+
+    return "\n".join(lines)
+
+
+async def kill_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
+    """Kill a running sub-agent
+
+    Args:
+        agent_id: ID of the sub-agent to kill
+    """
+    manager = ctx.deps.sub_agent_manager
+    if manager is None:
+        return "[ERROR] Sub-agent system not available"
+
+    killed = await manager.kill(agent_id)
+    if killed:
+        return f"Agent {agent_id} killed"
+    return f"Agent {agent_id} is not running (already completed or unknown)"
+
+
+# ── MCP tools ────────────────────────────────────────────────────────────────
+
+
+async def mcp_list_tools(ctx: RunContext['CodyDeps']) -> str:
+    """List tools from connected MCP servers"""
+    client = ctx.deps.mcp_client
+    if client is None:
+        return "No MCP servers configured"
+
+    mcp_tools = client.list_tools()
+    if not mcp_tools:
+        return "No MCP tools available"
+
+    lines = ["MCP tools:"]
+    for t in mcp_tools:
+        lines.append(f"  {t.server_name}/{t.name} — {t.description}")
+
+    return "\n".join(lines)
+
+
+async def mcp_call(
+    ctx: RunContext['CodyDeps'],
+    tool_name: str,
+    arguments: str = "{}",
+) -> str:
+    """Call an MCP tool by qualified name (server/tool)
+
+    Args:
+        tool_name: Qualified tool name, e.g. "github/create_issue"
+        arguments: JSON string of tool arguments
+    """
+    import json as _json
+
+    client = ctx.deps.mcp_client
+    if client is None:
+        return "[ERROR] No MCP servers configured"
+
+    try:
+        args = _json.loads(arguments) if arguments else {}
+    except _json.JSONDecodeError as e:
+        return f"[ERROR] Invalid JSON arguments: {e}"
+
+    try:
+        result = await client.call_tool(tool_name, args)
+        return str(result)
+    except Exception as e:
+        return f"[ERROR] MCP call failed: {e}"

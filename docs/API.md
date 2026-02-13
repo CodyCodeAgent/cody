@@ -371,63 +371,103 @@ data: {"output": "已完成项目创建", "usage": {...}}
 
 ---
 
-## WebSocket API（可选）
+## WebSocket API ✅ 已实现
 
 ### WS /ws
 
-建立 WebSocket 连接，用于实时交互。
+建立 WebSocket 连接，用于实时双向交互。支持流式推送和中途取消。
 
-**消息格式（客户端 → 服务端）：**
+**消息类型（客户端 → 服务端）：**
+
+| 类型 | 说明 |
+|------|------|
+| `run` | 执行 Agent 任务 |
+| `cancel` | 取消当前运行 |
+| `ping` | 心跳检测 |
+
+**Run 消息：**
 ```json
 {
   "type": "run",
   "data": {
     "prompt": "创建文件",
-    "workdir": "/path"
+    "workdir": "/path",
+    "model": "anthropic:claude-sonnet-4-0",
+    "session_id": "abc123"
   }
 }
 ```
 
-**消息格式（服务端 → 客户端）：**
+**Cancel 消息：**
 ```json
-{
-  "type": "text",
-  "data": {
-    "content": "正在创建文件..."
-  }
-}
+{"type": "cancel"}
+```
 
-{
-  "type": "tool_call",
-  "data": {
-    "tool": "write_file",
-    "args": {...}
-  }
-}
+**Ping 消息：**
+```json
+{"type": "ping"}
+```
 
-{
-  "type": "done",
-  "data": {
-    "output": "完成",
-    "usage": {...}
-  }
-}
+**服务端事件（服务端 → 客户端）：**
+
+| 事件 | 说明 |
+|------|------|
+| `start` | 任务开始，包含 session_id |
+| `text` | 流式文本片段 |
+| `done` | 任务完成，包含完整输出 |
+| `error` | 错误，包含结构化错误信息 |
+| `cancelled` | 任务已取消 |
+| `pong` | 心跳响应 |
+
+**事件示例：**
+```json
+{"type": "start", "session_id": "abc123"}
+{"type": "text", "content": "正在创建..."}
+{"type": "done", "output": "完成创建"}
+{"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
+{"type": "cancelled"}
+{"type": "pong"}
 ```
 
 ---
 
-## 错误码
+## 结构化错误响应 ✅ 已实现
 
-| 错误码 | 说明 |
-|--------|------|
-| INVALID_PARAMS | 请求参数无效 |
-| AUTH_FAILED | 认证失败 |
-| MODEL_ERROR | 模型调用错误 |
-| TOOL_ERROR | 工具执行错误 |
-| SKILL_NOT_FOUND | Skill 不存在 |
-| PERMISSION_DENIED | 权限不足 |
-| TIMEOUT | 超时 |
-| SERVER_ERROR | 服务器内部错误 |
+所有 API 错误返回统一的结构化格式：
+
+```json
+{
+  "error": {
+    "code": "TOOL_NOT_FOUND",
+    "message": "Tool not found: nonexistent",
+    "details": {"tool": "nonexistent"}
+  }
+}
+```
+
+### 错误码
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|------------|------|
+| INVALID_PARAMS | 400 | 请求参数无效 |
+| AUTH_FAILED | 401 | 认证失败 |
+| PERMISSION_DENIED | 403 | 权限不足 |
+| TOOL_NOT_FOUND | 404 | 工具不存在 |
+| SKILL_NOT_FOUND | 404 | Skill 不存在 |
+| SESSION_NOT_FOUND | 404 | 会话不存在 |
+| AGENT_NOT_FOUND | 404 | 子 Agent 不存在 |
+| AGENT_LIMIT_REACHED | 429 | 子 Agent 并发上限 |
+| MODEL_ERROR | 500 | 模型调用错误 |
+| TOOL_ERROR | 500 | 工具执行错误 |
+| AGENT_ERROR | 500 | 子 Agent 错误 |
+| MCP_ERROR | 500 | MCP 通信错误 |
+| TIMEOUT | 500 | 超时 |
+| SERVER_ERROR | 500 | 服务器内部错误 |
+
+SSE 流中的错误也使用结构化格式：
+```
+data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
+```
 
 ---
 
@@ -523,4 +563,4 @@ curl -N -X POST http://localhost:8000/run/stream \
 
 ---
 
-**最后更新：** 2026-01-28
+**最后更新：** 2026-02-13

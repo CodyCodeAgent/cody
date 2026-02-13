@@ -385,10 +385,10 @@ cody "使用项目 B 的配置"
 | 交互式 TUI | ❌ | ✅（Bubble Tea） | ✅ | N/A | ❌ |
 | **RPC Server** | **✅ 核心优势** | ❌ | ❌ | ❌ | ❌ |
 | Skill 系统 | ✅ | ✅ | ❌ | ❌ | ❌ |
-| MCP 支持 | 🔲 仅数据结构 | ✅ | ✅ | ❌ | ❌ |
+| MCP 支持 | ✅ | ✅ | ✅ | ❌ | ❌ |
 | LSP 集成 | ❌ | ✅（30+ 语言） | ❌ | ✅（内置） | ❌ |
 | 多模型 | ✅ | ✅（75+ 提供商） | ❌ | ✅ | ✅ |
-| 子 Agent | ❌ | ❌ | ✅ | ❌ | ❌ |
+| 子 Agent | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 会话管理 | ✅（SQLite） | ✅（SQLite） | ✅ | ✅ | ✅ |
 | Web 搜索/抓取 | ❌ | ✅ | ✅ | ✅ | ❌ |
 | Undo/Redo | ❌ | ✅ | ❌ | ✅ | ✅ |
@@ -410,7 +410,7 @@ cody "使用项目 B 的配置"
 1. **RPC Server 模式** — OpenCode/Crush 没有，Cody 可作为"可嵌入的 AI 编码引擎"
 2. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
 3. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
-4. **子 Agent 架构**（规划中） — Python asyncio 天然适合并发 Agent 编排
+4. **子 Agent 架构** — Python asyncio 并发 Agent 编排，code/research/test 专业化子 Agent
 
 ---
 
@@ -449,7 +449,7 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] CLI 交互模式 — `cody chat`、`--continue`、`--session`
 - [x] 81 个单元测试，ruff 零告警（现 144 个）
 
-### v0.3.0 — 引擎化（⬅ 当前阶段，核心里程碑）
+### v0.3.0 — 引擎化 ✅ 已完成
 
 > **本阶段目标：把 Cody 从一个 CLI 工具变成一个可嵌入的 AI 编程引擎。**
 > Server 和 SDK 是重点，CLI 功能冻结。
@@ -458,31 +458,38 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] Session API — `POST /sessions`, `GET /sessions`, `GET /sessions/:id`, `DELETE /sessions/:id`
 - [x] 带会话的对话 — `POST /run` 支持 `session_id` 参数，自动持久化对话历史
 - [x] SSE 结构化 JSON 事件 — `{type: text/done/error}`
-- [x] Server 完整测试 — 33 个端点测试
+- [x] Server 完整测试 — 32+ 个端点测试
 - [x] Runner + Session 打通 — `run_with_session` / `run_stream_with_session`
-- [ ] 结构化错误响应 — 统一错误码和错误格式
-- [ ] WebSocket 双向通信 — 实时交互（用户中途提问/取消）
+- [x] 结构化错误响应 — 统一 `ErrorCode` 枚举、`CodyAPIError`、`{"error": {"code", "message", "details"}}` 格式
+- [x] WebSocket 双向通信 — `WS /ws` 端点，支持 run/cancel/ping，实时流式推送
+- [x] Sub-Agent API — `POST /agent/spawn`, `GET /agent/:id`, `DELETE /agent/:id`
 
 **P0：Python SDK**
 - [x] `CodyClient` / `AsyncCodyClient` — 同步 + 异步双客户端
 - [x] 核心方法 — `run()`, `stream()`, `tool()`, `health()`
 - [x] 会话管理 — `create_session()`, `list_sessions()`, `get_session()`, `delete_session()`
-- [x] 错误处理 — `CodyError`, `CodyConnectionError`, `CodyNotFoundError`
-- [x] 19 个 SDK 测试（12 sync + 7 async integration）
-- [ ] 自动重连 — 断线重试、指数退避（超时和健康检查已在核心方法中实现）
+- [x] 错误处理 — `CodyError`, `CodyConnectionError`, `CodyNotFoundError`, `CodyTimeoutError`
+- [x] 结构化错误解析 — 自动解析 `{"error": {"code", "message"}}` 格式，兼容旧 `detail` 格式
+- [x] 自动重连 — `max_retries` 参数（默认 3），指数退避（0.5s → 1s → 2s → 4s → 8s 上限）
+- [x] 19+ 个 SDK 测试 + 18 个 retry 测试
 
-**P1：MCP Client 集成**（配置数据结构 `MCPServerConfig`/`MCPConfig` 已定义）
-- [ ] MCP Client 实现（基于 mcp Python SDK）
-- [ ] 从配置文件加载 MCP Server
-- [ ] MCP Server 生命周期管理（启动/停止/重连）
-- [ ] MCP 工具自动注册到 Agent
-- [ ] 常用 MCP Server 预置配置（GitHub、数据库）
+**P1：MCP Client 集成**
+- [x] `MCPClient` 实现 — stdio JSON-RPC 协议，管理 MCP Server 子进程
+- [x] 从配置文件加载 MCP Server — `MCPConfig.servers` 自动启动
+- [x] MCP Server 生命周期管理 — `start_all()` / `stop_all()` / `restart_server()`
+- [x] MCP 工具自动注册到 Agent — `mcp_call()` / `mcp_list_tools()` 工具
+- [x] 工具发现 — `tools/list` JSON-RPC 自动发现 MCP Server 的所有工具
+- [x] 15 个 MCP 测试（含 mock subprocess 集成测试）
 
 **P1：子 Agent 系统**
-- [ ] SubAgentManager — asyncio 并发编排
-- [ ] `spawn_agent(task, type)` — 孵化子 Agent（code/research/test）
-- [ ] 资源限制（最大并发数、单 Agent 超时）
-- [ ] 结果汇总回主 Agent
+- [x] `SubAgentManager` — asyncio 并发编排，`Semaphore` 控制并发
+- [x] `spawn_agent(task, type)` — 孵化子 Agent（code/research/test/generic）
+- [x] 资源限制 — 最大并发数（默认 5）、单 Agent 超时（默认 300s）
+- [x] 生命周期管理 — `wait()` / `wait_all()` / `kill()` / `cleanup()`
+- [x] 结果汇总回主 Agent — `get_agent_status()` 查询输出/错误
+- [x] 22 个子 Agent 测试（spawn/kill/timeout/failure/cleanup）
+
+**v0.3.0 总计：214 个测试，ruff 零告警**
 
 ### v0.4.0 — 智能化
 

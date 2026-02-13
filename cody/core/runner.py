@@ -14,8 +14,10 @@ from pydantic_ai.messages import (
 )
 
 from .config import Config
+from .mcp_client import MCPClient
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
+from .sub_agent import SubAgentManager
 from . import tools
 
 
@@ -25,6 +27,8 @@ class CodyDeps:
     config: Config
     workdir: Path
     skill_manager: SkillManager
+    mcp_client: Optional[MCPClient] = None
+    sub_agent_manager: Optional[SubAgentManager] = None
 
 
 class AgentRunner:
@@ -34,6 +38,17 @@ class AgentRunner:
         self.config = config or Config.load()
         self.workdir = Path(workdir) if workdir else Path.cwd()
         self.skill_manager = SkillManager(self.config)
+
+        # MCP client (created lazily on start)
+        self._mcp_client: Optional[MCPClient] = None
+        if self.config.mcp.servers:
+            self._mcp_client = MCPClient(self.config.mcp)
+
+        # Sub-agent manager
+        self._sub_agent_manager = SubAgentManager(
+            config=self.config,
+            workdir=self.workdir,
+        )
 
         # Create agent
         self.agent = self._create_agent()
@@ -48,6 +63,7 @@ class AgentRunner:
                 "You have access to file operations, shell commands, and skills. "
                 "When you need to use a skill, first call list_skills() to see what's available, "
                 "then call read_skill(skill_name) to learn how to use it. "
+                "For complex tasks, you can spawn sub-agents using spawn_agent(). "
                 "Always execute commands and file operations as needed to complete tasks."
             ),
         )
@@ -68,6 +84,16 @@ class AgentRunner:
         agent.tool(tools.list_skills)
         agent.tool(tools.read_skill)
 
+        # Sub-agent tools
+        agent.tool(tools.spawn_agent)
+        agent.tool(tools.get_agent_status)
+        agent.tool(tools.kill_agent)
+
+        # MCP tool (dynamic proxy)
+        if self._mcp_client:
+            agent.tool(tools.mcp_call)
+            agent.tool(tools.mcp_list_tools)
+
         return agent
 
     def _create_deps(self) -> CodyDeps:
@@ -76,7 +102,21 @@ class AgentRunner:
             config=self.config,
             workdir=self.workdir,
             skill_manager=self.skill_manager,
+            mcp_client=self._mcp_client,
+            sub_agent_manager=self._sub_agent_manager,
         )
+
+    # ── MCP lifecycle ────────────────────────────────────────────────────────
+
+    async def start_mcp(self) -> None:
+        """Start MCP servers if configured."""
+        if self._mcp_client:
+            await self._mcp_client.start_all()
+
+    async def stop_mcp(self) -> None:
+        """Stop MCP servers."""
+        if self._mcp_client:
+            await self._mcp_client.stop_all()
 
     # ── Session helpers ──────────────────────────────────────────────────────
 

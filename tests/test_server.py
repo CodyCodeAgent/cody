@@ -21,7 +21,7 @@ def test_health():
 def test_health_returns_version():
     client = TestClient(app)
     resp = client.get("/health")
-    assert resp.json()["version"] == "0.1.0"
+    assert resp.json()["version"] == "0.3.0"
 
 
 # ── Tool endpoint ────────────────────────────────────────────────────────────
@@ -95,7 +95,9 @@ def test_tool_not_found():
         "params": {},
     })
     assert resp.status_code == 404
-    assert "not found" in resp.json()["detail"].lower()
+    data = resp.json()
+    assert data["error"]["code"] == "TOOL_NOT_FOUND"
+    assert "not found" in data["error"]["message"].lower()
 
 
 def test_tool_missing_params(tmp_path):
@@ -119,7 +121,7 @@ def test_tool_path_traversal(tmp_path):
         "workdir": str(tmp_path),
     })
     assert resp.status_code == 500
-    assert "outside" in resp.json()["detail"].lower()
+    assert "outside" in resp.json()["error"]["message"].lower()
 
 
 # ── Skills endpoint ──────────────────────────────────────────────────────────
@@ -169,7 +171,9 @@ def test_skill_not_found():
     client = TestClient(app)
     resp = client.get("/skills/nonexistent_skill_xyz")
     assert resp.status_code == 404
-    assert "not found" in resp.json()["detail"].lower()
+    data = resp.json()
+    assert data["error"]["code"] == "SKILL_NOT_FOUND"
+    assert "not found" in data["error"]["message"].lower()
 
 
 # ── Run endpoint ─────────────────────────────────────────────────────────────
@@ -272,7 +276,9 @@ def test_run_agent_error():
         })
 
     assert resp.status_code == 500
-    assert "LLM API error" in resp.json()["detail"]
+    data = resp.json()
+    assert data["error"]["code"] == "SERVER_ERROR"
+    assert "LLM API error" in data["error"]["message"]
 
 
 # ── Stream endpoint ──────────────────────────────────────────────────────────
