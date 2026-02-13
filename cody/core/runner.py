@@ -1,5 +1,6 @@
 """Agent runner - core execution engine"""
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -15,6 +16,7 @@ from pydantic_ai.messages import (
 
 from .audit import AuditLogger
 from .config import Config
+from .context import compact_messages, estimate_tokens
 from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
@@ -23,6 +25,8 @@ from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
 from . import tools
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +41,7 @@ class CodyDeps:
     audit_logger: Optional[AuditLogger] = None
     permission_manager: Optional[PermissionManager] = None
     file_history: Optional[FileHistory] = None
+    todo_list: Optional[list] = None
 
 
 class AgentRunner:
@@ -72,6 +77,9 @@ class AgentRunner:
 
         # File history
         self._file_history = FileHistory(workdir=self.workdir)
+
+        # Shared todo list for AI task tracking
+        self._todo_list: list = []
 
         # Create agent
         self.agent = self._create_agent()
@@ -134,6 +142,13 @@ class AgentRunner:
         agent.tool(tools.redo_file)
         agent.tool(tools.list_file_changes)
 
+        # Task management tools
+        agent.tool(tools.todo_write)
+        agent.tool(tools.todo_read)
+
+        # User interaction tools
+        agent.tool(tools.question)
+
         return agent
 
     def _create_deps(self) -> CodyDeps:
@@ -148,6 +163,7 @@ class AgentRunner:
             audit_logger=self._audit_logger,
             permission_manager=self._permission_manager,
             file_history=self._file_history,
+            todo_list=self._todo_list,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -207,6 +223,62 @@ class AgentRunner:
         )
         return session.id, None
 
+    # ── Context compaction ────────────────────────────────────────────────────
+
+    def _compact_history_if_needed(
+        self,
+        history: Optional[list[ModelMessage]],
+        max_tokens: int = 100_000,
+    ) -> Optional[list[ModelMessage]]:
+        """Auto-compact message history when approaching token limits.
+
+        Converts ModelMessage history to dict format, runs compaction,
+        then converts back. Returns original history if no compaction needed.
+        """
+        if not history:
+            return history
+
+        # Convert ModelMessage list → dict list for compaction
+        msgs: list[dict] = []
+        for msg in history:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if hasattr(part, 'content'):
+                        msgs.append({"role": "user", "content": part.content})
+            elif isinstance(msg, ModelResponse):
+                for part in msg.parts:
+                    if hasattr(part, 'content'):
+                        msgs.append({"role": "assistant", "content": part.content})
+
+        compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+
+        if result is None:
+            return history  # no compaction needed
+
+        logger.info(
+            "Context compacted: %d → %d messages, ~%d tokens saved",
+            result.original_messages,
+            result.compacted_messages,
+            result.estimated_tokens_saved,
+        )
+
+        # Convert back to ModelMessage format
+        # System summary message becomes a user context message
+        new_history: list[ModelMessage] = []
+        for m in compacted:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if role == "system":
+                new_history.append(
+                    ModelRequest(parts=[UserPromptPart(content=f"[Context]\n{content}")])
+                )
+            elif role == "user":
+                new_history.append(ModelRequest(parts=[UserPromptPart(content=content)]))
+            elif role == "assistant":
+                new_history.append(ModelResponse(parts=[TextPart(content=content)]))
+
+        return new_history
+
     # ── Core run methods ─────────────────────────────────────────────────────
 
     async def run(
@@ -216,6 +288,7 @@ class AgentRunner:
     ):
         """Run agent with prompt, optionally continuing from history"""
         deps = self._create_deps()
+        message_history = self._compact_history_if_needed(message_history)
         result = await self.agent.run(prompt, deps=deps, message_history=message_history)
         return result
 
@@ -226,6 +299,7 @@ class AgentRunner:
     ):
         """Run agent with streaming"""
         deps = self._create_deps()
+        message_history = self._compact_history_if_needed(message_history)
         async with self.agent.run_stream(
             prompt, deps=deps, message_history=message_history
         ) as result:

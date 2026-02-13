@@ -208,12 +208,19 @@ class MCPClient:
         if params is not None:
             request["params"] = params
 
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
         sp._pending[req_id] = future
 
         line = json.dumps(request) + "\n"
-        sp.process.stdin.write(line.encode())
-        await sp.process.stdin.drain()
+        try:
+            sp.process.stdin.write(line.encode())
+            await sp.process.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            sp._pending.pop(req_id, None)
+            raise RuntimeError(
+                f"MCP server '{server_name}' process died: {e}"
+            ) from e
 
         try:
             result = await asyncio.wait_for(future, timeout=30.0)
@@ -267,7 +274,7 @@ class MCPClient:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "cody", "version": "0.3.0"},
+                "clientInfo": {"name": "cody", "version": "0.5.0"},
             },
         )
         # Send initialized notification (no id, no response expected)

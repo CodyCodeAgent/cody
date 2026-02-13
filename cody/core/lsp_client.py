@@ -366,7 +366,7 @@ class _LSPServer:
 
         msg = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
 
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[req_id] = future
 
         self._send_message(msg)

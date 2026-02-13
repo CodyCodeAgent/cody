@@ -30,6 +30,9 @@ _DEFAULT_PERMISSIONS: dict[str, PermissionLevel] = {
     "websearch": PermissionLevel.ALLOW,
     "webfetch": PermissionLevel.ALLOW,
     "list_file_changes": PermissionLevel.ALLOW,
+    "todo_read": PermissionLevel.ALLOW,
+    "todo_write": PermissionLevel.ALLOW,
+    "question": PermissionLevel.ALLOW,
     # Mutating — require confirmation
     "write_file": PermissionLevel.CONFIRM,
     "edit_file": PermissionLevel.CONFIRM,
