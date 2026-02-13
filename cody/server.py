@@ -8,6 +8,8 @@ from pydantic import BaseModel
 import uvicorn
 
 from .core import Config, AgentRunner
+from .core.skill_manager import SkillManager
+from .core.runner import CodyDeps
 
 
 # Request/Response models
@@ -117,40 +119,33 @@ async def run_agent_stream(request: RunRequest):
 @app.post("/tool", response_model=ToolResponse)
 async def call_tool(request: ToolRequest):
     """Call a tool directly"""
+    # Import tools
+    from .core import tools
+
+    # Get tool function
+    tool_func = getattr(tools, request.tool, None)
+    if not tool_func:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {request.tool}")
+
     try:
-        # Import tools
-        from .core import tools
-        
-        # Get tool function
-        tool_func = getattr(tools, request.tool, None)
-        if not tool_func:
-            raise HTTPException(status_code=404, detail=f"Tool not found: {request.tool}")
-        
-        # Create minimal context
+        # Create minimal context — no LLM needed
         config = Config.load()
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
-        runner = AgentRunner(config=config, workdir=workdir)
-        
-        # Create deps
-        from .core.runner import CodyDeps
         deps = CodyDeps(
             config=config,
             workdir=workdir,
-            skill_manager=runner.skill_manager,
+            skill_manager=SkillManager(config),
         )
-        
-        # Create mock context
-        class MockContext:
+
+        class ToolContext:
             def __init__(self, deps):
                 self.deps = deps
-        
-        ctx = MockContext(deps)
-        
-        # Call tool
+
+        ctx = ToolContext(deps)
         result = await tool_func(ctx, **request.params)
-        
+
         return ToolResponse(result=result)
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -160,10 +155,9 @@ async def list_skills():
     """List all available skills"""
     try:
         config = Config.load()
-        runner = AgentRunner(config=config)
-        
-        skills = runner.skill_manager.list_skills()
-        
+        skill_manager = SkillManager(config)
+        skills = skill_manager.list_skills()
+
         return {
             "skills": [
                 {
@@ -175,7 +169,7 @@ async def list_skills():
                 for skill in skills
             ]
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -185,12 +179,11 @@ async def get_skill(skill_name: str):
     """Get skill documentation"""
     try:
         config = Config.load()
-        runner = AgentRunner(config=config)
-        
-        skill = runner.skill_manager.get_skill(skill_name)
+        skill_manager = SkillManager(config)
+        skill = skill_manager.get_skill(skill_name)
         if not skill:
             raise HTTPException(status_code=404, detail=f"Skill not found: {skill_name}")
-        
+
         return {
             "name": skill.name,
             "description": skill.description,
@@ -198,7 +191,9 @@ async def get_skill(skill_name: str):
             "source": skill.source,
             "documentation": skill.documentation,
         }
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
