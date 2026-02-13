@@ -1,0 +1,530 @@
+"""Python SDK for Cody RPC Server.
+
+Usage:
+    from cody import CodyClient
+
+    client = CodyClient("http://localhost:8000")
+
+    # One-shot
+    result = client.run("create hello.py")
+    print(result.output)
+
+    # Multi-turn session
+    session = client.create_session()
+    r1 = client.run("create a Flask app", session_id=session.id)
+    r2 = client.run("add a /health endpoint", session_id=session.id)
+
+    # Async
+    async with AsyncCodyClient("http://localhost:8000") as client:
+        result = await client.run("create hello.py")
+        async for chunk in client.stream("explain this code"):
+            print(chunk.content, end="")
+"""
+
+from dataclasses import dataclass, field
+from typing import AsyncIterator, Iterator, Optional
+
+import httpx
+
+
+# ── Response types ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class Usage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+
+@dataclass
+class RunResult:
+    output: str
+    session_id: Optional[str] = None
+    usage: Usage = field(default_factory=Usage)
+
+
+@dataclass
+class StreamChunk:
+    type: str  # "text", "done", "error"
+    content: str = ""
+    session_id: Optional[str] = None
+
+
+@dataclass
+class SessionInfo:
+    id: str
+    title: str
+    model: str
+    workdir: str
+    message_count: int
+    created_at: str
+    updated_at: str
+
+
+@dataclass
+class SessionDetail(SessionInfo):
+    messages: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class ToolResult:
+    result: str
+
+
+# ── Errors ───────────────────────────────────────────────────────────────────
+
+
+class CodyError(Exception):
+    """Base error for Cody SDK."""
+    def __init__(self, message: str, status_code: int = 0):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
+class CodyConnectionError(CodyError):
+    """Server is unreachable."""
+    pass
+
+
+class CodyNotFoundError(CodyError):
+    """Resource not found (404)."""
+    pass
+
+
+# ── Async client ─────────────────────────────────────────────────────────────
+
+
+class AsyncCodyClient:
+    """Async Python client for Cody RPC Server."""
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8000",
+        timeout: float = 120.0,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self._client = httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=timeout,
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self.close()
+
+    async def close(self):
+        await self._client.aclose()
+
+    def _handle_error(self, resp: httpx.Response) -> None:
+        if resp.status_code == 404:
+            detail = resp.json().get("detail", "Not found")
+            raise CodyNotFoundError(detail, status_code=404)
+        if resp.status_code >= 400:
+            detail = resp.json().get("detail", resp.text)
+            raise CodyError(detail, status_code=resp.status_code)
+
+    # ── Health ───────────────────────────────────────────────────────────────
+
+    async def health(self) -> dict:
+        """Check server health."""
+        try:
+            resp = await self._client.get("/health")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+        return resp.json()
+
+    # ── Run ──────────────────────────────────────────────────────────────────
+
+    async def run(
+        self,
+        prompt: str,
+        *,
+        workdir: Optional[str] = None,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> RunResult:
+        """Run agent with prompt. Returns result."""
+        body: dict = {"prompt": prompt}
+        if workdir:
+            body["workdir"] = workdir
+        if model:
+            body["model"] = model
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        try:
+            resp = await self._client.post("/run", json=body)
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        data = resp.json()
+        usage_data = data.get("usage") or {}
+        return RunResult(
+            output=data["output"],
+            session_id=data.get("session_id"),
+            usage=Usage(
+                input_tokens=usage_data.get("input_tokens", 0),
+                output_tokens=usage_data.get("output_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
+            ),
+        )
+
+    async def stream(
+        self,
+        prompt: str,
+        *,
+        workdir: Optional[str] = None,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream agent response. Yields StreamChunk objects."""
+        body: dict = {"prompt": prompt}
+        if workdir:
+            body["workdir"] = workdir
+        if model:
+            body["model"] = model
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        try:
+            async with self._client.stream("POST", "/run/stream", json=body) as resp:
+                self._handle_error(resp)
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    import json
+                    data = json.loads(line[6:])
+                    yield StreamChunk(
+                        type=data.get("type", "text"),
+                        content=data.get("content", ""),
+                        session_id=data.get("session_id"),
+                    )
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+
+    # ── Tool ─────────────────────────────────────────────────────────────────
+
+    async def tool(
+        self,
+        tool_name: str,
+        params: Optional[dict] = None,
+        *,
+        workdir: Optional[str] = None,
+    ) -> ToolResult:
+        """Call a tool directly."""
+        body: dict = {"tool": tool_name, "params": params or {}}
+        if workdir:
+            body["workdir"] = workdir
+
+        try:
+            resp = await self._client.post("/tool", json=body)
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        return ToolResult(result=resp.json()["result"])
+
+    # ── Sessions ─────────────────────────────────────────────────────────────
+
+    async def create_session(
+        self,
+        title: str = "New session",
+        model: str = "",
+        workdir: str = "",
+    ) -> SessionInfo:
+        """Create a new session."""
+        try:
+            resp = await self._client.post(
+                "/sessions",
+                params={"title": title, "model": model, "workdir": workdir},
+            )
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        data = resp.json()
+        return SessionInfo(
+            id=data["id"],
+            title=data["title"],
+            model=data["model"],
+            workdir=data["workdir"],
+            message_count=data["message_count"],
+            created_at=data["created_at"],
+            updated_at=data["updated_at"],
+        )
+
+    async def list_sessions(self, limit: int = 20) -> list[SessionInfo]:
+        """List recent sessions."""
+        try:
+            resp = await self._client.get("/sessions", params={"limit": limit})
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        return [
+            SessionInfo(
+                id=s["id"],
+                title=s["title"],
+                model=s["model"],
+                workdir=s["workdir"],
+                message_count=s["message_count"],
+                created_at=s["created_at"],
+                updated_at=s["updated_at"],
+            )
+            for s in resp.json()["sessions"]
+        ]
+
+    async def get_session(self, session_id: str) -> SessionDetail:
+        """Get session with messages."""
+        try:
+            resp = await self._client.get(f"/sessions/{session_id}")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        data = resp.json()
+        return SessionDetail(
+            id=data["id"],
+            title=data["title"],
+            model=data["model"],
+            workdir=data["workdir"],
+            message_count=data["message_count"],
+            created_at=data["created_at"],
+            updated_at=data["updated_at"],
+            messages=data["messages"],
+        )
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete a session."""
+        try:
+            resp = await self._client.delete(f"/sessions/{session_id}")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+    # ── Skills ───────────────────────────────────────────────────────────────
+
+    async def list_skills(self) -> list[dict]:
+        """List available skills."""
+        try:
+            resp = await self._client.get("/skills")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+        return resp.json()["skills"]
+
+
+# ── Sync client (wraps async) ────────────────────────────────────────────────
+
+
+class CodyClient:
+    """Synchronous Python client for Cody RPC Server.
+
+    Wraps AsyncCodyClient for convenience in non-async code.
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8000",
+        timeout: float = 120.0,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self._client = httpx.Client(
+            base_url=self.base_url,
+            timeout=timeout,
+        )
+
+    def close(self):
+        self._client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def _handle_error(self, resp: httpx.Response) -> None:
+        if resp.status_code == 404:
+            detail = resp.json().get("detail", "Not found")
+            raise CodyNotFoundError(detail, status_code=404)
+        if resp.status_code >= 400:
+            detail = resp.json().get("detail", resp.text)
+            raise CodyError(detail, status_code=resp.status_code)
+
+    def health(self) -> dict:
+        """Check server health."""
+        try:
+            resp = self._client.get("/health")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+        return resp.json()
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        workdir: Optional[str] = None,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> RunResult:
+        """Run agent with prompt."""
+        body: dict = {"prompt": prompt}
+        if workdir:
+            body["workdir"] = workdir
+        if model:
+            body["model"] = model
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        try:
+            resp = self._client.post("/run", json=body)
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        data = resp.json()
+        usage_data = data.get("usage") or {}
+        return RunResult(
+            output=data["output"],
+            session_id=data.get("session_id"),
+            usage=Usage(
+                input_tokens=usage_data.get("input_tokens", 0),
+                output_tokens=usage_data.get("output_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
+            ),
+        )
+
+    def stream(
+        self,
+        prompt: str,
+        *,
+        workdir: Optional[str] = None,
+        model: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> Iterator[StreamChunk]:
+        """Stream agent response. Yields StreamChunk objects."""
+        body: dict = {"prompt": prompt}
+        if workdir:
+            body["workdir"] = workdir
+        if model:
+            body["model"] = model
+        if session_id is not None:
+            body["session_id"] = session_id
+
+        try:
+            with self._client.stream("POST", "/run/stream", json=body) as resp:
+                self._handle_error(resp)
+                for line in resp.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    import json
+                    data = json.loads(line[6:])
+                    yield StreamChunk(
+                        type=data.get("type", "text"),
+                        content=data.get("content", ""),
+                        session_id=data.get("session_id"),
+                    )
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+
+    def tool(
+        self,
+        tool_name: str,
+        params: Optional[dict] = None,
+        *,
+        workdir: Optional[str] = None,
+    ) -> ToolResult:
+        """Call a tool directly."""
+        body: dict = {"tool": tool_name, "params": params or {}}
+        if workdir:
+            body["workdir"] = workdir
+
+        try:
+            resp = self._client.post("/tool", json=body)
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+        return ToolResult(result=resp.json()["result"])
+
+    def create_session(
+        self,
+        title: str = "New session",
+        model: str = "",
+        workdir: str = "",
+    ) -> SessionInfo:
+        """Create a new session."""
+        try:
+            resp = self._client.post(
+                "/sessions",
+                params={"title": title, "model": model, "workdir": workdir},
+            )
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        data = resp.json()
+        return SessionInfo(
+            id=data["id"],
+            title=data["title"],
+            model=data["model"],
+            workdir=data["workdir"],
+            message_count=data["message_count"],
+            created_at=data["created_at"],
+            updated_at=data["updated_at"],
+        )
+
+    def list_sessions(self, limit: int = 20) -> list[SessionInfo]:
+        """List recent sessions."""
+        try:
+            resp = self._client.get("/sessions", params={"limit": limit})
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        return [
+            SessionInfo(
+                id=s["id"],
+                title=s["title"],
+                model=s["model"],
+                workdir=s["workdir"],
+                message_count=s["message_count"],
+                created_at=s["created_at"],
+                updated_at=s["updated_at"],
+            )
+            for s in resp.json()["sessions"]
+        ]
+
+    def get_session(self, session_id: str) -> SessionDetail:
+        """Get session with messages."""
+        try:
+            resp = self._client.get(f"/sessions/{session_id}")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
+
+        data = resp.json()
+        return SessionDetail(
+            id=data["id"],
+            title=data["title"],
+            model=data["model"],
+            workdir=data["workdir"],
+            message_count=data["message_count"],
+            created_at=data["created_at"],
+            updated_at=data["updated_at"],
+            messages=data["messages"],
+        )
+
+    def delete_session(self, session_id: str) -> None:
+        """Delete a session."""
+        try:
+            resp = self._client.delete(f"/sessions/{session_id}")
+        except httpx.ConnectError as e:
+            raise CodyConnectionError(f"Cannot connect to {self.base_url}: {e}")
+        self._handle_error(resp)
