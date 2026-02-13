@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**认证方式：** Bearer Token（可选）
+**版本：** 0.4.0
 
 ---
 
@@ -16,7 +16,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 #### POST /run
 
-执行 AI 任务并返回结果。
+执行 AI 任务并返回结果。支持通过 `session_id` 实现多轮对话。
 
 **请求体：**
 ```json
@@ -25,11 +25,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
   "workdir": "/path/to/project",
   "model": "anthropic:claude-sonnet-4-0",
   "skills": ["python", "git"],
-  "mcp_servers": ["github"],
-  "stream": false,
-  "context": {
-    "files": ["README.md", "main.py"]
-  }
+  "session_id": "optional-session-id"
 }
 ```
 
@@ -39,51 +35,28 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | prompt | string | ✅ | 任务描述 |
 | workdir | string | ❌ | 工作目录，默认当前目录 |
 | model | string | ❌ | 模型名称，默认配置中的模型 |
-| skills | array | ❌ | 启用的 Skills |
-| mcp_servers | array | ❌ | 启用的 MCP Servers |
-| stream | boolean | ❌ | 是否流式返回，默认 false |
-| context | object | ❌ | 额外上下文 |
+| skills | string[] | ❌ | 启用的 Skills 列表 |
+| session_id | string | ❌ | 会话 ID，用于多轮对话 |
 
 **响应（成功）：**
 ```json
 {
   "status": "success",
-  "output": "已创建 FastAPI 项目，包含以下文件：\n- main.py\n- requirements.txt",
+  "output": "已创建 FastAPI 项目",
+  "session_id": "abc123",
   "usage": {
     "input_tokens": 150,
     "output_tokens": 80,
-    "total_tokens": 230,
-    "requests": 2,
-    "tool_calls": 3
-  },
-  "tool_calls": [
-    {
-      "tool": "write_file",
-      "args": {"path": "main.py", "content": "..."},
-      "result": "Written to main.py"
-    }
-  ],
-  "duration_ms": 3500
-}
-```
-
-**响应（失败）：**
-```json
-{
-  "status": "error",
-  "error": {
-    "code": "TOOL_ERROR",
-    "message": "Failed to write file: Permission denied",
-    "details": {...}
+    "total_tokens": 230
   }
 }
 ```
 
 **HTTP 状态码：**
 - `200` - 成功
-- `400` - 请求参数错误
-- `401` - 未授权
-- `500` - 服务器错误
+- `400` - 请求参数错误（`INVALID_PARAMS`）
+- `404` - 会话不存在（`SESSION_NOT_FOUND`）
+- `500` - 服务器错误（`SERVER_ERROR`）
 
 ---
 
@@ -91,51 +64,35 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 #### POST /run/stream
 
-以 Server-Sent Events (SSE) 方式流式返回结果。
-
-**请求体：**
-```json
-{
-  "prompt": "创建项目并说明步骤",
-  "workdir": "/path/to/project",
-  "stream": true
-}
-```
+以 Server-Sent Events (SSE) 方式流式返回结果。请求体与 `POST /run` 相同。
 
 **响应（SSE）：**
 ```
-event: start
-data: {"run_id": "abc123"}
+data: {"type": "text", "content": "正在"}
 
-event: text
-data: {"content": "正在"}
+data: {"type": "text", "content": "创建"}
 
-event: text
-data: {"content": "创建"}
+data: {"type": "done"}
+```
 
-event: tool_call
-data: {"tool": "write_file", "args": {"path": "main.py"}}
+带 session_id 的流式响应：
+```
+data: {"type": "text", "content": "正在创建...", "session_id": "abc123"}
 
-event: tool_result
-data: {"tool": "write_file", "result": "Written to main.py"}
-
-event: text
-data: {"content": "已完成"}
-
-event: done
-data: {"output": "已完成项目创建", "usage": {...}}
+data: {"type": "done"}
 ```
 
 **事件类型：**
 | 事件 | 说明 |
 |------|------|
-| start | 任务开始 |
-| text | 文本输出 |
-| thinking | 思考过程（如果模型支持）|
-| tool_call | 工具调用 |
-| tool_result | 工具返回 |
-| error | 错误发生 |
+| text | 流式文本片段，包含 `content` 字段 |
 | done | 任务完成 |
+| error | 错误发生，包含结构化错误信息 |
+
+**SSE 错误示例：**
+```
+data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
+```
 
 ---
 
@@ -160,20 +117,32 @@ data: {"output": "已完成项目创建", "usage": {...}}
 ```json
 {
   "status": "success",
-  "result": "# Project Name\n\nDescription...",
-  "duration_ms": 10
+  "result": "# Project Name\n\nDescription..."
 }
 ```
 
 **可用工具：**
-- `read_file`
-- `write_file`
-- `edit_file`
-- `list_directory`
-- `exec_command`
-- `git_status`
-- `git_diff`
-- `git_commit`
+
+| 工具 | 说明 |
+|------|------|
+| `read_file` | 读取文件 |
+| `write_file` | 写入文件 |
+| `edit_file` | 精确编辑文件 |
+| `list_directory` | 列出目录内容 |
+| `exec_command` | 执行 Shell 命令 |
+| `grep` | 正则搜索文件内容 |
+| `glob` | 通配符匹配文件 |
+| `patch` | 应用 unified diff |
+| `search_files` | 模糊搜索文件名 |
+| `webfetch` | 抓取网页转 Markdown |
+| `websearch` | Web 搜索 |
+
+**HTTP 状态码：**
+- `200` - 成功
+- `400` - 参数无效（`INVALID_PARAMS`）
+- `403` - 路径遍历攻击被拦截（`PERMISSION_DENIED`）
+- `404` - 工具不存在（`TOOL_NOT_FOUND`）
+- `500` - 工具执行错误（`TOOL_ERROR`）
 
 ---
 
@@ -188,18 +157,10 @@ data: {"output": "已完成项目创建", "usage": {...}}
 {
   "skills": [
     {
-      "name": "github",
-      "description": "GitHub CLI integration",
+      "name": "git",
+      "description": "Git Operations",
       "enabled": true,
-      "source": "project",
-      "path": "/path/to/.cody/skills/github"
-    },
-    {
-      "name": "docker",
-      "description": "Docker operations",
-      "enabled": false,
-      "source": "global",
-      "path": "~/.cody/skills/docker"
+      "source": "builtin"
     }
   ]
 }
@@ -207,41 +168,106 @@ data: {"output": "已完成项目创建", "usage": {...}}
 
 #### GET /skills/{name}
 
-获取某个 Skill 的详细信息。
+获取某个 Skill 的详细信息，包含 SKILL.md 文档内容。
 
 **响应：**
 ```json
 {
-  "name": "github",
-  "description": "GitHub CLI integration",
+  "name": "git",
+  "description": "Git Operations",
   "enabled": true,
-  "source": "project",
-  "documentation": "# GitHub Skill\n\n## Usage\n...",
-  "examples": [
-    "gh issue create --title 'Bug' --body 'Description'"
+  "source": "builtin",
+  "documentation": "# Git Skill\n\n## Usage\n..."
+}
+```
+
+**HTTP 状态码：**
+- `404` - Skill 不存在（`SKILL_NOT_FOUND`）
+
+---
+
+### 5. 会话管理
+
+#### POST /sessions
+
+创建新会话。
+
+**查询参数：**
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| title | string | "New session" | 会话标题 |
+| model | string | "" | 模型名称 |
+| workdir | string | "" | 工作目录 |
+
+**响应：**
+```json
+{
+  "id": "abc123",
+  "title": "New session",
+  "model": "",
+  "workdir": "",
+  "message_count": 0,
+  "created_at": "2026-02-13T12:00:00",
+  "updated_at": "2026-02-13T12:00:00"
+}
+```
+
+#### GET /sessions
+
+列出最近的会话。
+
+**查询参数：** `limit` (int, 默认 20)
+
+**响应：**
+```json
+{
+  "sessions": [
+    {
+      "id": "abc123",
+      "title": "My session",
+      "model": "anthropic:claude-sonnet-4-0",
+      "workdir": "/path/to/project",
+      "message_count": 4,
+      "created_at": "2026-02-13T12:00:00",
+      "updated_at": "2026-02-13T12:10:00"
+    }
   ]
 }
 ```
 
-#### POST /skills/{name}/enable
+#### GET /sessions/{session_id}
 
-启用某个 Skill。
+获取会话详情，包含消息历史。
 
 **响应：**
 ```json
 {
-  "status": "success",
-  "message": "Skill 'github' enabled"
+  "id": "abc123",
+  "title": "My session",
+  "model": "anthropic:claude-sonnet-4-0",
+  "workdir": "/path/to/project",
+  "message_count": 2,
+  "created_at": "2026-02-13T12:00:00",
+  "updated_at": "2026-02-13T12:10:00",
+  "messages": [
+    {"role": "user", "content": "创建文件", "timestamp": "..."},
+    {"role": "assistant", "content": "已创建", "timestamp": "..."}
+  ]
 }
 ```
 
-#### POST /skills/{name}/disable
+#### DELETE /sessions/{session_id}
 
-禁用某个 Skill。
+删除会话。
+
+**响应：**
+```json
+{"status": "deleted", "id": "abc123"}
+```
 
 ---
 
-### 5. 子 Agent 管理
+### 6. 子 Agent 管理
 
 #### POST /agent/spawn
 
@@ -257,20 +283,24 @@ data: {"output": "已完成项目创建", "usage": {...}}
 ```
 
 **参数：**
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| task | string | 任务描述 |
-| type | string | Agent 类型：code/research/test/generic |
-| timeout | number | 超时时间（秒） |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| task | string | - | 任务描述（必填）|
+| type | string | "generic" | Agent 类型：code/research/test/generic |
+| timeout | number | null | 超时时间（秒），null 使用默认值 300s |
 
 **响应：**
 ```json
 {
-  "agent_id": "sub_abc123",
-  "status": "running",
-  "created_at": "2026-01-28T01:00:00Z"
+  "agent_id": "a1b2c3d4e5f6",
+  "status": "pending",
+  "created_at": "2026-02-13T12:00:00+00:00"
 }
 ```
+
+**HTTP 状态码：**
+- `429` - 并发上限（`AGENT_LIMIT_REACHED`）
+- `500` - Agent 错误（`AGENT_ERROR`）
 
 #### GET /agent/{agent_id}
 
@@ -279,13 +309,12 @@ data: {"output": "已完成项目创建", "usage": {...}}
 **响应：**
 ```json
 {
-  "agent_id": "sub_abc123",
+  "agent_id": "a1b2c3d4e5f6",
   "status": "completed",
-  "result": "FastAPI 最佳实践：\n1. ...\n2. ...",
-  "usage": {...},
-  "duration_ms": 15000,
-  "created_at": "2026-01-28T01:00:00Z",
-  "completed_at": "2026-01-28T01:00:15Z"
+  "output": "FastAPI 最佳实践：\n1. ...",
+  "error": null,
+  "created_at": "2026-02-13T12:00:00+00:00",
+  "completed_at": "2026-02-13T12:00:15+00:00"
 }
 ```
 
@@ -295,44 +324,18 @@ data: {"output": "已完成项目创建", "usage": {...}}
 - `completed` - 已完成
 - `failed` - 失败
 - `killed` - 已终止
+- `timeout` - 超时
 
 #### DELETE /agent/{agent_id}
 
 终止子 Agent。
 
----
-
-### 6. 配置管理
-
-#### GET /config
-
-获取当前配置。
-
 **响应：**
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
-  "skills": {
-    "enabled": ["github", "docker"],
-    "disabled": []
-  },
-  "mcp": {
-    "servers": [...]
-  }
-}
-```
-
-#### PATCH /config
-
-更新配置。
-
-**请求体：**
-```json
-{
-  "model": "anthropic:claude-opus-4-5",
-  "skills": {
-    "enabled": ["github", "docker", "python"]
-  }
+  "agent_id": "a1b2c3d4e5f6",
+  "killed": true,
+  "status": "killed"
 }
 ```
 
@@ -348,141 +351,127 @@ data: {"output": "已完成项目创建", "usage": {...}}
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
-  "uptime": 3600,
-  "active_agents": 2
-}
-```
-
-#### GET /metrics
-
-获取服务指标（可选）。
-
-**响应：**
-```json
-{
-  "requests_total": 150,
-  "requests_success": 145,
-  "requests_failed": 5,
-  "avg_duration_ms": 2500,
-  "tokens_used": 50000
+  "version": "0.4.0"
 }
 ```
 
 ---
 
-## WebSocket API（可选）
+## WebSocket API
 
 ### WS /ws
 
-建立 WebSocket 连接，用于实时交互。
+建立 WebSocket 连接，用于实时双向交互。支持流式推送和中途取消。
 
-**消息格式（客户端 → 服务端）：**
+**消息类型（客户端 → 服务端）：**
+
+| 类型 | 说明 |
+|------|------|
+| `run` | 执行 Agent 任务 |
+| `cancel` | 取消当前运行 |
+| `ping` | 心跳检测 |
+
+**Run 消息：**
 ```json
 {
   "type": "run",
   "data": {
     "prompt": "创建文件",
-    "workdir": "/path"
+    "workdir": "/path",
+    "model": "anthropic:claude-sonnet-4-0",
+    "session_id": "abc123"
   }
 }
 ```
 
-**消息格式（服务端 → 客户端）：**
+**Cancel 消息：**
+```json
+{"type": "cancel"}
+```
+
+**Ping 消息：**
+```json
+{"type": "ping"}
+```
+
+**服务端事件（服务端 → 客户端）：**
+
+| 事件 | 说明 |
+|------|------|
+| `start` | 任务开始，包含 session_id |
+| `text` | 流式文本片段 |
+| `done` | 任务完成，包含完整输出 |
+| `error` | 错误，包含结构化错误信息 |
+| `cancelled` | 任务已取消 |
+| `pong` | 心跳响应 |
+
+**事件示例：**
+```json
+{"type": "start", "session_id": "abc123"}
+{"type": "text", "content": "正在创建..."}
+{"type": "done", "output": "完成创建"}
+{"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
+{"type": "cancelled"}
+{"type": "pong"}
+```
+
+---
+
+## 结构化错误响应
+
+所有 API 错误返回统一的结构化格式：
+
 ```json
 {
-  "type": "text",
-  "data": {
-    "content": "正在创建文件..."
-  }
-}
-
-{
-  "type": "tool_call",
-  "data": {
-    "tool": "write_file",
-    "args": {...}
-  }
-}
-
-{
-  "type": "done",
-  "data": {
-    "output": "完成",
-    "usage": {...}
+  "error": {
+    "code": "TOOL_NOT_FOUND",
+    "message": "Tool not found: nonexistent",
+    "details": {"tool": "nonexistent"}
   }
 }
 ```
 
----
+### 错误码
 
-## 错误码
-
-| 错误码 | 说明 |
-|--------|------|
-| INVALID_PARAMS | 请求参数无效 |
-| AUTH_FAILED | 认证失败 |
-| MODEL_ERROR | 模型调用错误 |
-| TOOL_ERROR | 工具执行错误 |
-| SKILL_NOT_FOUND | Skill 不存在 |
-| PERMISSION_DENIED | 权限不足 |
-| TIMEOUT | 超时 |
-| SERVER_ERROR | 服务器内部错误 |
-
----
-
-## 认证（可选）
-
-如果启用认证，需要在请求头中包含 Token：
-
-```
-Authorization: Bearer <token>
-```
-
-获取 Token：
-```bash
-cody auth token
-```
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|------------|------|
+| INVALID_PARAMS | 400 | 请求参数无效 |
+| PERMISSION_DENIED | 403 | 权限不足（含路径遍历拦截）|
+| TOOL_NOT_FOUND | 404 | 工具不存在 |
+| SKILL_NOT_FOUND | 404 | Skill 不存在 |
+| SESSION_NOT_FOUND | 404 | 会话不存在 |
+| AGENT_NOT_FOUND | 404 | 子 Agent 不存在 |
+| AGENT_LIMIT_REACHED | 429 | 子 Agent 并发上限 |
+| TOOL_ERROR | 500 | 工具执行错误 |
+| AGENT_ERROR | 500 | 子 Agent 错误 |
+| SERVER_ERROR | 500 | 服务器内部错误 |
 
 ---
 
 ## 使用示例
 
-### Python
+### Python SDK（推荐）
 
 ```python
-import requests
+from cody import AsyncCodyClient
 
-# 运行任务
-response = requests.post(
-    'http://localhost:8000/run',
-    json={
-        'prompt': '创建 hello.py',
-        'workdir': '/path/to/project'
-    }
-)
+async with AsyncCodyClient("http://localhost:8000") as client:
+    # 一次性调用
+    result = await client.run("创建 hello.py")
+    print(result.output)
 
-result = response.json()
-print(result['output'])
-```
+    # 多轮会话
+    session = await client.create_session()
+    r1 = await client.run("创建 Flask 项目", session_id=session.id)
+    r2 = await client.run("添加 /health 端点", session_id=session.id)
 
-### JavaScript
+    # 流式响应
+    async for chunk in client.stream("解释这段代码"):
+        print(chunk.content, end="")
 
-```javascript
-// 运行任务
-const response = await fetch('http://localhost:8000/run', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    prompt: '创建 hello.py',
-    workdir: '/path/to/project'
-  })
-});
-
-const result = await response.json();
-console.log(result.output);
+    # 直接调工具
+    result = await client.tool("read_file", {"path": "main.py"})
+    print(result.result)
 ```
 
 ### curl
@@ -491,36 +480,32 @@ console.log(result.output);
 # 运行任务
 curl -X POST http://localhost:8000/run \
   -H 'Content-Type: application/json' \
-  -d '{
-    "prompt": "创建 hello.py",
-    "workdir": "/path/to/project"
-  }'
+  -d '{"prompt": "创建 hello.py", "workdir": "/path/to/project"}'
 
 # 流式运行
 curl -N -X POST http://localhost:8000/run/stream \
   -H 'Content-Type: application/json' \
-  -d '{
-    "prompt": "创建项目",
-    "stream": true
-  }'
+  -d '{"prompt": "创建项目"}'
+
+# 列出 Skills
+curl http://localhost:8000/skills
+
+# 健康检查
+curl http://localhost:8000/health
 ```
 
 ---
 
-## 性能考虑
+## 未实现（计划中）
 
-**并发限制：**
-- 默认最大并发请求：100
-- 可通过配置调整
+以下功能在 API 设计中规划，但尚未实现：
 
-**超时设置：**
-- 默认请求超时：60秒
-- 长任务建议使用子 Agent
-
-**速率限制：**
-- 默认每分钟 60 请求
-- 可通过配置调整
+- **认证** — Bearer Token / OAuth 2.0
+- **GET /config** / **PATCH /config** — 运行时配置管理
+- **GET /metrics** — 服务指标
+- **POST /skills/{name}/enable** / **disable** — Skill 启停 REST API
+- **速率限制** — 每分钟请求数限制
 
 ---
 
-**最后更新：** 2026-01-28
+**最后更新：** 2026-02-13

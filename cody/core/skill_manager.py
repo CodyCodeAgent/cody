@@ -2,7 +2,10 @@
 
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
+
+if TYPE_CHECKING:
+    from .config import Config
 
 
 @dataclass
@@ -26,7 +29,7 @@ class Skill:
 class SkillManager:
     """Manage and load skills"""
     
-    def __init__(self, config):
+    def __init__(self, config: "Config"):
         self.config = config
         self.skills: dict[str, Skill] = {}
         self._load_skills()

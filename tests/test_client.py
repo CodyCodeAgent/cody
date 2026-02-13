@@ -27,6 +27,7 @@ def _async_client() -> AsyncCodyClient:
     transport = httpx.ASGITransport(app=app)
     client = AsyncCodyClient.__new__(AsyncCodyClient)
     client.base_url = "http://testserver"
+    client.max_retries = 0
     client._client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
     return client
 

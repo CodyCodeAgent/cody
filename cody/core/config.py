@@ -37,8 +37,8 @@ class MCPConfig(BaseModel):
 
 class SecurityConfig(BaseModel):
     """Security configuration"""
-    allowed_commands: Optional[list] = None
-    restricted_paths: list = Field(default_factory=list)
+    allowed_commands: Optional[list[str]] = None
+    restricted_paths: list[str] = Field(default_factory=list)
     require_confirmation: bool = True
 
 
