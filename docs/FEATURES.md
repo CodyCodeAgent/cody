@@ -47,16 +47,21 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 - `list_directory(path)` - 列出目录
 - `search_files(pattern, path)` - 搜索文件
 
-**命令执行：**
-- `exec_command(command)` - 执行 Shell 命令
-- `exec_background(command)` - 后台执行
-- `kill_process(pid)` - 终止进程
+**搜索工具：**
+- `grep(pattern, path, include)` - 正则搜索文件内容
+- `glob(pattern, path)` - 模式匹配查找文件
+- `search_files(query, path)` - 模糊文件名搜索
+- `patch(path, diff)` - 应用 unified diff 补丁
 
-**Git 操作：**
-- `git_status()` - 查看状态
-- `git_diff()` - 查看差异
-- `git_commit(message)` - 提交
-- `git_push()` - 推送
+**命令执行：**
+- `exec_command(command)` - 执行 Shell 命令（支持白名单和危险命令检测）
+
+**任务管理：**
+- `todo_write(todos)` - 创建/更新任务清单
+- `todo_read()` - 读取当前任务清单
+
+**用户交互：**
+- `question(text, options)` - 向用户提结构化选择题
 
 **Skill 元工具：**
 - `list_skills()` - 列出可用 Skills
@@ -93,7 +98,6 @@ skills/github/
 cody skills list                  # 列出可用 Skills
 cody skills enable <name>         # 启用 Skill
 cody skills disable <name>        # 禁用 Skill
-cody skills create <name>         # 创建新 Skill
 ```
 
 ### 4. MCP 集成
@@ -168,10 +172,8 @@ cody --continue "继续刚才的任务"
 
 **配置管理：**
 ```bash
-cody config get                   # 查看配置
-cody config set key value         # 设置配置
-cody auth login                   # OAuth 登录
-cody auth status                  # 查看认证状态
+cody config show                  # 查看配置
+cody config set model <value>     # 设置模型
 ```
 
 #### TUI 模式

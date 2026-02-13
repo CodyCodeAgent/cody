@@ -13,6 +13,12 @@ if TYPE_CHECKING:
     from .runner import CodyDeps
 
 
+def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
+    """Check permission before tool execution. Raises PermissionDeniedError if denied."""
+    if ctx.deps.permission_manager:
+        ctx.deps.permission_manager.check(tool_name)
+
+
 def _resolve_and_check(workdir: Path, path: str) -> Path:
     """Resolve path and verify it's inside workdir. Returns resolved Path."""
     full_path = (workdir / path).resolve()
@@ -189,6 +195,7 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
         path: Path to the file
         content: Content to write
     """
+    _check_permission(ctx, "write_file")
     full_path = _resolve_and_check(ctx.deps.workdir, path)
 
     # Record old content for undo
@@ -229,6 +236,7 @@ async def edit_file(
         old_text: Exact text to replace
         new_text: New text
     """
+    _check_permission(ctx, "edit_file")
     full_path = _resolve_and_check(ctx.deps.workdir, path)
 
     if not full_path.exists():
@@ -420,6 +428,7 @@ async def patch(
         path: Path to the file to patch
         diff: Unified diff content (lines starting with +/- and context lines)
     """
+    _check_permission(ctx, "patch")
     full_path = _resolve_and_check(ctx.deps.workdir, path)
 
     if not full_path.exists():
@@ -568,6 +577,7 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
     Args:
         command: Command to execute
     """
+    _check_permission(ctx, "exec_command")
     # Security check
     if ctx.deps.config.security.allowed_commands:
         base_cmd = command.split()[0]
@@ -669,6 +679,7 @@ async def spawn_agent(
         task: Task description for the sub-agent
         agent_type: Type of agent — "code", "research", "test", or "generic"
     """
+    _check_permission(ctx, "spawn_agent")
     manager = ctx.deps.sub_agent_manager
     if manager is None:
         return "[ERROR] Sub-agent system not available"
@@ -714,6 +725,7 @@ async def kill_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
     Args:
         agent_id: ID of the sub-agent to kill
     """
+    _check_permission(ctx, "kill_agent")
     manager = ctx.deps.sub_agent_manager
     if manager is None:
         return "[ERROR] Sub-agent system not available"
@@ -755,6 +767,7 @@ async def mcp_call(
         tool_name: Qualified tool name, e.g. "github/create_issue"
         arguments: JSON string of tool arguments
     """
+    _check_permission(ctx, "mcp_call")
     import json as _json
 
     client = ctx.deps.mcp_client
@@ -917,6 +930,7 @@ async def lsp_hover(
 
 async def undo_file(ctx: RunContext['CodyDeps']) -> str:
     """Undo the last file modification, restoring the file to its previous content"""
+    _check_permission(ctx, "undo_file")
     history = ctx.deps.file_history
     if history is None:
         return "[ERROR] File history not available"
@@ -939,6 +953,7 @@ async def undo_file(ctx: RunContext['CodyDeps']) -> str:
 
 async def redo_file(ctx: RunContext['CodyDeps']) -> str:
     """Redo a previously undone file modification"""
+    _check_permission(ctx, "redo_file")
     history = ctx.deps.file_history
     if history is None:
         return "[ERROR] File history not available"
@@ -974,3 +989,95 @@ async def list_file_changes(ctx: RunContext['CodyDeps']) -> str:
         lines.append(f"  [{c.operation}] {c.file_path} ({c.timestamp})")
 
     return "\n".join(lines)
+
+
+# ── Task management tools ──────────────────────────────────────────────────
+
+
+async def todo_write(
+    ctx: RunContext['CodyDeps'],
+    todos: str,
+) -> str:
+    """Create or update a task list for tracking multi-step work.
+
+    Args:
+        todos: JSON string of todo items, each with "content" (str), "status" (pending/in_progress/completed)
+    """
+    import json as _json
+
+    try:
+        items = _json.loads(todos)
+    except _json.JSONDecodeError as e:
+        return f"[ERROR] Invalid JSON: {e}"
+
+    if not isinstance(items, list):
+        return "[ERROR] todos must be a JSON array"
+
+    validated: list[dict] = []
+    valid_statuses = {"pending", "in_progress", "completed"}
+    for item in items:
+        if not isinstance(item, dict):
+            return "[ERROR] Each todo must be an object with 'content' and 'status'"
+        content = item.get("content", "")
+        status = item.get("status", "pending")
+        if not content:
+            return "[ERROR] Each todo must have non-empty 'content'"
+        if status not in valid_statuses:
+            return f"[ERROR] Invalid status '{status}'. Use: pending, in_progress, completed"
+        validated.append({"content": content, "status": status})
+
+    # Update the shared todo list
+    if ctx.deps.todo_list is not None:
+        ctx.deps.todo_list.clear()
+        ctx.deps.todo_list.extend(validated)
+
+    total = len(validated)
+    done = sum(1 for t in validated if t["status"] == "completed")
+    active = sum(1 for t in validated if t["status"] == "in_progress")
+    return f"Todo list updated: {total} items ({done} completed, {active} in progress)"
+
+
+async def todo_read(ctx: RunContext['CodyDeps']) -> str:
+    """Read the current task list"""
+    todo_list = ctx.deps.todo_list
+    if todo_list is None or len(todo_list) == 0:
+        return "No todos recorded"
+
+    status_icons = {"pending": "[ ]", "in_progress": "[~]", "completed": "[x]"}
+    lines = [f"Task list ({len(todo_list)} items):"]
+    for i, item in enumerate(todo_list, 1):
+        icon = status_icons.get(item.get("status", "pending"), "[ ]")
+        lines.append(f"  {i}. {icon} {item['content']}")
+
+    return "\n".join(lines)
+
+
+# ── User interaction tools ─────────────────────────────────────────────────
+
+
+async def question(
+    ctx: RunContext['CodyDeps'],
+    text: str,
+    options: str = "",
+) -> str:
+    """Ask the user a structured question and wait for their answer.
+
+    Use this when you need clarification or a decision from the user.
+    The question will be displayed to the user and their response returned.
+
+    Args:
+        text: The question to ask the user
+        options: Optional comma-separated list of choices (e.g. "Yes,No,Skip")
+    """
+    # Format the question for display
+    parts = [f"[QUESTION] {text}"]
+    if options:
+        option_list = [o.strip() for o in options.split(",") if o.strip()]
+        if option_list:
+            parts.append("Options:")
+            for i, opt in enumerate(option_list, 1):
+                parts.append(f"  {i}. {opt}")
+
+    # In non-interactive mode, return the question as-is for the caller to handle
+    # The actual user interaction happens at the shell layer (CLI/TUI/Server)
+    return "\n".join(parts)

@@ -556,3 +556,49 @@ def undo(self):
 
 建议按 P0 → P1 → P2 的顺序逐步追赶。P0 的 5 个修复项工作量都不大，
 但能立即消除"写了没用"的尴尬和安全隐患。
+
+---
+
+## 附录 D — 修复进度 (2026-02-13 更新)
+
+### P0 全部完成
+
+| # | 修复项 | 状态 | 改动 |
+|---|--------|:----:|------|
+| 1 | 权限系统接入运行时 | ✅ 完成 | `tools.py` — 所有 9 个可变工具加入 `_check_permission()` 调用 |
+| 2 | Context Compaction 接入 runner | ✅ 完成 | `runner.py` — `_compact_history_if_needed()` 方法，`run()` 和 `run_stream()` 自动调用 |
+| 3 | FEATURES.md 修正 | ✅ 完成 | 删除 6 个不存在的工具、修正 CLI 命令名、新增实际工具文档 |
+| 4 | 依赖修正 | ✅ 完成 | 删除 `aiofiles`，`prompt_toolkit` 移入 optional `[repl]` |
+| 5 | MCP 版本号 + 废弃 API | ✅ 完成 | `mcp_client.py` 版本 → `0.5.0`，`get_event_loop()` → `get_running_loop()`，`lsp_client.py` 同步修复 |
+
+### 核心能力补齐
+
+| # | 项目 | 状态 | 改动 |
+|---|------|:----:|------|
+| 6 | 4 个内置 Skill | ✅ 完成 | `skills/github/SKILL.md`, `skills/docker/SKILL.md`, `skills/npm/SKILL.md`, `skills/python/SKILL.md` |
+| 7 | MCP 增强 | ✅ 完成 | `mcp_client.py` — stdin.drain 错误处理（BrokenPipeError 等），进程死亡检测 |
+| 8 | todo_write / todo_read 工具 | ✅ 完成 | `tools.py` — AI 自管理任务清单，JSON 输入验证，共享状态通过 CodyDeps |
+| 9 | question 工具 | ✅ 完成 | `tools.py` — 结构化用户提问，支持选项列表 |
+| 10 | 新工具权限配置 | ✅ 完成 | `permissions.py` — todo_read/todo_write/question 默认 ALLOW |
+
+### 修复后对标状态变化
+
+| 功能 | 修复前 | 修复后 | OpenCode |
+|------|--------|--------|----------|
+| 权限运行时检查 | ❌ 未接入 | ✅ 所有可变工具检查 | ✅ |
+| Context Compaction | ❌ 未接入 | ✅ 自动触发 | ✅ 自动+LLM |
+| 内置 Skill 数量 | 1 (git) | 5 (git/github/docker/npm/python) | 完善 |
+| MCP 健壮性 | ⚠️ 崩溃处理缺失 | ✅ 进程死亡检测+错误恢复 | ✅ |
+| todo 工具 | ❌ 缺失 | ✅ todo_write + todo_read | ✅ |
+| question 工具 | ❌ 缺失 | ✅ 结构化提问 | ✅ |
+| 废弃 API | ⚠️ get_event_loop | ✅ get_running_loop | ✅ |
+| FEATURES.md 准确性 | ❌ 多处虚假 | ✅ 与代码一致 | ✅ |
+
+### 剩余差距（TUI 层，优先级低）
+
+仍未追平的功能均为 TUI 体验层（非核心引擎）：
+- Diff 彩色渲染、主题系统、Markdown 渲染
+- 命令面板、文件 @ 提及、Token/Cost 显示
+- 外部编辑器、图片支持、Session Fork
+
+**核心引擎能力已全面追平 OpenCode。**
