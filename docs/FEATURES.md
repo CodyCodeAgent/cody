@@ -469,9 +469,9 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] 会话管理 — `create_session()`, `list_sessions()`, `get_session()`, `delete_session()`
 - [x] 错误处理 — `CodyError`, `CodyConnectionError`, `CodyNotFoundError`
 - [x] 19 个 SDK 测试（12 sync + 7 async integration）
-- [ ] 连接管理 — 自动重连、超时、健康检查
+- [ ] 自动重连 — 断线重试、指数退避（超时和健康检查已在核心方法中实现）
 
-**P1：MCP Client 集成**
+**P1：MCP Client 集成**（配置数据结构 `MCPServerConfig`/`MCPConfig` 已定义）
 - [ ] MCP Client 实现（基于 mcp Python SDK）
 - [ ] 从配置文件加载 MCP Server
 - [ ] MCP Server 生命周期管理（启动/停止/重连）
@@ -504,8 +504,8 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 ### v1.0.0 — 生产就绪
 
 **P3：安全与可靠性**
-- [ ] OAuth 2.0 认证
-- [ ] 工具级权限系统
+- [ ] OAuth 2.0 认证（`AuthConfig` 已定义 oauth 字段，待实现实际流程）
+- [ ] 工具级权限系统（已有基础命令过滤和危险命令拦截，待实现 per-tool 细粒度权限）
 - [ ] 文件修改 undo/redo
 - [ ] 审计日志
 - [ ] 速率限制
