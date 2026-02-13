@@ -372,46 +372,155 @@ cody "使用项目 B 的配置"
 
 ---
 
+## 竞品分析
+
+### 主要竞品
+
+| 功能 | Cody | OpenCode/Crush | Claude Code | Cursor | Aider |
+|------|------|---------------|-------------|--------|-------|
+| CLI 模式 | ✅ | ✅ | ✅ | ❌ | ✅ |
+| 交互式 TUI | ❌ | ✅（Bubble Tea） | ✅ | N/A | ❌ |
+| RPC 调用 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Skill 系统 | ✅ | ✅ | ❌ | ❌ | ❌ |
+| MCP 支持 | 🔲 仅数据结构 | ✅ | ✅ | ❌ | ❌ |
+| LSP 集成 | ❌ | ✅（30+ 语言） | ❌ | ✅（内置） | ❌ |
+| 多模型 | ✅ | ✅（75+ 提供商） | ❌ | ✅ | ✅ |
+| 子 Agent | ❌ | ❌ | ✅ | ❌ | ❌ |
+| 会话管理 | ❌ | ✅（SQLite） | ✅ | ✅ | ✅ |
+| Web 搜索/抓取 | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Undo/Redo | ❌ | ✅ | ❌ | ✅ | ✅ |
+| GitHub 集成 | ❌ | ✅（PR/Issue 触发）| ✅ | ✅ | ✅ |
+| 开源 | ✅（MIT） | ✅（MIT） | ❌ | ❌ | ✅ |
+
+### OpenCode/Crush 重点能力分析
+
+**OpenCode**（SST 维护，MIT 开源，10.9K Stars）和 **Crush**（Charm 团队维护，原作者在此，Charm License 私有协议）是同源分裂的两个项目。它们的核心优势：
+
+1. **LSP 集成** — 内置 30+ 语言服务器，AI 不仅靠文本推理，还能获取编译器级别的类型信息、诊断错误、引用关系
+2. **精美 TUI** — 基于 Bubble Tea 的终端界面，Build/Plan 双模式，Vim 风格编辑器
+3. **会话系统** — SQLite 持久化，多会话切换，Auto Compact 自动摘要压缩上下文
+4. **丰富的内置工具** — bash, read, write, edit, grep, glob, patch, webfetch, websearch, todowrite, question 等
+5. **权限系统** — 工具级别的权限控制
+
+### Cody 的差异化优势
+
+1. **RPC Server 模式** — OpenCode/Crush 没有，Cody 可作为"可嵌入的 AI 编码引擎"
+2. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
+3. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
+4. **子 Agent 架构**（规划中） — Python asyncio 天然适合并发 Agent 编排
+
+---
+
+## 战略定位
+
+**核心策略：不在 TUI 颜值上和 Charm 团队卷，重点放在 AI 能力深度和可嵌入性。**
+
+Cody 的目标是成为：
+- 对**程序员**：一个能力强大的终端 AI 编程助手（CLI + 交互模式）
+- 对**其他 AI 系统**：一个可嵌入的 AI 编码引擎（RPC Server）
+- 对**自动化系统**：一个可集成到 CI/CD 的编码工具
+
+---
+
 ## 路线图
 
-### v0.1.0（MVP）
-- [x] 基础 Agent 框架
-- [x] 核心工具（file/exec）
-- [x] CLI 基本功能
-- [x] 项目配置支持
+### v0.1.0（MVP）✅ 已完成
+- [x] 基础 Agent 框架（Pydantic AI）
+- [x] 核心工具（read_file, write_file, edit_file, list_directory, exec_command）
+- [x] CLI 基本功能（run, init, skills, config）
+- [x] 项目配置支持（全局/项目级 config.json）
+- [x] Skill 系统基础（三层加载、SKILL.md、enable/disable）
+- [x] RPC Server 基础（FastAPI, /run, /run/stream, /tool, /skills, /health）
 
-### v0.2.0
-- [ ] Skill 系统
-- [ ] RPC Server
-- [ ] OAuth 认证
-- [ ] 更多内置工具
+### v0.2.0 — 让 Cody "能用起来"
 
-### v0.3.0
-- [ ] MCP 集成
-- [ ] 子 Agent 系统
-- [ ] Web UI（可选）
-- [ ] 插件市场
+**P0：交互式模式（核心）**
+- [ ] REPL/Chat 交互模式（`cody chat`），支持持续对话
+- [ ] 基于 prompt_toolkit 或 Textual 的终端交互界面
+- [ ] 流式输出显示（打字机效果）
+- [ ] 输入历史、自动补全
 
-### v1.0.0
-- [ ] 生产就绪
-- [ ] 完整文档
-- [ ] 性能优化
-- [ ] 安全加固
+**P0：补齐基础工具**
+- [ ] `grep(pattern, path)` — 正则搜索文件内容
+- [ ] `glob(pattern)` — 按模式匹配查找文件
+- [ ] `patch(path, diff)` — 应用 diff 补丁修改文件
+- [ ] `search_files(query, path)` — 模糊搜索文件名
+
+**P0：会话与上下文管理**
+- [ ] SQLite 持久化对话历史
+- [ ] `--continue` / `--session <id>` 继续/切换会话
+- [ ] Auto Compact — 接近上下文窗口限制时自动摘要压缩
+- [ ] 会话列表查看和管理
+
+### v0.3.0 — 让 Cody "好用"
+
+**P1：LSP 集成**
+- [ ] LSP Client 基础框架（基于 pygls 或自建）
+- [ ] Python 语言服务器支持（pyright）
+- [ ] TypeScript 语言服务器支持（typescript-language-server）
+- [ ] Go 语言服务器支持（gopls）
+- [ ] LSP 诊断自动反馈给 LLM（AI 改完代码后立刻知道有没有错）
+- [ ] AI 可调用 go-to-definition、find-references
+- [ ] LSP 服务器自动检测和按需启动
+
+**P1：MCP 集成（落地实现）**
+- [ ] MCP Client 实现（基于 mcp Python SDK）
+- [ ] 从配置文件加载 MCP Server
+- [ ] MCP Server 生命周期管理（启动/停止/重连）
+- [ ] MCP 工具自动注册到 Agent
+- [ ] 常用 MCP Server 预置配置（GitHub、数据库、文件系统）
+
+**P1：Web 能力**
+- [ ] `webfetch(url)` — 抓取网页内容，转为 Markdown
+- [ ] `websearch(query)` — 搜索引擎集成（Exa / Tavily / SerpAPI）
+- [ ] 搜索结果摘要和提取
+
+**P1：用户交互增强**
+- [ ] `question()` 工具 — AI 在执行过程中向用户提问
+- [ ] 工具执行前确认提示（可配置）
+- [ ] `todowrite` / `todoread` — AI 管理任务列表
+
+### v0.4.0 — 让 Cody "有特色"
+
+**P2：子 Agent 系统**
+- [ ] SubAgentManager 实现
+- [ ] `spawn_agent(task, type)` — 孵化子 Agent
+- [ ] `get_agent_status(agent_id)` — 查询状态
+- [ ] `kill_agent(agent_id)` — 终止子 Agent
+- [ ] 子 Agent 类型：code（编码）、research（研究）、test（测试）
+- [ ] asyncio 并发运行，资源限制（最大数量、超时）
+- [ ] 结果汇总回主 Agent
+
+**P2：RPC Server 增强**
+- [ ] WebSocket 实时双向通信
+- [ ] 会话管理 API（创建/恢复/列表）
+- [ ] 工具级权限 API
+- [ ] 流式工具调用事件推送
+- [ ] SDK 封装（Python client / TypeScript client）
+- [ ] 完善 API 文档（OpenAPI / Swagger）
+
+**P2：Undo/Redo 与安全**
+- [ ] 文件修改记录与回滚（undo/redo）
+- [ ] 工具级权限系统（每次执行可配置是否需要确认）
+- [ ] 审计日志（记录所有命令执行、文件修改、API 调用）
+- [ ] 敏感信息检测（防止 .env、密钥等被意外操作）
+
+### v1.0.0 — 让 Cody "可信赖"
+
+**P3：生产就绪**
+- [ ] 完整测试覆盖（单元测试 + 集成测试 + RPC 测试）
+- [ ] 性能优化（Skill 缓存、模型响应缓存、并发工具调用）
+- [ ] 错误处理和恢复机制
+- [ ] 完整用户文档和开发者文档
+
+**P3：生态扩展**
+- [ ] GitHub 集成（PR/Issue 评论触发 Cody）
+- [ ] CI/CD 集成指南和模板
+- [ ] 自定义命令系统
+- [ ] 更多内置 Skills（github, docker, npm, python, web）
+- [ ] OAuth 2.0 认证流程
+- [ ] Desktop App / IDE 插件（可选）
 
 ---
 
-## 竞品对比
-
-| 功能 | Cody | Claude Code | Cursor | Aider |
-|------|------|-------------|--------|-------|
-| CLI 模式 | ✅ | ✅ | ❌ | ✅ |
-| RPC 调用 | ✅ | ❌ | ❌ | ❌ |
-| Skill 系统 | ✅ | ❌ | ❌ | ❌ |
-| MCP 支持 | ✅ | ✅ | ❌ | ❌ |
-| 多模型 | ✅ | ❌ | ✅ | ✅ |
-| 子 Agent | ✅ | ❌ | ❌ | ❌ |
-| 开源 | ✅ | ❌ | ❌ | ✅ |
-
----
-
-**最后更新：** 2026-01-28
+**最后更新：** 2026-02-13
