@@ -35,6 +35,19 @@ class MCPConfig(BaseModel):
     servers: list[MCPServerConfig] = Field(default_factory=list)
 
 
+class ToolPermissionConfig(BaseModel):
+    """Per-tool permission overrides"""
+    overrides: dict[str, str] = Field(default_factory=dict)
+    default_level: str = "confirm"
+
+
+class RateLimitConfig(BaseModel):
+    """Rate limiting configuration"""
+    enabled: bool = False
+    max_requests: int = 60
+    window_seconds: float = 60.0
+
+
 class SecurityConfig(BaseModel):
     """Security configuration"""
     allowed_commands: Optional[list[str]] = None
@@ -49,6 +62,8 @@ class Config(BaseModel):
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
+    rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
 
     @classmethod
     def load(cls, path: Optional[Union[Path, str]] = None) -> "Config":

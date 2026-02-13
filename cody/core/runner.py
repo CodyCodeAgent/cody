@@ -13,9 +13,12 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
+from .audit import AuditLogger
 from .config import Config
+from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
+from .permissions import PermissionLevel, PermissionManager
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
@@ -31,6 +34,9 @@ class CodyDeps:
     mcp_client: Optional[MCPClient] = None
     sub_agent_manager: Optional[SubAgentManager] = None
     lsp_client: Optional[LSPClient] = None
+    audit_logger: Optional[AuditLogger] = None
+    permission_manager: Optional[PermissionManager] = None
+    file_history: Optional[FileHistory] = None
 
 
 class AgentRunner:
@@ -54,6 +60,18 @@ class AgentRunner:
 
         # LSP client
         self._lsp_client = LSPClient(workdir=self.workdir)
+
+        # Audit logger
+        self._audit_logger = AuditLogger()
+
+        # Permission manager
+        self._permission_manager = PermissionManager(
+            overrides=self.config.permissions.overrides,
+            default_level=PermissionLevel(self.config.permissions.default_level),
+        )
+
+        # File history
+        self._file_history = FileHistory(workdir=self.workdir)
 
         # Create agent
         self.agent = self._create_agent()
@@ -111,6 +129,11 @@ class AgentRunner:
         agent.tool(tools.lsp_references)
         agent.tool(tools.lsp_hover)
 
+        # File history tools
+        agent.tool(tools.undo_file)
+        agent.tool(tools.redo_file)
+        agent.tool(tools.list_file_changes)
+
         return agent
 
     def _create_deps(self) -> CodyDeps:
@@ -122,6 +145,9 @@ class AgentRunner:
             mcp_client=self._mcp_client,
             sub_agent_manager=self._sub_agent_manager,
             lsp_client=self._lsp_client,
+            audit_logger=self._audit_logger,
+            permission_manager=self._permission_manager,
+            file_history=self._file_history,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────

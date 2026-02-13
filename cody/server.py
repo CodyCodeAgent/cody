@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
 
@@ -11,7 +12,10 @@ from pydantic import BaseModel
 import uvicorn
 
 from .core import Config, AgentRunner, SessionStore
+from .core.audit import AuditLogger, AuditEvent
+from .core.auth import AuthError, AuthManager
 from .core.errors import CodyAPIError, ErrorCode, ErrorDetail
+from .core.rate_limiter import RateLimiter
 from .core.skill_manager import SkillManager
 from .core.runner import CodyDeps
 
@@ -47,7 +51,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.4.0"
+    version: str = "0.5.0"
 
 
 class ErrorResponse(BaseModel):
@@ -74,8 +78,59 @@ class SessionDetailResponse(SessionResponse):
 app = FastAPI(
     title="Cody RPC Server",
     description="AI Coding Assistant RPC API",
-    version="0.4.0",
+    version="0.5.0",
 )
+
+
+# ── Server-level singletons ─────────────────────────────────────────────────
+
+_audit_logger: Optional[AuditLogger] = None
+_auth_manager: Optional[AuthManager] = None
+_rate_limiter: Optional[RateLimiter] = None
+_rate_limiter_checked = False
+
+
+def _get_audit_logger() -> AuditLogger:
+    global _audit_logger
+    if _audit_logger is None:
+        _audit_logger = AuditLogger()
+    return _audit_logger
+
+
+def _get_auth_manager() -> Optional[AuthManager]:
+    global _auth_manager
+    if _auth_manager is None:
+        try:
+            config = Config.load()
+            _auth_manager = AuthManager(config=config.auth)
+        except Exception:
+            return None
+    return _auth_manager
+
+
+def _get_rate_limiter() -> Optional[RateLimiter]:
+    global _rate_limiter, _rate_limiter_checked
+    if not _rate_limiter_checked:
+        _rate_limiter_checked = True
+        try:
+            config = Config.load()
+            if config.rate_limit.enabled:
+                _rate_limiter = RateLimiter(
+                    max_requests=config.rate_limit.max_requests,
+                    window_seconds=config.rate_limit.window_seconds,
+                )
+        except Exception:
+            pass
+    return _rate_limiter
+
+
+def _reset_server_state():
+    """Reset server-level singletons (for testing)."""
+    global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked
+    _audit_logger = None
+    _auth_manager = None
+    _rate_limiter = None
+    _rate_limiter_checked = False
 
 
 # ── Error handler ────────────────────────────────────────────────────────────
@@ -108,6 +163,141 @@ def _raise_structured(
 def _get_session_store() -> SessionStore:
     """Get the session store (simple factory, no DI overhead)."""
     return SessionStore()
+
+
+# ── Middleware: Auth ─────────────────────────────────────────────────────────
+
+# Endpoints that do not require authentication
+_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Authenticate requests using Bearer token or API key."""
+    path = request.url.path
+    # Skip auth for public endpoints and WebSocket upgrade
+    if path in _PUBLIC_PATHS or path.startswith("/docs"):
+        return await call_next(request)
+
+    try:
+        auth_mgr = _get_auth_manager()
+    except Exception:
+        return await call_next(request)
+
+    if auth_mgr is None or not auth_mgr.is_configured:
+        # Auth not configured — allow all
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header:
+        try:
+            _get_audit_logger().log(
+                event=AuditEvent.AUTH_FAILURE,
+                args_summary=f"path={path}",
+                result_summary="Missing Authorization header",
+                success=False,
+            )
+        except Exception:
+            pass
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "AUTH_FAILED", "message": "Missing Authorization header"}},
+        )
+
+    # Support "Bearer <token>" and raw key
+    credential = auth_header
+    if auth_header.startswith("Bearer "):
+        credential = auth_header[7:]
+
+    try:
+        auth_mgr.validate(credential)
+    except AuthError as e:
+        try:
+            _get_audit_logger().log(
+                event=AuditEvent.AUTH_FAILURE,
+                args_summary=f"path={path}",
+                result_summary=str(e),
+                success=False,
+            )
+        except Exception:
+            pass
+        return JSONResponse(
+            status_code=401,
+            content={"error": {"code": "AUTH_FAILED", "message": str(e)}},
+        )
+
+    return await call_next(request)
+
+
+# ── Middleware: Rate limiting ────────────────────────────────────────────────
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Apply rate limiting based on client IP."""
+    try:
+        limiter = _get_rate_limiter()
+    except Exception:
+        return await call_next(request)
+
+    if limiter is None:
+        return await call_next(request)
+
+    path = request.url.path
+    if path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    result = limiter.hit(client_ip)
+
+    if not result.allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": ErrorCode.RATE_LIMITED.value,
+                    "message": "Rate limit exceeded",
+                }
+            },
+            headers={
+                "Retry-After": str(int(result.retry_after or 1)),
+                "X-RateLimit-Limit": str(result.limit),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+    response = await call_next(request)
+    response.headers["X-RateLimit-Limit"] = str(result.limit)
+    response.headers["X-RateLimit-Remaining"] = str(result.remaining)
+    return response
+
+
+# ── Middleware: Audit ────────────────────────────────────────────────────────
+
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    """Log all API requests to the audit log."""
+    path = request.url.path
+    if path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    start = time.monotonic()
+    response = await call_next(request)
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+
+    try:
+        _get_audit_logger().log(
+            event=AuditEvent.API_REQUEST,
+            tool_name=f"{request.method} {path}",
+            args_summary=f"client={request.client.host if request.client else 'unknown'}",
+            result_summary=f"status={response.status_code} elapsed={elapsed_ms}ms",
+            success=response.status_code < 400,
+        )
+    except Exception:
+        pass
+
+    return response
 
 
 # ── Health ───────────────────────────────────────────────────────────────────
@@ -407,6 +597,37 @@ async def delete_session(session_id: str):
             status_code=404,
         )
     return {"status": "deleted", "id": session_id}
+
+
+# ── Audit ────────────────────────────────────────────────────────────────────
+
+
+@app.get("/audit")
+async def query_audit(
+    event: Optional[str] = None,
+    since: Optional[str] = None,
+    limit: int = 50,
+):
+    """Query audit log entries"""
+    logger = _get_audit_logger()
+    entries = logger.query(event=event, since=since, limit=limit)
+    return {
+        "entries": [
+            {
+                "id": e.id,
+                "timestamp": e.timestamp,
+                "event": e.event,
+                "tool_name": e.tool_name,
+                "args_summary": e.args_summary,
+                "result_summary": e.result_summary,
+                "session_id": e.session_id,
+                "workdir": e.workdir,
+                "success": e.success,
+            }
+            for e in entries
+        ],
+        "total": logger.count(event=event),
+    }
 
 
 # ── Sub-Agent ────────────────────────────────────────────────────────────────
