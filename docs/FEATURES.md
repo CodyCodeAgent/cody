@@ -6,16 +6,19 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 
 ## 核心定位
 
-**目标用户：**
-- 程序员（直接使用 CLI）
-- AI Agent（通过 RPC 调用 Cody）
-- 自动化系统（集成到 CI/CD）
+> **Cody 是一个可嵌入的 AI 编程引擎，不是又一个 CLI 工具。**
+> CLI 只是引擎的一个薄壳。核心价值在于 Server/SDK，让别人把 AI 编程能力嵌入到自己的系统中。
+
+**目标用户（按优先级）：**
+1. **AI 系统/平台** — 通过 RPC Server / SDK 嵌入 Cody 引擎（**主赛道**）
+2. **自动化系统** — 集成到 CI/CD、代码审查、自动修复流程
+3. **程序员** — 通过 CLI 直接使用（次要，但是最好的 dogfooding 方式）
 
 **核心价值：**
-- AI 驱动的代码生成和编辑
-- 可扩展的工具和技能系统
-- 支持多种调用方式（CLI + RPC）
-- 项目级配置和技能管理
+- 可嵌入的 AI 编程能力（Server + SDK）
+- 高质量的内置工具集（文件、搜索、命令执行）
+- 可扩展的 Skill 系统
+- 子 Agent 编排（任务分解、并行执行）
 
 ---
 
@@ -380,13 +383,13 @@ cody "使用项目 B 的配置"
 |------|------|---------------|-------------|--------|-------|
 | CLI 模式 | ✅ | ✅ | ✅ | ❌ | ✅ |
 | 交互式 TUI | ❌ | ✅（Bubble Tea） | ✅ | N/A | ❌ |
-| RPC 调用 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **RPC Server** | **✅ 核心优势** | ❌ | ❌ | ❌ | ❌ |
 | Skill 系统 | ✅ | ✅ | ❌ | ❌ | ❌ |
 | MCP 支持 | 🔲 仅数据结构 | ✅ | ✅ | ❌ | ❌ |
 | LSP 集成 | ❌ | ✅（30+ 语言） | ❌ | ✅（内置） | ❌ |
 | 多模型 | ✅ | ✅（75+ 提供商） | ❌ | ✅ | ✅ |
 | 子 Agent | ❌ | ❌ | ✅ | ❌ | ❌ |
-| 会话管理 | ❌ | ✅（SQLite） | ✅ | ✅ | ✅ |
+| 会话管理 | ✅（SQLite） | ✅（SQLite） | ✅ | ✅ | ✅ |
 | Web 搜索/抓取 | ❌ | ✅ | ✅ | ✅ | ❌ |
 | Undo/Redo | ❌ | ✅ | ❌ | ✅ | ✅ |
 | GitHub 集成 | ❌ | ✅（PR/Issue 触发）| ✅ | ✅ | ✅ |
@@ -413,12 +416,19 @@ cody "使用项目 B 的配置"
 
 ## 战略定位
 
-**核心策略：不在 TUI 颜值上和 Charm 团队卷，重点放在 AI 能力深度和可嵌入性。**
+**核心策略：引擎能力做深，CLI 够用就行，Server/SDK 是差异化重点。**
 
-Cody 的目标是成为：
-- 对**程序员**：一个能力强大的终端 AI 编程助手（CLI + 交互模式）
-- 对**其他 AI 系统**：一个可嵌入的 AI 编码引擎（RPC Server）
-- 对**自动化系统**：一个可集成到 CI/CD 的编码工具
+CLI 也做，但不花大量精力打磨 TUI 体验 — 不跟 Charm 团队比颜值，不跟 Anthropic 比 CLI 功能。
+我们的精力花在：
+- **引擎核心** — 工具质量、Agent 能力、准确度（这是一切的基础）
+- **Server/SDK** — 可嵌入的 AI 编码引擎（别人没有的东西）
+- **子 Agent + MCP** — Python 生态天然适合 AI Agent 编排
+
+Cody 的优先级：
+1. **核心引擎** — 工具、Agent、Session，准确度必须到位
+2. **Server + SDK** — 核心价值，让别人能嵌入使用
+3. **子 Agent + MCP** — 差异化能力
+4. **CLI** — 功能够用即可，不追求极致体验
 
 ---
 
@@ -430,96 +440,82 @@ Cody 的目标是成为：
 - [x] CLI 基本功能（run, init, skills, config）
 - [x] 项目配置支持（全局/项目级 config.json）
 - [x] Skill 系统基础（三层加载、SKILL.md、enable/disable）
-- [x] RPC Server 基础（FastAPI, /run, /run/stream, /tool, /skills, /health）
+- [x] RPC Server 骨架（FastAPI, /run, /run/stream, /tool, /skills, /health）
 
-### v0.2.0 — 让 Cody "能用起来"
+### v0.2.0（工具与会话）✅ 已完成
+- [x] 搜索工具（grep, glob, search_files）— 正则搜索、模式匹配、模糊文件名搜索
+- [x] patch 工具 — 应用 unified diff 补丁
+- [x] 搜索准确度对齐 ripgrep — 二进制文件检测、.gitignore 支持、默认忽略目录
+- [x] 路径遍历安全修复 — resolve() 防止 symlink 逃逸
+- [x] SQLite 会话持久化 — 对话历史存储、多会话管理
+- [x] CLI 交互模式 — `cody chat`、`--continue`、`--session`
+- [x] 81 个单元测试，ruff 零告警
 
-**P0：交互式模式（核心）**
-- [ ] REPL/Chat 交互模式（`cody chat`），支持持续对话
-- [ ] 基于 prompt_toolkit 或 Textual 的终端交互界面
-- [ ] 流式输出显示（打字机效果）
-- [ ] 输入历史、自动补全
+### v0.3.0 — 引擎化（⬅ 当前阶段，核心里程碑）
 
-**P0：补齐基础工具**
-- [ ] `grep(pattern, path)` — 正则搜索文件内容
-- [ ] `glob(pattern)` — 按模式匹配查找文件
-- [ ] `patch(path, diff)` — 应用 diff 补丁修改文件
-- [ ] `search_files(query, path)` — 模糊搜索文件名
+> **本阶段目标：把 Cody 从一个 CLI 工具变成一个可嵌入的 AI 编程引擎。**
+> Server 和 SDK 是重点，CLI 功能冻结。
 
-**P0：会话与上下文管理**
-- [ ] SQLite 持久化对话历史
-- [ ] `--continue` / `--session <id>` 继续/切换会话
-- [ ] Auto Compact — 接近上下文窗口限制时自动摘要压缩
-- [ ] 会话列表查看和管理
+**P0：Server API 完善**
+- [ ] Session API — `POST /sessions`, `GET /sessions`, `GET /sessions/:id`, `DELETE /sessions/:id`
+- [ ] 带会话的对话 — `POST /run` 支持 `session_id` 参数，自动持久化对话历史
+- [ ] 流式工具事件 — SSE 推送工具调用过程（`tool_start`, `tool_result`, `text_delta`, `done`）
+- [ ] WebSocket 双向通信 — 实时交互（用户中途提问/取消）
+- [ ] 结构化错误响应 — 统一错误码和错误格式
+- [ ] Server 完整测试 — 每个端点都有测试（目前 0 个，不可接受）
 
-### v0.3.0 — 让 Cody "好用"
+**P0：Python SDK**
+- [ ] `CodyClient` 类 — `pip install cody-ai` 后可直接调用引擎
+- [ ] 同步 + 异步接口 — `client.run()` / `await client.arun()`
+- [ ] 流式响应 — `async for chunk in client.stream(...)`
+- [ ] 会话管理 — `client.create_session()`, `client.resume_session(id)`
+- [ ] 连接管理 — 自动重连、超时、健康检查
 
-**P1：LSP 集成**
-- [ ] LSP Client 基础框架（基于 pygls 或自建）
-- [ ] Python 语言服务器支持（pyright）
-- [ ] TypeScript 语言服务器支持（typescript-language-server）
-- [ ] Go 语言服务器支持（gopls）
-- [ ] LSP 诊断自动反馈给 LLM（AI 改完代码后立刻知道有没有错）
-- [ ] AI 可调用 go-to-definition、find-references
-- [ ] LSP 服务器自动检测和按需启动
-
-**P1：MCP 集成（落地实现）**
+**P1：MCP Client 集成**
 - [ ] MCP Client 实现（基于 mcp Python SDK）
 - [ ] 从配置文件加载 MCP Server
 - [ ] MCP Server 生命周期管理（启动/停止/重连）
 - [ ] MCP 工具自动注册到 Agent
-- [ ] 常用 MCP Server 预置配置（GitHub、数据库、文件系统）
+- [ ] 常用 MCP Server 预置配置（GitHub、数据库）
 
-**P1：Web 能力**
-- [ ] `webfetch(url)` — 抓取网页内容，转为 Markdown
-- [ ] `websearch(query)` — 搜索引擎集成（Exa / Tavily / SerpAPI）
-- [ ] 搜索结果摘要和提取
-
-**P1：用户交互增强**
-- [ ] `question()` 工具 — AI 在执行过程中向用户提问
-- [ ] 工具执行前确认提示（可配置）
-- [ ] `todowrite` / `todoread` — AI 管理任务列表
-
-### v0.4.0 — 让 Cody "有特色"
-
-**P2：子 Agent 系统**
-- [ ] SubAgentManager 实现
-- [ ] `spawn_agent(task, type)` — 孵化子 Agent
-- [ ] `get_agent_status(agent_id)` — 查询状态
-- [ ] `kill_agent(agent_id)` — 终止子 Agent
-- [ ] 子 Agent 类型：code（编码）、research（研究）、test（测试）
-- [ ] asyncio 并发运行，资源限制（最大数量、超时）
+**P1：子 Agent 系统**
+- [ ] SubAgentManager — asyncio 并发编排
+- [ ] `spawn_agent(task, type)` — 孵化子 Agent（code/research/test）
+- [ ] 资源限制（最大并发数、单 Agent 超时）
 - [ ] 结果汇总回主 Agent
 
-**P2：RPC Server 增强**
-- [ ] WebSocket 实时双向通信
-- [ ] 会话管理 API（创建/恢复/列表）
-- [ ] 工具级权限 API
-- [ ] 流式工具调用事件推送
-- [ ] SDK 封装（Python client / TypeScript client）
-- [ ] 完善 API 文档（OpenAPI / Swagger）
+### v0.4.0 — 智能化
 
-**P2：Undo/Redo 与安全**
-- [ ] 文件修改记录与回滚（undo/redo）
-- [ ] 工具级权限系统（每次执行可配置是否需要确认）
-- [ ] 审计日志（记录所有命令执行、文件修改、API 调用）
-- [ ] 敏感信息检测（防止 .env、密钥等被意外操作）
+**P2：LSP 集成**
+- [ ] LSP Client 框架
+- [ ] Python (pyright) / TypeScript / Go (gopls) 支持
+- [ ] LSP 诊断自动反馈给 LLM
+- [ ] go-to-definition、find-references 工具
 
-### v1.0.0 — 让 Cody "可信赖"
+**P2：Web 能力**
+- [ ] `webfetch(url)` — 抓取网页转 Markdown
+- [ ] `websearch(query)` — 搜索引擎集成
 
-**P3：生产就绪**
-- [ ] 完整测试覆盖（单元测试 + 集成测试 + RPC 测试）
-- [ ] 性能优化（Skill 缓存、模型响应缓存、并发工具调用）
-- [ ] 错误处理和恢复机制
-- [ ] 完整用户文档和开发者文档
+**P2：上下文管理**
+- [ ] Auto Compact — 接近窗口限制时自动摘要压缩
+- [ ] 大文件分块读取
+- [ ] 智能上下文选择（只喂相关代码给 LLM）
 
-**P3：生态扩展**
-- [ ] GitHub 集成（PR/Issue 评论触发 Cody）
-- [ ] CI/CD 集成指南和模板
-- [ ] 自定义命令系统
-- [ ] 更多内置 Skills（github, docker, npm, python, web）
-- [ ] OAuth 2.0 认证流程
-- [ ] Desktop App / IDE 插件（可选）
+### v1.0.0 — 生产就绪
+
+**P3：安全与可靠性**
+- [ ] OAuth 2.0 认证
+- [ ] 工具级权限系统
+- [ ] 文件修改 undo/redo
+- [ ] 审计日志
+- [ ] 速率限制
+
+**P3：生态**
+- [ ] TypeScript SDK
+- [ ] GitHub 集成（PR/Issue 触发）
+- [ ] CI/CD 模板
+- [ ] 更多内置 Skills
+- [ ] Docker 镜像
 
 ---
 
