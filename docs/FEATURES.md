@@ -391,7 +391,7 @@ cody "使用项目 B 的配置"
 | 子 Agent | ✅ | ❌ | ✅ | ❌ | ❌ |
 | 会话管理 | ✅（SQLite） | ✅（SQLite） | ✅ | ✅ | ✅ |
 | Web 搜索/抓取 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Undo/Redo | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Undo/Redo | ✅ | ✅ | ❌ | ✅ | ✅ |
 | GitHub 集成 | ❌ | ✅（PR/Issue 触发）| ✅ | ✅ | ✅ |
 | 开源 | ✅（MIT） | ✅（MIT） | ❌ | ❌ | ✅ |
 
@@ -510,14 +510,23 @@ CLI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] 大文件分块读取 — `chunk_file()` 带重叠的分块切割
 - [x] 智能上下文选择 — `select_relevant_context()` 关键词匹配评分，token 预算控制
 
-### v1.0.0 — 生产就绪
+### v0.5.0 — 安全与可靠性 ✅ 已完成
+
+> **本阶段目标：为生产环境夯实安全基础——认证、权限、审计、限流、可撤销。**
 
 **P3：安全与可靠性**
-- [ ] OAuth 2.0 认证（`AuthConfig` 已定义 oauth 字段，待实现实际流程）
-- [ ] 工具级权限系统（已有基础命令过滤和危险命令拦截，待实现 per-tool 细粒度权限）
-- [ ] 文件修改 undo/redo
-- [ ] 审计日志
-- [ ] 速率限制
+- [x] OAuth 2.0 认证 — `AuthManager` 支持 API Key 验证 + HMAC-SHA256 签名 token 签发/校验/刷新
+- [x] 工具级权限系统 — `PermissionManager` per-tool allow/deny/confirm，内置默认规则，支持用户覆盖
+- [x] 文件修改 undo/redo — `FileHistory` 记录 write/edit/patch 快照，undo/redo 栈
+- [x] 审计日志 — `AuditLogger` SQLite 持久化，8 种事件类型，query/count/clear
+- [x] 速率限制 — `RateLimiter` 滑动窗口算法，per-key 限流
+- [x] Server 三层中间件 — auth → rate_limit → audit，所有非公开端点自动拦截
+- [x] 新 API — `GET /audit` 查询审计日志
+- [x] 新工具 — `undo_file`, `redo_file`, `list_file_changes`
+
+**v0.5.0 总计：406 个测试，ruff 零告警**
+
+### v1.0.0 — 生产就绪
 
 **P3：生态**
 - [ ] TypeScript SDK

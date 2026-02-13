@@ -29,7 +29,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 
 ### 版本
 
-当前版本：**0.4.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
+当前版本：**0.5.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
 
 ---
 
@@ -54,8 +54,13 @@ cody/
 │       ├── lsp_client.py    # LSP 语言服务客户端
 │       ├── context.py       # 上下文管理 (compact, chunk)
 │       ├── errors.py        # 结构化错误 (ErrorCode, CodyAPIError)
-│       └── web.py           # Web 搜索 + 抓取
-├── tests/                   # 315 个测试
+│       ├── web.py           # Web 搜索 + 抓取
+│       ├── audit.py         # 审计日志 (SQLite)
+│       ├── auth.py          # OAuth 认证 (HMAC-SHA256 token)
+│       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
+│       ├── file_history.py  # 文件 undo/redo 快照
+│       └── rate_limiter.py  # 滑动窗口限流
+├── tests/                   # 406 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
@@ -88,6 +93,9 @@ AgentRunner
   ├── MCPClient (可选, 有 MCP 配置时才创建)
   ├── SubAgentManager
   ├── LSPClient
+  ├── AuditLogger
+  ├── PermissionManager
+  ├── FileHistory
   └── tools.* (通过 agent.tool() 注册)
 ```
 
@@ -107,6 +115,7 @@ AgentRunner
 | MCP | `mcp_call`, `mcp_list_tools` |
 | Web | `webfetch`, `websearch` |
 | LSP | `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover` |
+| 文件历史 | `undo_file`, `redo_file`, `list_file_changes` |
 
 **安全机制：** 每个文件/命令工具内调用 `_resolve_and_check(workdir, path)` 做路径遍历防护，确保操作不会逃出 workdir。
 
@@ -198,6 +207,7 @@ Server 和 SDK 都使用 `CodyAPIError` 异常，序列化为 `{"error": {"code"
 | `/sessions/{id}` | GET/DELETE | 会话详情/删除 |
 | `/agent/spawn` | POST | 孵化子 Agent |
 | `/agent/{id}` | GET/DELETE | 查询/终止子 Agent |
+| `/audit` | GET | 审计日志查询 |
 | `/ws` | WebSocket | 实时双向交互 |
 
 ---
@@ -295,6 +305,11 @@ cody-server --port 9000       # 指定端口
 | `test_errors.py` | `core/errors.py` |
 | `test_retry.py` | SDK retry 逻辑 |
 | `test_websocket.py` | WebSocket 端点 |
+| `test_audit.py` | `core/audit.py` |
+| `test_auth.py` | `core/auth.py` |
+| `test_permissions.py` | `core/permissions.py` |
+| `test_file_history.py` | `core/file_history.py` |
+| `test_rate_limiter.py` | `core/rate_limiter.py` |
 
 ---
 
@@ -328,12 +343,12 @@ cody-server --port 9000       # 指定端口
 
 详见 `docs/FEATURES.md` 底部。核心待办：
 
-### P3: 安全与可靠性
-- [ ] **OAuth 2.0 认证** — `AuthConfig` 已定义 oauth 字段，需实现实际授权流程
-- [ ] **工具级权限系统** — 已有基础命令过滤 + 危险命令拦截，需 per-tool 细粒度权限
-- [ ] **文件修改 undo/redo** — 当前无撤销机制
-- [ ] **审计日志** — 记录所有工具调用和文件修改
-- [ ] **速率限制** — Server 端请求限流
+### P3: 安全与可靠性 ✅ 已完成 (v0.5.0)
+- [x] **OAuth 2.0 认证** — `AuthManager` API key + HMAC-SHA256 token
+- [x] **工具级权限系统** — `PermissionManager` per-tool allow/deny/confirm
+- [x] **文件修改 undo/redo** — `FileHistory` + `undo_file`/`redo_file` 工具
+- [x] **审计日志** — `AuditLogger` SQLite 持久化 + `GET /audit` API
+- [x] **速率限制** — `RateLimiter` 滑动窗口 + Server 中间件
 
 ### P3: 生态
 - [ ] **TypeScript SDK** — 目前只有 Python SDK
@@ -344,11 +359,11 @@ cody-server --port 9000       # 指定端口
 
 ### 建议优先级
 
-1. **OAuth + 权限系统** — 生产环境必须有认证
-2. **审计日志** — 追踪 AI 的所有操作
-3. **更多 Skills** — 丰富功能覆盖
-4. **TypeScript SDK** — 扩大用户群
-5. **Docker** — 简化部署
+1. **更多 Skills** — 丰富功能覆盖
+2. **TypeScript SDK** — 扩大用户群
+3. **Docker** — 简化部署
+4. **GitHub 集成** — PR/Issue 自动化
+5. **CI/CD 模板** — GitHub Actions 等
 
 ---
 

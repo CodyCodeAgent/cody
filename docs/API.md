@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 0.4.0
+**版本：** 0.5.0
 
 ---
 
@@ -351,9 +351,81 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 ```json
 {
   "status": "ok",
-  "version": "0.4.0"
+  "version": "0.5.0"
 }
 ```
+
+---
+
+### 8. 审计日志
+
+#### GET /audit
+
+查询审计日志条目。
+
+**查询参数：**
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| event | string | null | 按事件类型过滤（tool_call, file_write, file_edit, command_exec, api_request, auth_failure 等）|
+| since | string | null | 起始时间（ISO 8601）|
+| limit | number | 50 | 返回条数上限 |
+
+**响应：**
+```json
+{
+  "entries": [
+    {
+      "id": "a1b2c3d4e5f6",
+      "timestamp": "2026-02-13T12:00:00+00:00",
+      "event": "tool_call",
+      "tool_name": "read_file",
+      "args_summary": "path=hello.py",
+      "result_summary": "Read 100 bytes",
+      "session_id": null,
+      "workdir": "/tmp/project",
+      "success": true
+    }
+  ],
+  "total": 42
+}
+```
+
+---
+
+## 认证
+
+Server 支持可选的认证中间件。配置 `auth` 后，所有非公开端点（`/health`, `/docs` 除外）都需要认证。
+
+**API Key 模式：**
+```bash
+curl -H 'Authorization: Bearer cody_your_api_key' http://localhost:8000/run ...
+```
+
+**Token 模式（OAuth）：**
+```bash
+curl -H 'Authorization: Bearer <signed-token>' http://localhost:8000/run ...
+```
+
+未配置认证时，所有请求放行。
+
+## 速率限制
+
+配置 `rate_limit.enabled = true` 后，Server 按客户端 IP 做滑动窗口限流。
+
+**限流响应（HTTP 429）：**
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Rate limit exceeded"
+  }
+}
+```
+
+**响应头：**
+- `X-RateLimit-Limit` — 窗口内最大请求数
+- `X-RateLimit-Remaining` — 剩余可用请求数
+- `Retry-After` — 限流时，需等待的秒数
 
 ---
 
@@ -442,6 +514,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 | SESSION_NOT_FOUND | 404 | 会话不存在 |
 | AGENT_NOT_FOUND | 404 | 子 Agent 不存在 |
 | AGENT_LIMIT_REACHED | 429 | 子 Agent 并发上限 |
+| RATE_LIMITED | 429 | 请求限流 |
 | TOOL_ERROR | 500 | 工具执行错误 |
 | AGENT_ERROR | 500 | 子 Agent 错误 |
 | SERVER_ERROR | 500 | 服务器内部错误 |
@@ -500,11 +573,9 @@ curl http://localhost:8000/health
 
 以下功能在 API 设计中规划，但尚未实现：
 
-- **认证** — Bearer Token / OAuth 2.0
 - **GET /config** / **PATCH /config** — 运行时配置管理
 - **GET /metrics** — 服务指标
 - **POST /skills/{name}/enable** / **disable** — Skill 启停 REST API
-- **速率限制** — 每分钟请求数限制
 
 ---
 
