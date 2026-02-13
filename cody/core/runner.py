@@ -3,7 +3,10 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
 from pydantic_ai import Agent
+from pydantic_ai.messages import ModelMessage
+
 from .config import Config
 from .skill_manager import SkillManager
 from . import tools
@@ -19,15 +22,15 @@ class CodyDeps:
 
 class AgentRunner:
     """Run Cody Agent with full context"""
-    
+
     def __init__(self, config: Optional[Config] = None, workdir: Optional[Path] = None):
         self.config = config or Config.load()
         self.workdir = Path(workdir) if workdir else Path.cwd()
         self.skill_manager = SkillManager(self.config)
-        
+
         # Create agent
         self.agent = self._create_agent()
-    
+
     def _create_agent(self) -> Agent:
         """Create Pydantic AI Agent with tools"""
         agent = Agent(
@@ -41,18 +44,25 @@ class AgentRunner:
                 "Always execute commands and file operations as needed to complete tasks."
             ),
         )
-        
-        # Register tools
+
+        # Register tools — file operations
         agent.tool(tools.read_file)
         agent.tool(tools.write_file)
         agent.tool(tools.edit_file)
         agent.tool(tools.list_directory)
+        # Search tools
+        agent.tool(tools.grep)
+        agent.tool(tools.glob)
+        agent.tool(tools.patch)
+        agent.tool(tools.search_files)
+        # Command execution
         agent.tool(tools.exec_command)
+        # Skill discovery
         agent.tool(tools.list_skills)
         agent.tool(tools.read_skill)
-        
+
         return agent
-    
+
     def _create_deps(self) -> CodyDeps:
         """Create dependencies"""
         return CodyDeps(
@@ -60,22 +70,36 @@ class AgentRunner:
             workdir=self.workdir,
             skill_manager=self.skill_manager,
         )
-    
-    async def run(self, prompt: str):
-        """Run agent with prompt"""
+
+    async def run(
+        self,
+        prompt: str,
+        message_history: Optional[list[ModelMessage]] = None,
+    ):
+        """Run agent with prompt, optionally continuing from history"""
         deps = self._create_deps()
-        result = await self.agent.run(prompt, deps=deps)
+        result = await self.agent.run(prompt, deps=deps, message_history=message_history)
         return result
-    
-    async def run_stream(self, prompt: str):
+
+    async def run_stream(
+        self,
+        prompt: str,
+        message_history: Optional[list[ModelMessage]] = None,
+    ):
         """Run agent with streaming"""
         deps = self._create_deps()
-        async with self.agent.run_stream(prompt, deps=deps) as result:
+        async with self.agent.run_stream(
+            prompt, deps=deps, message_history=message_history
+        ) as result:
             async for text in result.stream_text():
                 yield text
-    
-    def run_sync(self, prompt: str):
+
+    def run_sync(
+        self,
+        prompt: str,
+        message_history: Optional[list[ModelMessage]] = None,
+    ):
         """Run agent synchronously"""
         deps = self._create_deps()
-        result = self.agent.run_sync(prompt, deps=deps)
+        result = self.agent.run_sync(prompt, deps=deps, message_history=message_history)
         return result

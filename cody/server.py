@@ -1,11 +1,10 @@
 """RPC Server for Cody"""
 
-import asyncio
 from pathlib import Path
 from typing import AsyncIterator, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 import uvicorn
 
 from .core import Config, AgentRunner
