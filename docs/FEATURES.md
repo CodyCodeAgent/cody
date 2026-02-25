@@ -64,34 +64,60 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 - `question(text, options)` - 向用户提结构化选择题
 
 **Skill 元工具：**
-- `list_skills()` - 列出可用 Skills
-- `read_skill(name)` - 读取 Skill 文档
-- AI 根据 SKILL.md 学习使用方式
+- `list_skills()` — 列出可用 Skills（只返回元数据，渐进式加载）
+- `read_skill(name)` — 加载 Skill 完整指令（按需激活）
+- System prompt 自动注入 `<available_skills>` XML，AI 按上下文匹配
 
-### 3. Skill 系统
+### 3. Skill 系统（Agent Skills 开放标准）
 
-**动态加载：**
+> 完全兼容 [Agent Skills 开放标准](https://agentskills.io/) — Anthropic 发布，已被 Claude Code、GitHub Copilot、Codex CLI、Cursor 等 26+ 平台采纳。
+
+**SKILL.md 格式（YAML frontmatter + Markdown）：**
+```markdown
+---
+name: git
+description: Git version control operations. Use when working with git repositories.
+metadata:
+  author: cody
+  version: "1.0"
+---
+# Git Operations
+Instructions for the AI agent...
+```
+
+**目录结构（标准）：**
+```
+skill-name/
+├── SKILL.md          # 必须 — YAML frontmatter + Markdown 指令
+├── scripts/          # 可选 — 可执行脚本
+├── references/       # 可选 — 补充文档
+└── assets/           # 可选 — 模板、数据文件
+```
+
+**三层优先级加载：**
 ```
 .cody/skills/          # 项目 Skills（最高优先级）
 ~/.cody/skills/        # 全局 Skills
 {安装目录}/skills/     # 内置 Skills
 ```
 
-**Skill 结构：**
-```
-skills/github/
-├── SKILL.md          # AI 读取的文档
-├── examples/         # 示例（可选）
-└── scripts/          # 辅助脚本（可选）
-```
+**渐进式加载（Progressive Disclosure）：**
+1. 启动时 — 只解析 YAML frontmatter（name + description）
+2. 激活时 — 加载完整 SKILL.md body
+3. 按需 — 读取 scripts/、references/、assets/
 
-**内置 Skills：**
-- `git` - Git 操作
-- `github` - GitHub CLI 集成
-- `docker` - Docker 操作
-- `npm` - Node.js 项目管理
-- `python` - Python 项目管理
-- `web` - 网页搜索和抓取
+**内置 Skills（11 个）：**
+- `git` — Git 版本控制操作
+- `github` — GitHub CLI 集成
+- `docker` — Docker 容器管理
+- `npm` — Node.js/npm 项目管理
+- `python` — Python 项目管理
+- `web` — 网页搜索和抓取
+- `rust` — Rust/Cargo 项目管理
+- `go` — Go 项目管理
+- `java` — Java/Maven/Gradle 项目管理
+- `cicd` — CI/CD 流水线管理
+- `testing` — 跨语言测试策略
 
 **Skill 管理命令：**
 ```bash
@@ -148,7 +174,7 @@ cody skills disable <name>        # 禁用 Skill
 - 并行处理多个子任务
 - 专门化处理（编码/研究/测试分离）
 
-### 6. 三模式运行
+### 6. 四模式运行 + 双 SDK
 
 #### CLI 模式
 
@@ -381,7 +407,16 @@ const response = await fetch('http://localhost:8000/run', {
 });
 ```
 
-### 3. CI/CD 集成
+### 3. Go 集成
+```go
+client := cody.NewClient("http://localhost:8000")
+result, _ := client.Run(ctx, "创建一个 API 路由",
+    cody.WithWorkdir("/path/to/project"),
+)
+fmt.Println(result.Output)
+```
+
+### 4. CI/CD 集成
 ```yaml
 # .github/workflows/ai-review.yml
 - name: AI Code Review
@@ -435,9 +470,10 @@ cody "使用项目 B 的配置"
 ### Cody 的差异化优势
 
 1. **RPC Server 模式** — OpenCode/Crush 没有，Cody 可作为"可嵌入的 AI 编码引擎"
-2. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
-3. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
-4. **子 Agent 架构** — Python asyncio 并发 Agent 编排，code/research/test 专业化子 Agent
+2. **双 SDK（Python + Go）** — Python 和 Go 都有原生 SDK，覆盖主流后端生态
+3. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
+4. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
+5. **子 Agent 架构** — Python asyncio 并发 Agent 编排，code/research/test 专业化子 Agent
 
 ---
 
@@ -561,15 +597,57 @@ CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 
 **v0.5.0 总计：418 个测试，ruff 零告警**
 
-### v1.0.0 — 生产就绪
+### v1.0.0 — 生产就绪 ✅ 已完成
 
-**P3：生态**
-- [ ] TypeScript SDK
-- [ ] GitHub 集成（PR/Issue 触发）
-- [ ] CI/CD 模板
-- [ ] 更多内置 Skills
-- [ ] Docker 镜像
+> **本阶段目标：扩展生态——CI/CD 模板、更多内置 Skills，完成核心功能闭环。**
+
+**CI/CD 模板**
+- [x] GitHub Actions 模板 — `templates/github-actions/` 目录
+  - `ai-code-review.yml` — PR 自动 AI 代码审查
+  - `ai-fix-issues.yml` — Issue 标签触发自动修复并开 PR
+  - `ai-test-gen.yml` — 自动为变更文件生成测试
+- [x] CI/CD Skill — `cicd` 技能文档，覆盖 GitHub Actions / GitLab CI 用法
+
+**更多内置 Skills（5 → 11）**
+- [x] `web` — 网页搜索和抓取（websearch/webfetch 工具使用指南）
+- [x] `rust` — Rust/Cargo 项目管理（构建、测试、Clippy、工作空间）
+- [x] `go` — Go 项目管理（模块、测试、golangci-lint、交叉编译）
+- [x] `java` — Java/Maven/Gradle 项目管理（Spring Boot、JUnit 5、Mockito）
+- [x] `cicd` — CI/CD 流水线管理（GitHub Actions、GitLab CI、Cody 集成）
+- [x] `testing` — 跨语言测试策略和模式（pytest、Jest、go test、cargo test）
+
+**Go SDK**
+- [x] `sdk/go/` — 零依赖 Go 客户端，完整覆盖 RPC API
+- [x] Run / Stream / Tool / Sessions / Skills 全部方法
+- [x] 自动重试 + 指数退避、context 取消支持
+- [x] 25 个单元测试（httptest mock server）
+
+**v1.0.0 总计：418 个 Python 测试 + 25 个 Go 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板，Go SDK**
+
+### v1.0.1 — Agent Skills 开放标准 ✅ 已完成
+
+> **本阶段目标：Skill 系统完全对齐 [Agent Skills 开放标准](https://agentskills.io/)（agentskills.io）。**
+
+**Skill 格式迁移**
+- [x] 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
+- [x] 必填字段：`name`（≤64 字符，小写+连字符）、`description`（≤1024 字符）
+- [x] 可选字段：`license`、`compatibility`、`metadata`、`allowed-tools`
+- [x] `name` 必须与目录名一致
+
+**SkillManager 重构**
+- [x] YAML frontmatter 解析器（零外部依赖）
+- [x] 名称校验（正则匹配、目录名一致性检查）
+- [x] `validate_skill()` — Skill 目录校验（缺字段、格式错误、名称不匹配）
+- [x] 无 frontmatter 的纯 Markdown 文件不再加载（不向下兼容）
+
+**渐进式加载（Progressive Disclosure）**
+- [x] 启动时只解析 frontmatter（~50-100 tokens/skill）
+- [x] `skill.instructions` — 按需加载 SKILL.md body（去掉 frontmatter）
+- [x] `to_prompt_xml()` — 生成 `<available_skills>` XML 注入 system prompt
+- [x] Runner system prompt 自动注入 skills XML
+
+**v1.0.1 总计：446 个 Python 测试 + 25 个 Go 测试，ruff 零告警**
 
 ---
 
-**最后更新：** 2026-02-13
+**最后更新：** 2026-02-25

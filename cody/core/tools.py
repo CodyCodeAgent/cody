@@ -639,7 +639,11 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
 
 
 async def list_skills(ctx: RunContext['CodyDeps']) -> str:
-    """List available skills"""
+    """List available skills (Agent Skills open standard).
+
+    Returns skill metadata (name + description). Use read_skill() to
+    load full instructions — progressive disclosure keeps context small.
+    """
     skills = ctx.deps.skill_manager.list_skills()
     if not skills:
         return "No skills available"
@@ -647,13 +651,16 @@ async def list_skills(ctx: RunContext['CodyDeps']) -> str:
     lines = ["Available skills:"]
     for skill in skills:
         status = "enabled" if skill.enabled else "disabled"
-        lines.append(f"[{status}] {skill.name} - {skill.description}")
+        meta = ""
+        if skill.compatibility:
+            meta = f" ({skill.compatibility})"
+        lines.append(f"[{status}] {skill.name} — {skill.description}{meta}")
 
     return "\n".join(lines)
 
 
 async def read_skill(ctx: RunContext['CodyDeps'], skill_name: str) -> str:
-    """Read skill documentation
+    """Read full skill instructions (progressive disclosure — activated on demand).
 
     Args:
         skill_name: Name of the skill
@@ -662,7 +669,7 @@ async def read_skill(ctx: RunContext['CodyDeps'], skill_name: str) -> str:
     if not skill:
         raise ValueError(f"Skill not found: {skill_name}")
 
-    return skill.documentation
+    return skill.instructions
 
 
 # ── Sub-agent tools ──────────────────────────────────────────────────────────

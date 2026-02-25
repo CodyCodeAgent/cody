@@ -7,8 +7,9 @@ AI coding engine with RPC Server, dynamic skills, MCP integration, and LSP intel
 ## Features
 
 - **30+ AI Tools** — File ops, search (grep/glob/patch), shell commands, undo/redo, task management, structured questions
-- **5 Built-in Skills** — git, github, docker, npm, python — AI reads SKILL.md to learn usage
-- **RPC Server + SDK** — FastAPI HTTP/WebSocket server, Python SDK (sync + async), embeddable into any system
+- **11 Built-in Skills** — git, github, docker, npm, python, rust, go, java, web, cicd, testing — AI reads SKILL.md to learn usage
+- **CI/CD Templates** — Ready-to-use GitHub Actions for AI code review, auto-fix, and test generation
+- **RPC Server + SDK** — FastAPI HTTP/WebSocket server, Python SDK (sync + async), Go SDK, embeddable into any system
 - **MCP Integration** — Connect to external MCP servers (GitHub, databases, etc.) via stdio JSON-RPC
 - **LSP Intelligence** — Python (pyright), TypeScript (tsserver), Go (gopls) — diagnostics, go-to-definition, references, hover
 - **Sub-Agent System** — Spawn specialized agents (code/research/test) with asyncio concurrency
@@ -99,6 +100,28 @@ async with AsyncCodyClient("http://localhost:8000") as client:
 
 Sync version: `CodyClient`. Built-in retry with exponential backoff.
 
+### Go SDK
+
+```go
+client := cody.NewClient("http://localhost:8000")
+
+// One-shot
+result, _ := client.Run(ctx, "create hello.py")
+fmt.Println(result.Output)
+
+// Multi-turn session
+session, _ := client.CreateSession(ctx, cody.WithTitle("My task"))
+client.Run(ctx, "create Flask app", cody.WithSession(session.ID))
+
+// Streaming
+ch, _ := client.Stream(ctx, "explain this code")
+for chunk := range ch {
+    fmt.Print(chunk.Content)
+}
+```
+
+Zero dependencies, automatic retry, context cancellation. Full docs: [sdk/go/README.md](sdk/go/README.md).
+
 ## Tool Set (30+)
 
 | Category | Tools |
@@ -115,9 +138,21 @@ Sync version: `CodyClient`. Built-in retry with exponential backoff.
 | Task Mgmt | `todo_write`, `todo_read` |
 | User I/O | `question` |
 
-## Skills
+## Skills (Agent Skills Open Standard)
 
-Skills are SKILL.md documents that teach the AI how to use tools and CLIs.
+Skills follow the [Agent Skills open standard](https://agentskills.io/) — YAML frontmatter + Markdown, adopted by 26+ platforms (Claude Code, Codex CLI, Cursor, GitHub Copilot, etc.).
+
+```markdown
+---
+name: git
+description: Git version control operations. Use when working with git repositories.
+metadata:
+  author: cody
+  version: "1.0"
+---
+# Git Operations
+Instructions for the AI agent...
+```
 
 ```
 .cody/skills/          # Project skills (highest priority)
@@ -125,7 +160,9 @@ Skills are SKILL.md documents that teach the AI how to use tools and CLIs.
 {install}/skills/      # Built-in skills
 ```
 
-**Built-in skills:** `git`, `github`, `docker`, `npm`, `python`
+**Progressive disclosure:** Only metadata (name + description) loads at startup; full instructions load on demand. `<available_skills>` XML auto-injected into system prompt.
+
+**Built-in skills:** `git`, `github`, `docker`, `npm`, `python`, `rust`, `go`, `java`, `web`, `cicd`, `testing`
 
 ```bash
 cody skills list                     # List available skills
@@ -174,7 +211,7 @@ cody skills disable docker           # Disable a skill
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (418 tests)
+# Run tests (446 tests)
 python3 -m pytest tests/ -v
 
 # Lint
@@ -187,6 +224,7 @@ python3 -m ruff format cody/ tests/
 ## Documentation
 
 - [API Reference](docs/API.md) — RPC endpoints, WebSocket, error codes, auth
+- [Go SDK](sdk/go/README.md) — Go client with zero dependencies
 - [Architecture](docs/ARCHITECTURE.md) — System design, component diagram, data flows
 - [Features & Roadmap](docs/FEATURES.md) — Full feature list, version history, competitive analysis
 - [Handoff Guide](docs/HANDOFF.md) — For developers joining the project

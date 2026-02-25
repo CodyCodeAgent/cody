@@ -1,3 +1,12 @@
+---
+name: github
+description: Interact with GitHub repositories, issues, pull requests, workflows, and releases using the gh CLI. Use when working with GitHub.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires gh CLI (GitHub CLI)
+---
+
 # GitHub CLI Operations
 
 Interact with GitHub repositories, issues, and pull requests using the `gh` CLI.

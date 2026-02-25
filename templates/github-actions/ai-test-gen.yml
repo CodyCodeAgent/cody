@@ -1,0 +1,49 @@
+# AI Test Generation with Cody
+# Generates tests for changed files in a pull request.
+#
+# Required secrets:
+#   ANTHROPIC_API_KEY — Your Anthropic API key
+
+name: AI Test Generation
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Cody
+        run: pip install cody-ai
+
+      - name: Get changed files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.py' '*.ts' '*.js' '*.go' '*.rs')
+          echo "files=${FILES}" >> $GITHUB_OUTPUT
+
+      - name: Generate tests
+        if: steps.changed.outputs.files != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cody run "Generate unit tests for these changed files: ${{ steps.changed.outputs.files }}. Write tests that cover edge cases and error paths. Use the project's existing test framework and conventions."
+
+      - name: Commit generated tests
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "test: add AI-generated tests for changed files"

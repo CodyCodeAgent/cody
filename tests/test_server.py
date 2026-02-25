@@ -21,7 +21,7 @@ def test_health():
 def test_health_returns_version():
     client = TestClient(app)
     resp = client.get("/health")
-    assert resp.json()["version"] == "0.5.0"
+    assert resp.json()["version"] == "1.0.0"
 
 
 # ── Tool endpoint ────────────────────────────────────────────────────────────

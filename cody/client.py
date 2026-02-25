@@ -364,6 +364,12 @@ class AsyncCodyClient:
         _handle_error(resp)
         return resp.json()["skills"]
 
+    async def get_skill(self, skill_name: str) -> dict:
+        """Get skill details including full documentation."""
+        resp = await self._retry(self._client.get, f"/skills/{skill_name}")
+        _handle_error(resp)
+        return resp.json()
+
 
 # ── Sync client ──────────────────────────────────────────────────────────────
 
@@ -572,3 +578,9 @@ class CodyClient:
         resp = self._retry(self._client.get, "/skills")
         _handle_error(resp)
         return resp.json()["skills"]
+
+    def get_skill(self, skill_name: str) -> dict:
+        """Get skill details including full documentation."""
+        resp = self._retry(self._client.get, f"/skills/{skill_name}")
+        _handle_error(resp)
+        return resp.json()

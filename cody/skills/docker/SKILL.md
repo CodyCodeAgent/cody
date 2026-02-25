@@ -1,3 +1,12 @@
+---
+name: docker
+description: Manage containers, images, Docker Compose services, networks, and volumes using the Docker CLI. Use when working with containerized applications.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires docker
+---
+
 # Docker Operations
 
 Manage containers, images, and Docker Compose services using the Docker CLI.

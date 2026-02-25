@@ -40,7 +40,7 @@
 │  │  │ file ops │ .cody/    │ stdio    │ pyright      │  │  │
 │  │  │ search   │ ~/.cody/  │ JSON-RPC │ tsserver     │  │  │
 │  │  │ exec     │ builtin/  │          │ gopls        │  │  │
-│  │  │ web      │ 5 skills  │ github   │              │  │  │
+│  │  │ web      │ 11 skills │ github   │              │  │  │
 │  │  │ todo     │           │ db, fs   │ diagnostics  │  │  │
 │  │  │ question │           │ etc.     │ definition   │  │  │
 │  │  │ undo/    │           │          │ references   │  │  │
@@ -115,16 +115,20 @@ All tools share the signature `async def tool(ctx: RunContext[CodyDeps], ...) ->
 
 **Security:** All mutating tools call `_check_permission(ctx, tool_name)` before execution. File tools call `_resolve_and_check(workdir, path)` for path traversal protection.
 
-### 3. Skill System (`core/skill_manager.py`)
+### 3. Skill System (`core/skill_manager.py`) — Agent Skills Open Standard
+
+Implements the [Agent Skills open standard](https://agentskills.io/) (adopted by 26+ platforms including Claude Code, Codex CLI, Cursor, GitHub Copilot).
+
+**SKILL.md format:** YAML frontmatter (`name`, `description`, optional `license`/`compatibility`/`metadata`/`allowed-tools`) + Markdown body.
 
 Three-tier priority loading:
 1. `.cody/skills/` — project-level (highest)
 2. `~/.cody/skills/` — user-level
 3. `{install}/skills/` — built-in
 
-Each skill is a directory with a `SKILL.md` doc. The AI discovers skills via `list_skills()` and reads documentation via `read_skill()`.
+**Progressive disclosure:** Startup parses only YAML frontmatter (~50-100 tokens/skill). `skill.instructions` loads the full body on demand. `to_prompt_xml()` generates `<available_skills>` XML injected into the system prompt for model-driven skill discovery.
 
-**Built-in skills:** git, github, docker, npm, python
+**Built-in skills (11):** git, github, docker, npm, python, rust, go, java, web, cicd, testing
 
 ### 4. Sub-Agent System (`core/sub_agent.py`)
 
@@ -264,4 +268,4 @@ tui.py ──→  core/*  ←── server.py
 
 ---
 
-**Last updated:** 2026-02-13
+**Last updated:** 2026-02-25

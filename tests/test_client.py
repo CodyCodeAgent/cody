@@ -305,6 +305,24 @@ async def test_async_list_skills():
 
 
 @pytest.mark.asyncio
+async def test_async_get_skill():
+    client = _async_client()
+    skill = await client.get_skill("git")
+    assert skill["name"] == "git"
+    assert "documentation" in skill
+    assert len(skill["documentation"]) > 0
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_get_skill_not_found():
+    client = _async_client()
+    with pytest.raises(CodyNotFoundError):
+        await client.get_skill("nonexistent_skill_xyz")
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_async_stream():
     async def fake_stream(prompt, message_history=None):
         for chunk in ["Hello", " async"]:

@@ -13,6 +13,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **TUI** (`cody/tui.py`) — 基于 Textual 的全屏交互终端界面，调用 core
 - **RPC Server** (`cody/server.py`) — 基于 FastAPI 的 HTTP/WS 服务端，调用 core
 - **Python SDK** (`cody/client.py`) — `CodyClient` (同步) + `AsyncCodyClient` (异步) 双客户端
+- **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端，覆盖完整 RPC API
 
 新功能 **必须** 先在 core/ 实现，然后在 Server、CLI 和/或 TUI 暴露。
 
@@ -31,7 +32,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 
 ### 版本
 
-当前版本：**0.5.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
+当前版本：**1.0.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
 
 ---
 
@@ -63,13 +64,14 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 418 个测试
+├── tests/                   # 446 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
 │   ├── FEATURES.md          # 功能清单 + 路线图
 │   └── HANDOFF.md           # 本文档
-├── skills/                  # 内置 Skills (git, github, docker, npm, python)
+├── skills/                  # 内置 Skills (11 个)
+├── templates/               # CI/CD 模板 (GitHub Actions)
 ├── CONTRIBUTING.md          # 开发规范
 ├── pyproject.toml           # 构建配置
 └── README.md                # 项目简介
@@ -135,16 +137,22 @@ AgentRunner
 
 数据库文件默认在 `~/.cody/sessions.db`。
 
-### 3.4 Skill 系统 (`core/skill_manager.py`)
+### 3.4 Skill 系统 (`core/skill_manager.py`) — Agent Skills 开放标准
+
+完全兼容 [Agent Skills 开放标准](https://agentskills.io/)（Anthropic 发布，26+ 平台采纳）。
+
+**SKILL.md 格式：** YAML frontmatter（`name`、`description`、可选 `license`/`compatibility`/`metadata`/`allowed-tools`）+ Markdown body。
 
 三层优先级加载：
 1. `.cody/skills/` — 项目级 (最高优先级)
 2. `~/.cody/skills/` — 用户级
 3. `{install_dir}/skills/` — 内置
 
-每个 Skill 是一个目录，包含 `SKILL.md` 文档。AI Agent 通过 `list_skills()` 发现 skill，`read_skill()` 读取文档后学习使用。
+**渐进式加载：** 启动时只解析 frontmatter（name + description），`skill.instructions` 按需加载完整 body。`to_prompt_xml()` 生成 `<available_skills>` XML 注入 system prompt，实现模型驱动的 Skill 发现。
 
-**内置 Skills：** git, github, docker, npm, python（5 个）
+**校验：** `validate_skill(path)` 检查 frontmatter 必填字段、name 格式、目录名一致性。
+
+**内置 Skills（11 个）：** git, github, docker, npm, python, rust, go, java, web, cicd, testing
 
 启用/禁用通过 `config.skills.enabled` / `config.skills.disabled` 控制。
 
@@ -358,29 +366,29 @@ cody-server --port 9000       # 指定端口
 
 ---
 
-## 8. 下一步：v1.0.0 路线图
+## 8. 版本历史
 
-详见 `docs/FEATURES.md` 底部。核心待办：
+### v1.0.1 — Agent Skills 开放标准 ✅ 已完成
 
-### P3: 安全与可靠性 ✅ 已完成 (v0.5.0)
+- [x] **Skill 格式迁移** — 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
+- [x] **SkillManager 重构** — frontmatter 解析、名称校验、`validate_skill()`
+- [x] **渐进式加载** — 启动时只加载元数据，`to_prompt_xml()` 注入 system prompt
+- [x] **446 个 Python 测试 + 25 个 Go 测试**
+
+### v1.0.0 — 生产就绪 ✅ 已完成
+
+- [x] **CI/CD 模板** — 3 个 GitHub Actions 模板（代码审查、Issue 自动修复、测试生成）
+- [x] **更多内置 Skills** — 从 5 个扩展到 11 个（新增 rust, go, java, web, cicd, testing）
+- [x] **Go SDK** — 零依赖 Go 客户端，25 个测试
+
+### v0.5.0 — 安全与可靠性 ✅ 已完成
+
 - [x] **OAuth 2.0 认证** — `AuthManager` API key + HMAC-SHA256 token
 - [x] **工具级权限系统** — `PermissionManager` per-tool allow/deny/confirm
 - [x] **文件修改 undo/redo** — `FileHistory` + `undo_file`/`redo_file` 工具
 - [x] **审计日志** — `AuditLogger` SQLite 持久化 + `GET /audit` API
 - [x] **速率限制** — `RateLimiter` 滑动窗口 + Server 中间件
-
-### P3: 生态
-- [ ] **TypeScript SDK** — 目前只有 Python SDK
-- [ ] **GitHub 集成** — PR/Issue 触发自动化
-- [ ] **CI/CD 模板** — GitHub Actions 等集成模板
-- [ ] **Docker 镜像** — 容器化部署
-
-### 建议优先级
-
-1. **TypeScript SDK** — 扩大用户群
-2. **Docker** — 简化部署
-3. **GitHub 集成** — PR/Issue 自动化
-4. **CI/CD 模板** — GitHub Actions 等
+- [x] **TUI 终端** — Textual 全屏界面
 
 ---
 
@@ -399,4 +407,4 @@ cody-server --port 9000       # 指定端口
 
 ---
 
-**最后更新：** 2026-02-13
+**最后更新：** 2026-02-25

@@ -51,7 +51,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "0.5.0"
+    version: str = "1.0.0"
 
 
 class ErrorResponse(BaseModel):
@@ -78,7 +78,7 @@ class SessionDetailResponse(SessionResponse):
 app = FastAPI(
     title="Cody RPC Server",
     description="AI Coding Assistant RPC API",
-    version="0.5.0",
+    version="1.0.0",
 )
 
 
@@ -368,6 +368,8 @@ async def run_agent_stream(request: RunRequest):
             config = Config.load()
             if request.model:
                 config.model = request.model
+            if request.skills is not None:
+                config.skills.enabled = request.skills
 
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)

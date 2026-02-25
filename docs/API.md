@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 0.5.0
+**版本：** 1.0.0
 
 ---
 
@@ -361,7 +361,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 ```json
 {
   "status": "ok",
-  "version": "0.5.0"
+  "version": "1.0.0"
 }
 ```
 
@@ -557,6 +557,33 @@ async with AsyncCodyClient("http://localhost:8000") as client:
     print(result.result)
 ```
 
+### Go SDK
+
+```go
+client := cody.NewClient("http://localhost:8000")
+
+// 一次性调用
+result, _ := client.Run(ctx, "创建 hello.py")
+fmt.Println(result.Output)
+
+// 多轮会话
+session, _ := client.CreateSession(ctx)
+client.Run(ctx, "创建 Flask 项目", cody.WithSession(session.ID))
+client.Run(ctx, "添加 /health 端点", cody.WithSession(session.ID))
+
+// 流式响应
+ch, _ := client.Stream(ctx, "解释这段代码")
+for chunk := range ch {
+    fmt.Print(chunk.Content)
+}
+
+// 直接调工具
+tool, _ := client.Tool(ctx, "read_file", map[string]interface{}{"path": "main.py"})
+fmt.Println(tool.Result)
+```
+
+详细文档见 `sdk/go/README.md`。
+
 ### curl
 
 ```bash
@@ -589,4 +616,4 @@ curl http://localhost:8000/health
 
 ---
 
-**最后更新：** 2026-02-13
+**最后更新：** 2026-02-25
