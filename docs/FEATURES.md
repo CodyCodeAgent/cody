@@ -92,6 +92,11 @@ skills/github/
 - `npm` - Node.js 项目管理
 - `python` - Python 项目管理
 - `web` - 网页搜索和抓取
+- `rust` - Rust/Cargo 项目管理
+- `go` - Go 项目管理
+- `java` - Java/Maven/Gradle 项目管理
+- `cicd` - CI/CD 流水线管理
+- `testing` - 测试策略和模式
 
 **Skill 管理命令：**
 ```bash
@@ -561,15 +566,27 @@ CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 
 **v0.5.0 总计：418 个测试，ruff 零告警**
 
-### v1.0.0 — 生产就绪
+### v1.0.0 — 生产就绪 ✅ 已完成
 
-**P3：生态**
-- [ ] TypeScript SDK
-- [ ] GitHub 集成（PR/Issue 触发）
-- [ ] CI/CD 模板
-- [ ] 更多内置 Skills
-- [ ] Docker 镜像
+> **本阶段目标：扩展生态——CI/CD 模板、更多内置 Skills，完成核心功能闭环。**
+
+**CI/CD 模板**
+- [x] GitHub Actions 模板 — `templates/github-actions/` 目录
+  - `ai-code-review.yml` — PR 自动 AI 代码审查
+  - `ai-fix-issues.yml` — Issue 标签触发自动修复并开 PR
+  - `ai-test-gen.yml` — 自动为变更文件生成测试
+- [x] CI/CD Skill — `cicd` 技能文档，覆盖 GitHub Actions / GitLab CI 用法
+
+**更多内置 Skills（5 → 11）**
+- [x] `web` — 网页搜索和抓取（websearch/webfetch 工具使用指南）
+- [x] `rust` — Rust/Cargo 项目管理（构建、测试、Clippy、工作空间）
+- [x] `go` — Go 项目管理（模块、测试、golangci-lint、交叉编译）
+- [x] `java` — Java/Maven/Gradle 项目管理（Spring Boot、JUnit 5、Mockito）
+- [x] `cicd` — CI/CD 流水线管理（GitHub Actions、GitLab CI、Cody 集成）
+- [x] `testing` — 跨语言测试策略和模式（pytest、Jest、go test、cargo test）
+
+**v1.0.0 总计：418 个测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板**
 
 ---
 
-**最后更新：** 2026-02-13
+**最后更新：** 2026-02-25

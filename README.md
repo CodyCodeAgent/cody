@@ -7,7 +7,8 @@ AI coding engine with RPC Server, dynamic skills, MCP integration, and LSP intel
 ## Features
 
 - **30+ AI Tools** — File ops, search (grep/glob/patch), shell commands, undo/redo, task management, structured questions
-- **5 Built-in Skills** — git, github, docker, npm, python — AI reads SKILL.md to learn usage
+- **11 Built-in Skills** — git, github, docker, npm, python, rust, go, java, web, cicd, testing — AI reads SKILL.md to learn usage
+- **CI/CD Templates** — Ready-to-use GitHub Actions for AI code review, auto-fix, and test generation
 - **RPC Server + SDK** — FastAPI HTTP/WebSocket server, Python SDK (sync + async), embeddable into any system
 - **MCP Integration** — Connect to external MCP servers (GitHub, databases, etc.) via stdio JSON-RPC
 - **LSP Intelligence** — Python (pyright), TypeScript (tsserver), Go (gopls) — diagnostics, go-to-definition, references, hover
@@ -125,7 +126,7 @@ Skills are SKILL.md documents that teach the AI how to use tools and CLIs.
 {install}/skills/      # Built-in skills
 ```
 
-**Built-in skills:** `git`, `github`, `docker`, `npm`, `python`
+**Built-in skills:** `git`, `github`, `docker`, `npm`, `python`, `rust`, `go`, `java`, `web`, `cicd`, `testing`
 
 ```bash
 cody skills list                     # List available skills

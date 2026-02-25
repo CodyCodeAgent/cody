@@ -16,7 +16,7 @@ from pydantic_ai.messages import (
 
 from .audit import AuditLogger
 from .config import Config
-from .context import compact_messages, estimate_tokens
+from .context import compact_messages
 from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient

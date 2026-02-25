@@ -31,7 +31,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 
 ### 版本
 
-当前版本：**0.5.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
+当前版本：**1.0.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
 
 ---
 
@@ -69,7 +69,8 @@ cody/
 │   ├── ARCHITECTURE.md      # 架构设计文档
 │   ├── FEATURES.md          # 功能清单 + 路线图
 │   └── HANDOFF.md           # 本文档
-├── skills/                  # 内置 Skills (git, github, docker, npm, python)
+├── skills/                  # 内置 Skills (11 个)
+├── templates/               # CI/CD 模板 (GitHub Actions)
 ├── CONTRIBUTING.md          # 开发规范
 ├── pyproject.toml           # 构建配置
 └── README.md                # 项目简介
@@ -144,7 +145,7 @@ AgentRunner
 
 每个 Skill 是一个目录，包含 `SKILL.md` 文档。AI Agent 通过 `list_skills()` 发现 skill，`read_skill()` 读取文档后学习使用。
 
-**内置 Skills：** git, github, docker, npm, python（5 个）
+**内置 Skills（11 个）：** git, github, docker, npm, python, rust, go, java, web, cicd, testing
 
 启用/禁用通过 `config.skills.enabled` / `config.skills.disabled` 控制。
 
@@ -358,29 +359,21 @@ cody-server --port 9000       # 指定端口
 
 ---
 
-## 8. 下一步：v1.0.0 路线图
+## 8. 版本历史
 
-详见 `docs/FEATURES.md` 底部。核心待办：
+### v1.0.0 — 生产就绪 ✅ 已完成
 
-### P3: 安全与可靠性 ✅ 已完成 (v0.5.0)
+- [x] **CI/CD 模板** — 3 个 GitHub Actions 模板（代码审查、Issue 自动修复、测试生成）
+- [x] **更多内置 Skills** — 从 5 个扩展到 11 个（新增 rust, go, java, web, cicd, testing）
+
+### v0.5.0 — 安全与可靠性 ✅ 已完成
+
 - [x] **OAuth 2.0 认证** — `AuthManager` API key + HMAC-SHA256 token
 - [x] **工具级权限系统** — `PermissionManager` per-tool allow/deny/confirm
 - [x] **文件修改 undo/redo** — `FileHistory` + `undo_file`/`redo_file` 工具
 - [x] **审计日志** — `AuditLogger` SQLite 持久化 + `GET /audit` API
 - [x] **速率限制** — `RateLimiter` 滑动窗口 + Server 中间件
-
-### P3: 生态
-- [ ] **TypeScript SDK** — 目前只有 Python SDK
-- [ ] **GitHub 集成** — PR/Issue 触发自动化
-- [ ] **CI/CD 模板** — GitHub Actions 等集成模板
-- [ ] **Docker 镜像** — 容器化部署
-
-### 建议优先级
-
-1. **TypeScript SDK** — 扩大用户群
-2. **Docker** — 简化部署
-3. **GitHub 集成** — PR/Issue 自动化
-4. **CI/CD 模板** — GitHub Actions 等
+- [x] **TUI 终端** — Textual 全屏界面
 
 ---
 
@@ -399,4 +392,4 @@ cody-server --port 9000       # 指定端口
 
 ---
 
-**最后更新：** 2026-02-13
+**最后更新：** 2026-02-25

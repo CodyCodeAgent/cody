@@ -40,7 +40,7 @@
 │  │  │ file ops │ .cody/    │ stdio    │ pyright      │  │  │
 │  │  │ search   │ ~/.cody/  │ JSON-RPC │ tsserver     │  │  │
 │  │  │ exec     │ builtin/  │          │ gopls        │  │  │
-│  │  │ web      │ 5 skills  │ github   │              │  │  │
+│  │  │ web      │ 11 skills │ github   │              │  │  │
 │  │  │ todo     │           │ db, fs   │ diagnostics  │  │  │
 │  │  │ question │           │ etc.     │ definition   │  │  │
 │  │  │ undo/    │           │          │ references   │  │  │
@@ -124,7 +124,7 @@ Three-tier priority loading:
 
 Each skill is a directory with a `SKILL.md` doc. The AI discovers skills via `list_skills()` and reads documentation via `read_skill()`.
 
-**Built-in skills:** git, github, docker, npm, python
+**Built-in skills (11):** git, github, docker, npm, python, rust, go, java, web, cicd, testing
 
 ### 4. Sub-Agent System (`core/sub_agent.py`)
 
@@ -264,4 +264,4 @@ tui.py ──→  core/*  ←── server.py
 
 ---
 
-**Last updated:** 2026-02-13
+**Last updated:** 2026-02-25
