@@ -1,3 +1,12 @@
+---
+name: python
+description: Manage Python projects, virtual environments, dependencies, testing with pytest, linting with ruff, and packaging. Use when working with Python code.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires python3, pip
+---
+
 # Python Project Management
 
 Manage Python projects, virtual environments, dependencies, and common tooling.

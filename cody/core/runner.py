@@ -86,19 +86,24 @@ class AgentRunner:
 
     def _create_agent(self) -> Agent:
         """Create Pydantic AI Agent with tools"""
+        # Build system prompt with available skills (Agent Skills standard)
+        skills_xml = self.skill_manager.to_prompt_xml()
+        system_parts = [
+            "You are Cody, an AI coding assistant. "
+            "You have access to file operations, shell commands, skills, web search, "
+            "and code intelligence via LSP. "
+            "When a skill matches the task, call read_skill(skill_name) to load its "
+            "full instructions. For complex tasks, spawn sub-agents using spawn_agent(). "
+            "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
+            "Always execute commands and file operations as needed to complete tasks.",
+        ]
+        if skills_xml:
+            system_parts.append(skills_xml)
+
         agent = Agent(
             self.config.model,
             deps_type=CodyDeps,
-            system_prompt=(
-                "You are Cody, an AI coding assistant. "
-                "You have access to file operations, shell commands, skills, web search, "
-                "and code intelligence via LSP. "
-                "When you need to use a skill, first call list_skills() to see what's available, "
-                "then call read_skill(skill_name) to learn how to use it. "
-                "For complex tasks, you can spawn sub-agents using spawn_agent(). "
-                "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
-                "Always execute commands and file operations as needed to complete tasks."
-            ),
+            system_prompt="\n\n".join(system_parts),
         )
 
         # Register tools — file operations

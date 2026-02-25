@@ -64,7 +64,7 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 418 个测试
+├── tests/                   # 442 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
@@ -137,14 +137,20 @@ AgentRunner
 
 数据库文件默认在 `~/.cody/sessions.db`。
 
-### 3.4 Skill 系统 (`core/skill_manager.py`)
+### 3.4 Skill 系统 (`core/skill_manager.py`) — Agent Skills 开放标准
+
+完全兼容 [Agent Skills 开放标准](https://agentskills.io/)（Anthropic 发布，26+ 平台采纳）。
+
+**SKILL.md 格式：** YAML frontmatter（`name`、`description`、可选 `license`/`compatibility`/`metadata`/`allowed-tools`）+ Markdown body。
 
 三层优先级加载：
 1. `.cody/skills/` — 项目级 (最高优先级)
 2. `~/.cody/skills/` — 用户级
 3. `{install_dir}/skills/` — 内置
 
-每个 Skill 是一个目录，包含 `SKILL.md` 文档。AI Agent 通过 `list_skills()` 发现 skill，`read_skill()` 读取文档后学习使用。
+**渐进式加载：** 启动时只解析 frontmatter（name + description），`skill.instructions` 按需加载完整 body。`to_prompt_xml()` 生成 `<available_skills>` XML 注入 system prompt，实现模型驱动的 Skill 发现。
+
+**校验：** `validate_skill(path)` 检查 frontmatter 必填字段、name 格式、目录名一致性。
 
 **内置 Skills（11 个）：** git, github, docker, npm, python, rust, go, java, web, cicd, testing
 
@@ -361,6 +367,13 @@ cody-server --port 9000       # 指定端口
 ---
 
 ## 8. 版本历史
+
+### v1.0.1 — Agent Skills 开放标准 ✅ 已完成
+
+- [x] **Skill 格式迁移** — 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
+- [x] **SkillManager 重构** — frontmatter 解析、名称校验、`validate_skill()`
+- [x] **渐进式加载** — 启动时只加载元数据，`to_prompt_xml()` 注入 system prompt
+- [x] **442 个 Python 测试 + 25 个 Go 测试**
 
 ### v1.0.0 — 生产就绪 ✅ 已完成
 

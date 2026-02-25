@@ -1,3 +1,12 @@
+---
+name: go
+description: Manage Go projects, modules, dependencies, testing, benchmarks, and cross-compilation. Use when working with Go code.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires go 1.21+
+---
+
 # Go Project Management
 
 Manage Go projects, modules, dependencies, and tooling.

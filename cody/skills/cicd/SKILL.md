@@ -1,3 +1,11 @@
+---
+name: cicd
+description: Set up and manage CI/CD pipelines with GitHub Actions, GitLab CI, and automation workflows. Use when configuring continuous integration or deployment.
+metadata:
+  author: cody
+  version: "1.0"
+---
+
 # CI/CD Pipeline Management
 
 Set up and manage CI/CD pipelines with GitHub Actions, GitLab CI, and general automation workflows.

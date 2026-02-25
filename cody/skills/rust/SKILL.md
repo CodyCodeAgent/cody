@@ -1,3 +1,12 @@
+---
+name: rust
+description: Manage Rust projects, dependencies, testing, linting with clippy, and building with Cargo. Use when working with Rust code.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires rustc, cargo
+---
+
 # Rust Project Management
 
 Manage Rust projects, dependencies, and tooling using Cargo.

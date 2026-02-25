@@ -138,15 +138,29 @@ Zero dependencies, automatic retry, context cancellation. Full docs: [sdk/go/REA
 | Task Mgmt | `todo_write`, `todo_read` |
 | User I/O | `question` |
 
-## Skills
+## Skills (Agent Skills Open Standard)
 
-Skills are SKILL.md documents that teach the AI how to use tools and CLIs.
+Skills follow the [Agent Skills open standard](https://agentskills.io/) — YAML frontmatter + Markdown, adopted by 26+ platforms (Claude Code, Codex CLI, Cursor, GitHub Copilot, etc.).
+
+```markdown
+---
+name: git
+description: Git version control operations. Use when working with git repositories.
+metadata:
+  author: cody
+  version: "1.0"
+---
+# Git Operations
+Instructions for the AI agent...
+```
 
 ```
 .cody/skills/          # Project skills (highest priority)
 ~/.cody/skills/        # User-global skills
 {install}/skills/      # Built-in skills
 ```
+
+**Progressive disclosure:** Only metadata (name + description) loads at startup; full instructions load on demand. `<available_skills>` XML auto-injected into system prompt.
 
 **Built-in skills:** `git`, `github`, `docker`, `npm`, `python`, `rust`, `go`, `java`, `web`, `cicd`, `testing`
 
@@ -197,7 +211,7 @@ cody skills disable docker           # Disable a skill
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (418 tests)
+# Run tests (442 tests)
 python3 -m pytest tests/ -v
 
 # Lint

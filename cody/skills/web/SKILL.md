@@ -1,3 +1,11 @@
+---
+name: web
+description: Search the web and fetch webpage content using built-in websearch and webfetch tools. Use when researching topics, reading documentation, or finding solutions online.
+metadata:
+  author: cody
+  version: "1.0"
+---
+
 # Web Search & Fetch
 
 Search the web and fetch webpage content using Cody's built-in web tools.

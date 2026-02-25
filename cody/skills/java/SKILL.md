@@ -1,3 +1,12 @@
+---
+name: java
+description: Manage Java projects with Maven or Gradle, including build, test, dependency management, Spring Boot, and JUnit. Use when working with Java code.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires java JDK, maven or gradle
+---
+
 # Java Project Management
 
 Manage Java projects with Maven or Gradle, including build, test, and dependency management.

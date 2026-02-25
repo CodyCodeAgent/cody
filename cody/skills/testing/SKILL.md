@@ -1,3 +1,11 @@
+---
+name: testing
+description: Guidelines and patterns for writing effective tests across languages — pytest, Jest, Go testing, Rust cargo test, JUnit. Use when writing or improving tests.
+metadata:
+  author: cody
+  version: "1.0"
+---
+
 # Testing Strategies
 
 Guidelines and patterns for writing effective tests across languages and frameworks.

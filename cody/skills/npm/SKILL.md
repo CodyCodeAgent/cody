@@ -1,3 +1,12 @@
+---
+name: npm
+description: Manage Node.js projects, dependencies, scripts, TypeScript setup, testing, and linting using npm/yarn/pnpm. Use when working with JavaScript or TypeScript projects.
+metadata:
+  author: cody
+  version: "1.0"
+compatibility: Requires node, npm
+---
+
 # Node.js / npm Project Management
 
 Manage Node.js projects, dependencies, and scripts using npm (or yarn/pnpm).

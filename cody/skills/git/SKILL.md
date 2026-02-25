@@ -1,3 +1,11 @@
+---
+name: git
+description: Git version control operations — status, diff, add, commit, push, pull, branching. Use when working with git repositories or version control.
+metadata:
+  author: cody
+  version: "1.0"
+---
+
 # Git Operations
 
 Git version control operations using the git CLI.
