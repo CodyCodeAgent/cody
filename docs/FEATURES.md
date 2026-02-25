@@ -153,7 +153,7 @@ cody skills disable <name>        # 禁用 Skill
 - 并行处理多个子任务
 - 专门化处理（编码/研究/测试分离）
 
-### 6. 三模式运行
+### 6. 四模式运行 + 双 SDK
 
 #### CLI 模式
 
@@ -386,7 +386,16 @@ const response = await fetch('http://localhost:8000/run', {
 });
 ```
 
-### 3. CI/CD 集成
+### 3. Go 集成
+```go
+client := cody.NewClient("http://localhost:8000")
+result, _ := client.Run(ctx, "创建一个 API 路由",
+    cody.WithWorkdir("/path/to/project"),
+)
+fmt.Println(result.Output)
+```
+
+### 4. CI/CD 集成
 ```yaml
 # .github/workflows/ai-review.yml
 - name: AI Code Review
@@ -440,9 +449,10 @@ cody "使用项目 B 的配置"
 ### Cody 的差异化优势
 
 1. **RPC Server 模式** — OpenCode/Crush 没有，Cody 可作为"可嵌入的 AI 编码引擎"
-2. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
-3. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
-4. **子 Agent 架构** — Python asyncio 并发 Agent 编排，code/research/test 专业化子 Agent
+2. **双 SDK（Python + Go）** — Python 和 Go 都有原生 SDK，覆盖主流后端生态
+3. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
+4. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
+5. **子 Agent 架构** — Python asyncio 并发 Agent 编排，code/research/test 专业化子 Agent
 
 ---
 
@@ -585,7 +595,13 @@ CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] `cicd` — CI/CD 流水线管理（GitHub Actions、GitLab CI、Cody 集成）
 - [x] `testing` — 跨语言测试策略和模式（pytest、Jest、go test、cargo test）
 
-**v1.0.0 总计：418 个测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板**
+**Go SDK**
+- [x] `sdk/go/` — 零依赖 Go 客户端，完整覆盖 RPC API
+- [x] Run / Stream / Tool / Sessions / Skills 全部方法
+- [x] 自动重试 + 指数退避、context 取消支持
+- [x] 25 个单元测试（httptest mock server）
+
+**v1.0.0 总计：418 个 Python 测试 + 25 个 Go 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板，Go SDK**
 
 ---
 

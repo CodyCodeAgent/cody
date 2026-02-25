@@ -9,7 +9,7 @@ AI coding engine with RPC Server, dynamic skills, MCP integration, and LSP intel
 - **30+ AI Tools** — File ops, search (grep/glob/patch), shell commands, undo/redo, task management, structured questions
 - **11 Built-in Skills** — git, github, docker, npm, python, rust, go, java, web, cicd, testing — AI reads SKILL.md to learn usage
 - **CI/CD Templates** — Ready-to-use GitHub Actions for AI code review, auto-fix, and test generation
-- **RPC Server + SDK** — FastAPI HTTP/WebSocket server, Python SDK (sync + async), embeddable into any system
+- **RPC Server + SDK** — FastAPI HTTP/WebSocket server, Python SDK (sync + async), Go SDK, embeddable into any system
 - **MCP Integration** — Connect to external MCP servers (GitHub, databases, etc.) via stdio JSON-RPC
 - **LSP Intelligence** — Python (pyright), TypeScript (tsserver), Go (gopls) — diagnostics, go-to-definition, references, hover
 - **Sub-Agent System** — Spawn specialized agents (code/research/test) with asyncio concurrency
@@ -100,6 +100,28 @@ async with AsyncCodyClient("http://localhost:8000") as client:
 
 Sync version: `CodyClient`. Built-in retry with exponential backoff.
 
+### Go SDK
+
+```go
+client := cody.NewClient("http://localhost:8000")
+
+// One-shot
+result, _ := client.Run(ctx, "create hello.py")
+fmt.Println(result.Output)
+
+// Multi-turn session
+session, _ := client.CreateSession(ctx, cody.WithTitle("My task"))
+client.Run(ctx, "create Flask app", cody.WithSession(session.ID))
+
+// Streaming
+ch, _ := client.Stream(ctx, "explain this code")
+for chunk := range ch {
+    fmt.Print(chunk.Content)
+}
+```
+
+Zero dependencies, automatic retry, context cancellation. Full docs: [sdk/go/README.md](sdk/go/README.md).
+
 ## Tool Set (30+)
 
 | Category | Tools |
@@ -188,6 +210,7 @@ python3 -m ruff format cody/ tests/
 ## Documentation
 
 - [API Reference](docs/API.md) — RPC endpoints, WebSocket, error codes, auth
+- [Go SDK](sdk/go/README.md) — Go client with zero dependencies
 - [Architecture](docs/ARCHITECTURE.md) — System design, component diagram, data flows
 - [Features & Roadmap](docs/FEATURES.md) — Full feature list, version history, competitive analysis
 - [Handoff Guide](docs/HANDOFF.md) — For developers joining the project

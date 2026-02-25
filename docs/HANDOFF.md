@@ -13,6 +13,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **TUI** (`cody/tui.py`) — 基于 Textual 的全屏交互终端界面，调用 core
 - **RPC Server** (`cody/server.py`) — 基于 FastAPI 的 HTTP/WS 服务端，调用 core
 - **Python SDK** (`cody/client.py`) — `CodyClient` (同步) + `AsyncCodyClient` (异步) 双客户端
+- **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端，覆盖完整 RPC API
 
 新功能 **必须** 先在 core/ 实现，然后在 Server、CLI 和/或 TUI 暴露。
 
@@ -365,6 +366,7 @@ cody-server --port 9000       # 指定端口
 
 - [x] **CI/CD 模板** — 3 个 GitHub Actions 模板（代码审查、Issue 自动修复、测试生成）
 - [x] **更多内置 Skills** — 从 5 个扩展到 11 个（新增 rust, go, java, web, cicd, testing）
+- [x] **Go SDK** — 零依赖 Go 客户端，25 个测试
 
 ### v0.5.0 — 安全与可靠性 ✅ 已完成
 
