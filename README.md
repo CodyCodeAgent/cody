@@ -211,7 +211,7 @@ cody skills disable docker           # Disable a skill
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (442 tests)
+# Run tests (446 tests)
 python3 -m pytest tests/ -v
 
 # Lint

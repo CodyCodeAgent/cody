@@ -390,3 +390,38 @@ def test_plain_markdown_skill_skipped(tmp_path, monkeypatch):
     config = Config()
     manager = SkillManager(config)
     assert manager.get_skill("legacy") is None
+
+
+# ── Caching ─────────────────────────────────────────────────────────────────
+
+
+def test_instructions_cached(tmp_path):
+    """instructions property reads disk once, then returns cached value."""
+    skill_dir = _make_skill_dir(tmp_path)
+    skill = Skill(name="myskill", description="Does things", source="builtin", path=skill_dir)
+
+    result1 = skill.instructions
+    assert "Instructions here" in result1
+
+    # Modify file on disk — cached value should persist
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: myskill\ndescription: Changed\n---\n\nNew body."
+    )
+    result2 = skill.instructions
+    assert result2 == result1  # Still cached
+
+
+def test_documentation_cached(tmp_path):
+    """documentation property reads disk once, then returns cached value."""
+    skill_dir = _make_skill_dir(tmp_path)
+    skill = Skill(name="myskill", description="Does things", source="builtin", path=skill_dir)
+
+    result1 = skill.documentation
+    assert "---" in result1
+
+    # Modify file on disk — cached value should persist
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: myskill\ndescription: Changed\n---\n\nNew body."
+    )
+    result2 = skill.documentation
+    assert result2 == result1  # Still cached

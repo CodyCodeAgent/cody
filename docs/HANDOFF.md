@@ -64,7 +64,7 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 442 个测试
+├── tests/                   # 446 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
@@ -373,7 +373,7 @@ cody-server --port 9000       # 指定端口
 - [x] **Skill 格式迁移** — 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
 - [x] **SkillManager 重构** — frontmatter 解析、名称校验、`validate_skill()`
 - [x] **渐进式加载** — 启动时只加载元数据，`to_prompt_xml()` 注入 system prompt
-- [x] **442 个 Python 测试 + 25 个 Go 测试**
+- [x] **446 个 Python 测试 + 25 个 Go 测试**
 
 ### v1.0.0 — 生产就绪 ✅ 已完成
 

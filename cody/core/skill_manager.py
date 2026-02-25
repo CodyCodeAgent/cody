@@ -96,24 +96,34 @@ class Skill:
     compatibility: Optional[str] = None
     metadata: dict[str, str] = field(default_factory=dict)
     allowed_tools: Optional[str] = None
+    _cached_instructions: Optional[str] = field(default=None, repr=False)
+    _cached_documentation: Optional[str] = field(default=None, repr=False)
 
     @property
     def instructions(self) -> str:
         """Read full SKILL.md body (activated on demand — progressive disclosure)."""
+        if self._cached_instructions is not None:
+            return self._cached_instructions
         skill_md = self.path / "SKILL.md"
         if skill_md.exists():
             text = skill_md.read_text()
             _, body = _parse_frontmatter(text)
-            return body.strip()
-        return ""
+            self._cached_instructions = body.strip()
+        else:
+            self._cached_instructions = ""
+        return self._cached_instructions
 
     @property
     def documentation(self) -> str:
         """Read full SKILL.md content (frontmatter + body)."""
+        if self._cached_documentation is not None:
+            return self._cached_documentation
         skill_md = self.path / "SKILL.md"
         if skill_md.exists():
-            return skill_md.read_text()
-        return f"# {self.name}\n\nNo documentation available."
+            self._cached_documentation = skill_md.read_text()
+        else:
+            self._cached_documentation = f"# {self.name}\n\nNo documentation available."
+        return self._cached_documentation
 
 
 # ── SkillManager ─────────────────────────────────────────────────────────────

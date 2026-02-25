@@ -368,6 +368,8 @@ async def run_agent_stream(request: RunRequest):
             config = Config.load()
             if request.model:
                 config.model = request.model
+            if request.skills is not None:
+                config.skills.enabled = request.skills
 
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)

@@ -646,7 +646,7 @@ CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] `to_prompt_xml()` — 生成 `<available_skills>` XML 注入 system prompt
 - [x] Runner system prompt 自动注入 skills XML
 
-**v1.0.1 总计：442 个 Python 测试 + 25 个 Go 测试，ruff 零告警**
+**v1.0.1 总计：446 个 Python 测试 + 25 个 Go 测试，ruff 零告警**
 
 ---
 
