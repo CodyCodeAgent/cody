@@ -26,6 +26,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
   "model": "anthropic:claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
+  "claude_oauth_token": null,
   "skills": ["python", "git"],
   "session_id": "optional-session-id"
 }
@@ -39,6 +40,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | model | string | ❌ | 模型名称，默认配置中的模型 |
 | model_base_url | string | ❌ | 自定义 OpenAI 兼容 API 地址 |
 | model_api_key | string | ❌ | 自定义模型提供商的 API Key |
+| claude_oauth_token | string | ❌ | Claude OAuth token（替代 API Key，来自 `claude login`） |
 | skills | string[] | ❌ | 启用的 Skills 列表 |
 | session_id | string | ❌ | 会话 ID，用于多轮对话 |
 
@@ -49,6 +51,14 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
   "model": "glm-4",
   "model_base_url": "https://open.bigmodel.cn/api/paas/v4/",
   "model_api_key": "sk-your-key"
+}
+```
+
+**使用 Claude OAuth token：**
+```json
+{
+  "prompt": "写一个排序算法",
+  "claude_oauth_token": "your-oauth-token"
 }
 ```
 

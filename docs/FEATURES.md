@@ -349,6 +349,14 @@ data: {"type": "done", "output": "完成"}
 }
 ```
 
+**模型认证方式（优先级从高到低）：**
+
+| 方式 | 配置 | 说明 |
+|------|------|------|
+| OpenAI 兼容 API | `model_base_url` + `model_api_key` | 智谱 GLM、阿里 DashScope 等 |
+| Claude OAuth | `claude_oauth_token` 或 `CLAUDE_OAUTH_TOKEN` 环境变量 | `claude login` 获取的 OAuth token |
+| Anthropic API Key | `ANTHROPIC_API_KEY` 环境变量 | 默认方式 |
+
 ### 8. 安全特性
 
 **命令执行限制：**
