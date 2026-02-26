@@ -240,6 +240,19 @@ class SubAgentManager:
                 api_key=self.config.model_api_key or "not-set",
             )
             return OpenAIChatModel(self.config.model, provider=provider)
+
+        if self.config.claude_oauth_token:
+            from anthropic import AsyncAnthropic
+            from pydantic_ai.models.anthropic import AnthropicModel
+            from pydantic_ai.providers.anthropic import AnthropicProvider
+
+            client = AsyncAnthropic(auth_token=self.config.claude_oauth_token)
+            provider = AnthropicProvider(anthropic_client=client)
+            model_name = self.config.model
+            if model_name.startswith("anthropic:"):
+                model_name = model_name[len("anthropic:"):]
+            return AnthropicModel(model_name, provider=provider)
+
         return self.config.model
 
     async def _execute(
