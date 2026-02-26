@@ -277,3 +277,40 @@ def test_config_env_overrides_file_values(tmp_path, monkeypatch):
     assert config.model == "qwen-coder-plus"
     assert config.model_base_url == "https://from-env.com/v1"
     assert config.model_api_key == "sk-env-key"
+
+
+# ── Claude OAuth token ──────────────────────────────────────────────────────
+
+
+def test_config_claude_oauth_token_default():
+    """claude_oauth_token defaults to None"""
+    config = Config()
+    assert config.claude_oauth_token is None
+
+
+def test_config_claude_oauth_token_set():
+    """claude_oauth_token can be set directly"""
+    config = Config(claude_oauth_token="oauth-tok-123")
+    assert config.claude_oauth_token == "oauth-tok-123"
+
+
+def test_config_env_overrides_claude_oauth_token(tmp_path, monkeypatch):
+    """CLAUDE_OAUTH_TOKEN env var overrides config"""
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CLAUDE_OAUTH_TOKEN", "oauth-from-env")
+    config = Config.load()
+    assert config.claude_oauth_token == "oauth-from-env"
+
+
+def test_config_save_excludes_oauth_token(tmp_path):
+    """Save should NOT write claude_oauth_token to disk for security"""
+    config = Config(claude_oauth_token="oauth-secret")
+    config_path = tmp_path / "config.json"
+    config.save(config_path)
+
+    saved_data = json.loads(config_path.read_text())
+    assert "claude_oauth_token" not in saved_data

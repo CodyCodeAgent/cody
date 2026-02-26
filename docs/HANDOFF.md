@@ -369,6 +369,13 @@ cody-server --port 9000       # 指定端口
 
 ## 8. 版本历史
 
+### v1.0.3 — Claude OAuth 认证支持 ✅ 已完成
+
+- [x] **Claude OAuth token** — 通过 `claude_oauth_token` 或 `CLAUDE_OAUTH_TOKEN` 环境变量使用 OAuth 认证
+- [x] **替代 API Key** — 使用 `claude login` 获取的 OAuth token，无需申请 API Key
+- [x] **安全保存** — `Config.save()` 不写入 OAuth token，避免明文泄露
+- [x] **优先级清晰** — `model_base_url`（OpenAI 兼容）> `claude_oauth_token`（OAuth）> `ANTHROPIC_API_KEY`（默认）
+
 ### v1.0.2 — 自定义模型提供商支持 ✅ 已完成
 
 - [x] **OpenAI 兼容 API 支持** — 通过 `model_base_url` + `model_api_key` 接入智谱 GLM、阿里 DashScope 等

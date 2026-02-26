@@ -61,6 +61,7 @@ class Config(BaseModel):
     model: str = 'anthropic:claude-sonnet-4-0'
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
+    claude_oauth_token: Optional[str] = None
     auth: AuthConfig = Field(default_factory=AuthConfig)
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
@@ -102,16 +103,20 @@ class Config(BaseModel):
         env_api_key = os.environ.get("CODY_MODEL_API_KEY")
         if env_api_key:
             config.model_api_key = env_api_key
+        env_oauth = os.environ.get("CLAUDE_OAUTH_TOKEN")
+        if env_oauth:
+            config.claude_oauth_token = env_oauth
         return config
 
     def save(self, path: Union[Path, str]):
         """Save configuration to file.
 
-        Note: model_api_key is excluded from saved files for security.
-        Use the CODY_MODEL_API_KEY environment variable instead.
+        Note: model_api_key and claude_oauth_token are excluded from saved
+        files for security. Use environment variables instead.
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump(exclude_none=True)
         data.pop("model_api_key", None)
+        data.pop("claude_oauth_token", None)
         path.write_text(json.dumps(data, indent=2, default=str))

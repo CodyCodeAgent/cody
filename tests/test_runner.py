@@ -257,3 +257,67 @@ def test_resolve_model_base_url_without_api_key():
     # Should not raise — falls back to "not-set" placeholder
     result = runner._resolve_model()
     assert not isinstance(result, str)
+
+
+def test_resolve_model_with_claude_oauth_token():
+    """With claude_oauth_token, _resolve_model returns an AnthropicModel"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="anthropic:claude-sonnet-4-0",
+            claude_oauth_token="oauth-test-token",
+        )
+
+    result = runner._resolve_model()
+    # Should be an AnthropicModel, not a string
+    assert not isinstance(result, str)
+    from pydantic_ai.models.anthropic import AnthropicModel
+    assert isinstance(result, AnthropicModel)
+
+
+def test_resolve_model_oauth_strips_prefix():
+    """OAuth path strips 'anthropic:' prefix from model name"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="anthropic:claude-sonnet-4-0",
+            claude_oauth_token="oauth-test-token",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    # The model_name passed to AnthropicModel should not have the prefix
+    assert "anthropic:" not in str(result.model_name)
+
+
+def test_resolve_model_oauth_without_prefix():
+    """OAuth path works when model name has no 'anthropic:' prefix"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="claude-sonnet-4-0",
+            claude_oauth_token="oauth-test-token",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    from pydantic_ai.models.anthropic import AnthropicModel
+    assert isinstance(result, AnthropicModel)
+
+
+def test_resolve_model_base_url_takes_priority_over_oauth():
+    """model_base_url takes priority over claude_oauth_token"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="glm-4",
+            model_base_url="https://open.bigmodel.cn/api/paas/v4/",
+            model_api_key="sk-test",
+            claude_oauth_token="oauth-test-token",
+        )
+
+    result = runner._resolve_model()
+    # Should use OpenAI path, not Anthropic OAuth
+    assert not isinstance(result, str)
+    from pydantic_ai.models.openai import OpenAIChatModel
+    assert isinstance(result, OpenAIChatModel)
