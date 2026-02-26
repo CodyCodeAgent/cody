@@ -28,6 +28,7 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 
 **基于 Pydantic AI：**
 - 多模型支持（Anthropic、OpenAI、Google、DeepSeek 等）
+- 自定义 OpenAI 兼容 API 支持（智谱 GLM、阿里通义千问/DashScope 等）
 - 结构化输出
 - 工具调用（Function Calling）
 - 流式响应

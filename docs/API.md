@@ -24,6 +24,8 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
   "prompt": "创建一个 FastAPI 项目",
   "workdir": "/path/to/project",
   "model": "anthropic:claude-sonnet-4-0",
+  "model_base_url": null,
+  "model_api_key": null,
   "skills": ["python", "git"],
   "session_id": "optional-session-id"
 }
@@ -35,8 +37,20 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | prompt | string | ✅ | 任务描述 |
 | workdir | string | ❌ | 工作目录，默认当前目录 |
 | model | string | ❌ | 模型名称，默认配置中的模型 |
+| model_base_url | string | ❌ | 自定义 OpenAI 兼容 API 地址 |
+| model_api_key | string | ❌ | 自定义模型提供商的 API Key |
 | skills | string[] | ❌ | 启用的 Skills 列表 |
 | session_id | string | ❌ | 会话 ID，用于多轮对话 |
+
+**使用自定义模型提供商（如智谱 GLM）：**
+```json
+{
+  "prompt": "写一个排序算法",
+  "model": "glm-4",
+  "model_base_url": "https://open.bigmodel.cn/api/paas/v4/",
+  "model_api_key": "sk-your-key"
+}
+```
 
 **响应（成功）：**
 ```json

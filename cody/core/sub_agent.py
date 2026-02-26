@@ -229,6 +229,19 @@ class SubAgentManager:
                 )
                 self._tasks.pop(agent_id, None)
 
+    def _resolve_model(self):
+        """Resolve model, reusing the same logic as AgentRunner."""
+        if self.config.model_base_url:
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            provider = OpenAIProvider(
+                base_url=self.config.model_base_url,
+                api_key=self.config.model_api_key or "not-set",
+            )
+            return OpenAIChatModel(self.config.model, provider=provider)
+        return self.config.model
+
     async def _execute(
         self,
         agent_id: str,
@@ -245,7 +258,7 @@ class SubAgentManager:
         system_prompt = _AGENT_PROMPTS.get(agent_type, _AGENT_PROMPTS[AgentType.GENERIC])
 
         agent = Agent(
-            self.config.model,
+            self._resolve_model(),
             deps_type=CodyDeps,
             system_prompt=system_prompt,
         )

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic_ai.messages import ModelRequest, ModelResponse
 
+from cody.core.config import Config
 from cody.core.runner import AgentRunner
 from cody.core.session import Message, SessionStore
 
@@ -213,3 +214,46 @@ async def test_run_with_session_not_found(tmp_path):
 
     with pytest.raises(ValueError, match="Session not found"):
         await runner.run_with_session("hello", store, "bad_id")
+
+
+# ── _resolve_model ──────────────────────────────────────────────────────────
+
+
+def test_resolve_model_default_string():
+    """Without base_url, _resolve_model returns the model string as-is"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(model="anthropic:claude-sonnet-4-0")
+
+    result = runner._resolve_model()
+    assert result == "anthropic:claude-sonnet-4-0"
+
+
+def test_resolve_model_with_base_url():
+    """With base_url, _resolve_model returns an OpenAIModel instance"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="glm-4",
+            model_base_url="https://open.bigmodel.cn/api/paas/v4/",
+            model_api_key="sk-test",
+        )
+
+    result = runner._resolve_model()
+    # Should be an OpenAIModel, not a string
+    assert not isinstance(result, str)
+    assert hasattr(result, "model_name") or hasattr(result, "name")
+
+
+def test_resolve_model_base_url_without_api_key():
+    """With base_url but no api_key, _resolve_model uses fallback key"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="qwen-coder-plus",
+            model_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+
+    # Should not raise — falls back to "not-set" placeholder
+    result = runner._resolve_model()
+    assert not isinstance(result, str)

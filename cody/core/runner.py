@@ -84,6 +84,24 @@ class AgentRunner:
         # Create agent
         self.agent = self._create_agent()
 
+    def _resolve_model(self):
+        """Resolve model to a Pydantic AI model instance.
+
+        If model_base_url is configured, creates an OpenAIModel with a custom
+        OpenAIProvider for OpenAI-compatible APIs (e.g. 智谱 GLM, 阿里 DashScope).
+        Otherwise returns the model string for Pydantic AI's built-in routing.
+        """
+        if self.config.model_base_url:
+            from pydantic_ai.models.openai import OpenAIChatModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+
+            provider = OpenAIProvider(
+                base_url=self.config.model_base_url,
+                api_key=self.config.model_api_key or "not-set",
+            )
+            return OpenAIChatModel(self.config.model, provider=provider)
+        return self.config.model
+
     def _create_agent(self) -> Agent:
         """Create Pydantic AI Agent with tools"""
         # Build system prompt with available skills (Agent Skills standard)
@@ -101,7 +119,7 @@ class AgentRunner:
             system_parts.append(skills_xml)
 
         agent = Agent(
-            self.config.model,
+            self._resolve_model(),
             deps_type=CodyDeps,
             system_prompt="\n\n".join(system_parts),
         )

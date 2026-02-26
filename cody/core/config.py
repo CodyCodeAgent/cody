@@ -1,6 +1,7 @@
 """Configuration management"""
 
 import json
+import os
 from pathlib import Path
 from typing import Literal, Optional, Union
 from datetime import datetime
@@ -58,6 +59,8 @@ class SecurityConfig(BaseModel):
 class Config(BaseModel):
     """Main configuration"""
     model: str = 'anthropic:claude-sonnet-4-0'
+    model_base_url: Optional[str] = None
+    model_api_key: Optional[str] = None
     auth: AuthConfig = Field(default_factory=AuthConfig)
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
@@ -78,17 +81,37 @@ class Config(BaseModel):
             elif global_config.exists():
                 path = global_config
             else:
-                return cls()
+                return cls._apply_env_overrides(cls())
         
         path = Path(path)
         if not path.exists():
-            return cls()
-        
+            return cls._apply_env_overrides(cls())
+
         data = json.loads(path.read_text())
-        return cls(**data)
+        return cls._apply_env_overrides(cls(**data))
     
+    @staticmethod
+    def _apply_env_overrides(config: "Config") -> "Config":
+        """Apply environment variable overrides. Env vars take priority."""
+        env_model = os.environ.get("CODY_MODEL")
+        if env_model:
+            config.model = env_model
+        env_base_url = os.environ.get("CODY_MODEL_BASE_URL")
+        if env_base_url:
+            config.model_base_url = env_base_url
+        env_api_key = os.environ.get("CODY_MODEL_API_KEY")
+        if env_api_key:
+            config.model_api_key = env_api_key
+        return config
+
     def save(self, path: Union[Path, str]):
-        """Save configuration to file"""
+        """Save configuration to file.
+
+        Note: model_api_key is excluded from saved files for security.
+        Use the CODY_MODEL_API_KEY environment variable instead.
+        """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.model_dump_json(indent=2))
+        data = self.model_dump(exclude_none=True)
+        data.pop("model_api_key", None)
+        path.write_text(json.dumps(data, indent=2, default=str))
