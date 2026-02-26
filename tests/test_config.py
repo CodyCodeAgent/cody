@@ -19,6 +19,8 @@ from cody.core.config import (
 def test_default_config():
     config = Config()
     assert config.model == "anthropic:claude-sonnet-4-0"
+    assert config.model_base_url is None
+    assert config.model_api_key is None
     assert config.auth.type == "api_key"
     assert config.skills.enabled == []
     assert config.skills.disabled == []
@@ -171,3 +173,107 @@ def test_config_roundtrip_with_mcp(tmp_path):
     assert len(loaded.mcp.servers) == 1
     assert loaded.mcp.servers[0].name == "test"
     assert loaded.mcp.servers[0].command == "echo"
+
+
+# ── Custom model provider fields ────────────────────────────────────────────
+
+
+def test_config_with_custom_model_provider():
+    """Config accepts model_base_url and model_api_key"""
+    config = Config(
+        model="glm-4",
+        model_base_url="https://open.bigmodel.cn/api/paas/v4/",
+        model_api_key="sk-test-key",
+    )
+    assert config.model == "glm-4"
+    assert config.model_base_url == "https://open.bigmodel.cn/api/paas/v4/"
+    assert config.model_api_key == "sk-test-key"
+
+
+def test_config_load_with_custom_model(tmp_path):
+    """Load config with custom model provider from JSON"""
+    data = {
+        "model": "qwen-coder-plus",
+        "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(data))
+
+    config = Config.load(config_path)
+    assert config.model == "qwen-coder-plus"
+    assert config.model_base_url == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    assert config.model_api_key is None
+
+
+def test_config_save_excludes_api_key(tmp_path):
+    """Save should NOT write model_api_key to disk for security"""
+    config = Config(
+        model="glm-4",
+        model_base_url="https://open.bigmodel.cn/api/paas/v4/",
+        model_api_key="sk-secret-key",
+    )
+    config_path = tmp_path / "config.json"
+    config.save(config_path)
+
+    saved_data = json.loads(config_path.read_text())
+    assert "model_api_key" not in saved_data
+    assert saved_data["model"] == "glm-4"
+    assert saved_data["model_base_url"] == "https://open.bigmodel.cn/api/paas/v4/"
+
+
+# ── Environment variable overrides ──────────────────────────────────────────
+
+
+def test_config_env_overrides_model(tmp_path, monkeypatch):
+    """CODY_MODEL env var overrides config file value"""
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CODY_MODEL", "glm-4")
+    config = Config.load()
+    assert config.model == "glm-4"
+
+
+def test_config_env_overrides_base_url(tmp_path, monkeypatch):
+    """CODY_MODEL_BASE_URL env var overrides config file value"""
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CODY_MODEL_BASE_URL", "https://custom.api.com/v1")
+    config = Config.load()
+    assert config.model_base_url == "https://custom.api.com/v1"
+
+
+def test_config_env_overrides_api_key(tmp_path, monkeypatch):
+    """CODY_MODEL_API_KEY env var overrides config file value"""
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-from-env")
+    config = Config.load()
+    assert config.model_api_key == "sk-from-env"
+
+
+def test_config_env_overrides_file_values(tmp_path, monkeypatch):
+    """Env vars take priority over config file values"""
+    data = {
+        "model": "glm-4",
+        "model_base_url": "https://from-file.com/v1",
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(data))
+
+    monkeypatch.setenv("CODY_MODEL", "qwen-coder-plus")
+    monkeypatch.setenv("CODY_MODEL_BASE_URL", "https://from-env.com/v1")
+    monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-env-key")
+
+    config = Config.load(config_path)
+    assert config.model == "qwen-coder-plus"
+    assert config.model_base_url == "https://from-env.com/v1"
+    assert config.model_api_key == "sk-env-key"

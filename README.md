@@ -16,7 +16,7 @@ AI coding engine with RPC Server, dynamic skills, MCP integration, and LSP intel
 - **Context Management** — Auto-compact conversations approaching token limits, smart file chunking
 - **Security** — Tool-level permissions (allow/deny/confirm), path traversal protection, dangerous command detection, audit logging, rate limiting, OAuth 2.0
 - **Session Persistence** — SQLite-backed multi-session management with history
-- **Multi-Model** — Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, and more via Pydantic AI
+- **Multi-Model** — Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, 智谱 GLM, 阿里通义千问, and any OpenAI-compatible API via Pydantic AI
 
 ## Quick Start
 
@@ -195,6 +195,34 @@ cody skills disable docker           # Disable a skill
   }
 }
 ```
+
+### Custom Model Provider (OpenAI-compatible APIs)
+
+Use any OpenAI-compatible API (智谱 GLM, 阿里 DashScope, etc.) via environment variables:
+
+```bash
+# .env
+CODY_MODEL=glm-4
+CODY_MODEL_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
+CODY_MODEL_API_KEY=sk-your-key
+```
+
+Or via CLI flags:
+
+```bash
+cody run "写个单元测试" --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/ --model-api-key sk-xxx
+```
+
+Or in `.cody/config.json` (API key should be set via env var for security):
+
+```json
+{
+  "model": "qwen-coder-plus",
+  "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+}
+```
+
+Priority: CLI flags > Environment variables > Config file.
 
 ### Global config (`~/.cody/config.json`)
 

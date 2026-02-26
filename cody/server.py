@@ -27,6 +27,8 @@ class RunRequest(BaseModel):
     prompt: str
     workdir: Optional[str] = None
     model: Optional[str] = None
+    model_base_url: Optional[str] = None
+    model_api_key: Optional[str] = None
     skills: Optional[list[str]] = None
     session_id: Optional[str] = None
 
@@ -319,6 +321,10 @@ async def run_agent(request: RunRequest):
         config = Config.load()
         if request.model:
             config.model = request.model
+        if request.model_base_url:
+            config.model_base_url = request.model_base_url
+        if request.model_api_key:
+            config.model_api_key = request.model_api_key
         if request.skills is not None:
             config.skills.enabled = request.skills
 
@@ -368,6 +374,10 @@ async def run_agent_stream(request: RunRequest):
             config = Config.load()
             if request.model:
                 config.model = request.model
+            if request.model_base_url:
+                config.model_base_url = request.model_base_url
+            if request.model_api_key:
+                config.model_api_key = request.model_api_key
             if request.skills is not None:
                 config.skills.enabled = request.skills
 
@@ -781,6 +791,8 @@ class _WSConnection:
 
         workdir_str = data.get("workdir")
         model_str = data.get("model")
+        base_url_str = data.get("model_base_url")
+        api_key_str = data.get("model_api_key")
         session_id = data.get("session_id")
 
         self._cancel_event = asyncio.Event()
@@ -789,6 +801,10 @@ class _WSConnection:
             config = Config.load()
             if model_str:
                 config.model = model_str
+            if base_url_str:
+                config.model_base_url = base_url_str
+            if api_key_str:
+                config.model_api_key = api_key_str
 
             workdir = Path(workdir_str) if workdir_str else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)

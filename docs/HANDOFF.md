@@ -85,6 +85,7 @@ cody/
 
 项目的 **中枢**。负责：
 - 创建 Pydantic AI `Agent` 实例
+- 通过 `_resolve_model()` 解析模型：支持内置 provider 字符串和自定义 OpenAI 兼容 API
 - 注册所有工具 (tools, skills, MCP, LSP, sub-agent, web)
 - 组装 `CodyDeps` 依赖注入给工具函数
 - 提供 `run()` / `run_stream()` / `run_sync()` 三种执行方式
@@ -368,6 +369,14 @@ cody-server --port 9000       # 指定端口
 
 ## 8. 版本历史
 
+### v1.0.2 — 自定义模型提供商支持 ✅ 已完成
+
+- [x] **OpenAI 兼容 API 支持** — 通过 `model_base_url` + `model_api_key` 接入智谱 GLM、阿里 DashScope 等
+- [x] **环境变量优先** — `CODY_MODEL` / `CODY_MODEL_BASE_URL` / `CODY_MODEL_API_KEY` 优先级高于配置文件
+- [x] **安全保存** — `Config.save()` 不写入 API Key，避免明文泄露
+- [x] **全链路支持** — CLI (`--model-base-url`)、Server (API 请求体)、TUI、WebSocket 均支持
+- [x] **456 个测试全部通过**
+
 ### v1.0.1 — Agent Skills 开放标准 ✅ 已完成
 
 - [x] **Skill 格式迁移** — 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
@@ -407,4 +416,4 @@ cody-server --port 9000       # 指定端口
 
 ---
 
-**最后更新：** 2026-02-25
+**最后更新：** 2026-02-26

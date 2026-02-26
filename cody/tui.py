@@ -110,12 +110,16 @@ class CodyTUI(App):
     def __init__(
         self,
         model: Optional[str] = None,
+        model_base_url: Optional[str] = None,
+        model_api_key: Optional[str] = None,
         workdir: Optional[Path] = None,
         session_id: Optional[str] = None,
         continue_last: bool = False,
     ) -> None:
         super().__init__()
         self._model_override = model
+        self._model_base_url_override = model_base_url
+        self._model_api_key_override = model_api_key
         self._workdir = (workdir or Path.cwd()).resolve()
         self._session_id_arg = session_id
         self._continue_last = continue_last
@@ -139,6 +143,10 @@ class CodyTUI(App):
         self._config = Config.load()
         if self._model_override:
             self._config.model = self._model_override
+        if self._model_base_url_override:
+            self._config.model_base_url = self._model_base_url_override
+        if self._model_api_key_override:
+            self._config.model_api_key = self._model_api_key_override
 
         self._runner = AgentRunner(config=self._config, workdir=self._workdir)
         self._store = SessionStore()
@@ -377,6 +385,8 @@ class CodyTUI(App):
 
 def run_tui(
     model: Optional[str] = None,
+    model_base_url: Optional[str] = None,
+    model_api_key: Optional[str] = None,
     workdir: Optional[str] = None,
     session_id: Optional[str] = None,
     continue_last: bool = False,
@@ -385,6 +395,8 @@ def run_tui(
     workdir_path = Path(workdir) if workdir else None
     app = CodyTUI(
         model=model,
+        model_base_url=model_base_url,
+        model_api_key=model_api_key,
         workdir=workdir_path,
         session_id=session_id,
         continue_last=continue_last,
