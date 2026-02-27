@@ -31,15 +31,18 @@ def main():
 @click.option('--model', help='AI model to use')
 @click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
 @click.option('--model-api-key', help='API key for custom model provider')
+@click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
+@click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, model_base_url, model_api_key, workdir, verbose):
+def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, workdir, verbose):
     """Run a single task with Cody
 
     Examples:
         cody run "create a hello.py file"
         cody run "refactor main.py to use async"
         cody run "写个单元测试" --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
+        cody run "写个排序算法" --model qwen3.5 --coding-plan-key sk-sp-xxx
     """
     if not prompt:
         console.print("[yellow]Please provide a prompt[/yellow]")
@@ -53,6 +56,10 @@ def run(prompt, model, model_base_url, model_api_key, workdir, verbose):
         config.model_base_url = model_base_url
     if model_api_key:
         config.model_api_key = model_api_key
+    if coding_plan_key:
+        config.coding_plan_key = coding_plan_key
+    if coding_plan_protocol:
+        config.coding_plan_protocol = coding_plan_protocol
 
     runner = AgentRunner(config=config, workdir=workdir)
 
@@ -76,10 +83,12 @@ def run(prompt, model, model_base_url, model_api_key, workdir, verbose):
 @click.option('--model', help='AI model to use')
 @click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
 @click.option('--model-api-key', help='API key for custom model provider')
+@click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
+@click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, model_base_url, model_api_key, workdir, session_id, continue_last):
+def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, workdir, session_id, continue_last):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -88,6 +97,7 @@ def chat(model, model_base_url, model_api_key, workdir, session_id, continue_las
         cody chat
         cody chat --model anthropic:claude-sonnet-4-0
         cody chat --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
+        cody chat --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody chat --continue
         cody chat --session abc123
     """
@@ -98,6 +108,10 @@ def chat(model, model_base_url, model_api_key, workdir, session_id, continue_las
         config.model_base_url = model_base_url
     if model_api_key:
         config.model_api_key = model_api_key
+    if coding_plan_key:
+        config.coding_plan_key = coding_plan_key
+    if coding_plan_protocol:
+        config.coding_plan_protocol = coding_plan_protocol
 
     workdir_path = Path(workdir) if workdir else Path.cwd()
     store = SessionStore()
@@ -490,10 +504,12 @@ def config_show():
 @click.option('--model', help='AI model to use')
 @click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
 @click.option('--model-api-key', help='API key for custom model provider')
+@click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
+@click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, model_base_url, model_api_key, workdir, session_id, continue_last):
+def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, workdir, session_id, continue_last):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -502,6 +518,7 @@ def tui(model, model_base_url, model_api_key, workdir, session_id, continue_last
         cody tui
         cody tui --model anthropic:claude-sonnet-4-0
         cody tui --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
+        cody tui --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody tui --continue
     """
     from .tui import run_tui
@@ -509,6 +526,8 @@ def tui(model, model_base_url, model_api_key, workdir, session_id, continue_last
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
+        coding_plan_key=coding_plan_key,
+        coding_plan_protocol=coding_plan_protocol,
         workdir=workdir,
         session_id=session_id,
         continue_last=continue_last,

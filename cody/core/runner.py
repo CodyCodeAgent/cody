@@ -84,15 +84,47 @@ class AgentRunner:
         # Create agent
         self.agent = self._create_agent()
 
+    # Coding Plan Base URLs
+    CODING_PLAN_OPENAI_URL = "https://coding.dashscope.aliyuncs.com/v1"
+    CODING_PLAN_ANTHROPIC_URL = "https://coding.dashscope.aliyuncs.com/apps/anthropic"
+
     def _resolve_model(self):
         """Resolve model to a Pydantic AI model instance.
 
         Priority:
-        1. model_base_url → OpenAIProvider (OpenAI-compatible APIs)
-        2. claude_oauth_token → AnthropicProvider with OAuth auth_token
-        3. Default → model string for Pydantic AI's built-in routing
+        1. coding_plan_key → Aliyun Bailian Coding Plan (OpenAI or Anthropic protocol)
+        2. model_base_url → OpenAIProvider (OpenAI-compatible APIs)
+        3. claude_oauth_token → AnthropicProvider with OAuth auth_token
+        4. Default → model string for Pydantic AI's built-in routing
            (uses ANTHROPIC_API_KEY env var for Anthropic models)
         """
+        if self.config.coding_plan_key:
+            protocol = self.config.coding_plan_protocol
+
+            if protocol == "anthropic":
+                from anthropic import AsyncAnthropic
+                from pydantic_ai.models.anthropic import AnthropicModel
+                from pydantic_ai.providers.anthropic import AnthropicProvider
+
+                client = AsyncAnthropic(
+                    api_key=self.config.coding_plan_key,
+                    base_url=self.CODING_PLAN_ANTHROPIC_URL,
+                )
+                provider = AnthropicProvider(anthropic_client=client)
+                model_name = self.config.model
+                if model_name.startswith("anthropic:"):
+                    model_name = model_name[len("anthropic:"):]
+                return AnthropicModel(model_name, provider=provider)
+            else:
+                from pydantic_ai.models.openai import OpenAIChatModel
+                from pydantic_ai.providers.openai import OpenAIProvider
+
+                provider = OpenAIProvider(
+                    base_url=self.CODING_PLAN_OPENAI_URL,
+                    api_key=self.config.coding_plan_key,
+                )
+                return OpenAIChatModel(self.config.model, provider=provider)
+
         if self.config.model_base_url:
             from pydantic_ai.models.openai import OpenAIChatModel
             from pydantic_ai.providers.openai import OpenAIProvider

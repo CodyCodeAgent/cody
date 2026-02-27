@@ -224,6 +224,44 @@ Or in `.cody/config.json` (API key should be set via env var for security):
 
 Priority: CLI flags > Environment variables > Config file.
 
+### Aliyun Bailian Coding Plan (阿里云百炼)
+
+Subscribe to [Coding Plan](https://www.aliyun.com/benefit/scene/codingplan) for bundled access to Qwen3.5, GLM-5, Kimi K2.5, MiniMax M2.5, etc.
+
+Via environment variables:
+
+```bash
+# .env
+CODY_MODEL=qwen3.5
+CODY_CODING_PLAN_KEY=sk-sp-xxxxx
+# Optional: use "anthropic" protocol for Claude-compatible models
+# CODY_CODING_PLAN_PROTOCOL=anthropic
+```
+
+Via CLI flags:
+
+```bash
+cody run "写个排序算法" --model qwen3.5 --coding-plan-key sk-sp-xxx
+cody run "写单元测试" --model qwen3.5 --coding-plan-key sk-sp-xxx --coding-plan-protocol anthropic
+```
+
+Via RPC Server request:
+
+```json
+{
+  "prompt": "写一个排序算法",
+  "model": "qwen3.5",
+  "coding_plan_key": "sk-sp-xxxxx"
+}
+```
+
+Supports two protocols:
+
+- **OpenAI compatible** (default): `https://coding.dashscope.aliyuncs.com/v1`
+- **Anthropic compatible**: `https://coding.dashscope.aliyuncs.com/apps/anthropic`
+
+> Note: Coding Plan API Key (`sk-sp-xxxxx`) is different from regular DashScope API Key (`sk-xxxxx`). Do not mix them.
+
 ### Global config (`~/.cody/config.json`)
 
 ```json

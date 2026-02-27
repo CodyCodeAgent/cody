@@ -321,3 +321,86 @@ def test_resolve_model_base_url_takes_priority_over_oauth():
     assert not isinstance(result, str)
     from pydantic_ai.models.openai import OpenAIChatModel
     assert isinstance(result, OpenAIChatModel)
+
+
+# ── Coding Plan _resolve_model ─────────────────────────────────────────────
+
+
+def test_resolve_model_coding_plan_openai():
+    """Coding Plan with openai protocol returns OpenAIChatModel"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="qwen3.5",
+            coding_plan_key="sk-sp-test123",
+            coding_plan_protocol="openai",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    from pydantic_ai.models.openai import OpenAIChatModel
+    assert isinstance(result, OpenAIChatModel)
+
+
+def test_resolve_model_coding_plan_anthropic():
+    """Coding Plan with anthropic protocol returns AnthropicModel"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="claude-sonnet-4-0",
+            coding_plan_key="sk-sp-test123",
+            coding_plan_protocol="anthropic",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    from pydantic_ai.models.anthropic import AnthropicModel
+    assert isinstance(result, AnthropicModel)
+
+
+def test_resolve_model_coding_plan_anthropic_strips_prefix():
+    """Coding Plan anthropic protocol strips 'anthropic:' prefix"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="anthropic:claude-sonnet-4-0",
+            coding_plan_key="sk-sp-test123",
+            coding_plan_protocol="anthropic",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    assert "anthropic:" not in str(result.model_name)
+
+
+def test_resolve_model_coding_plan_default_protocol():
+    """Coding Plan defaults to openai protocol"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="qwen3.5",
+            coding_plan_key="sk-sp-test123",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    from pydantic_ai.models.openai import OpenAIChatModel
+    assert isinstance(result, OpenAIChatModel)
+
+
+def test_resolve_model_coding_plan_takes_priority():
+    """coding_plan_key takes priority over model_base_url and oauth"""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config(
+            model="qwen3.5",
+            coding_plan_key="sk-sp-test123",
+            model_base_url="https://other.api.com/v1",
+            model_api_key="sk-other",
+            claude_oauth_token="oauth-token",
+        )
+
+    result = runner._resolve_model()
+    assert not isinstance(result, str)
+    from pydantic_ai.models.openai import OpenAIChatModel
+    assert isinstance(result, OpenAIChatModel)

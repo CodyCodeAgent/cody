@@ -314,3 +314,73 @@ def test_config_save_excludes_oauth_token(tmp_path):
 
     saved_data = json.loads(config_path.read_text())
     assert "claude_oauth_token" not in saved_data
+
+
+# ── Coding Plan ──────────────────────────────────────────────────────────────
+
+
+def test_config_coding_plan_key_default():
+    """coding_plan_key defaults to None"""
+    config = Config()
+    assert config.coding_plan_key is None
+    assert config.coding_plan_protocol == "openai"
+
+
+def test_config_coding_plan_key_set():
+    """coding_plan_key can be set directly"""
+    config = Config(coding_plan_key="sk-sp-test123")
+    assert config.coding_plan_key == "sk-sp-test123"
+
+
+def test_config_coding_plan_protocol_anthropic():
+    """coding_plan_protocol can be set to anthropic"""
+    config = Config(coding_plan_protocol="anthropic")
+    assert config.coding_plan_protocol == "anthropic"
+
+
+def test_config_env_overrides_coding_plan_key(tmp_path, monkeypatch):
+    """CODY_CODING_PLAN_KEY env var overrides config"""
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CODY_CODING_PLAN_KEY", "sk-sp-from-env")
+    config = Config.load()
+    assert config.coding_plan_key == "sk-sp-from-env"
+
+
+def test_config_env_overrides_coding_plan_protocol(tmp_path, monkeypatch):
+    """CODY_CODING_PLAN_PROTOCOL env var overrides config"""
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CODY_CODING_PLAN_PROTOCOL", "anthropic")
+    config = Config.load()
+    assert config.coding_plan_protocol == "anthropic"
+
+
+def test_config_save_excludes_coding_plan_key(tmp_path):
+    """Save should NOT write coding_plan_key to disk for security"""
+    config = Config(coding_plan_key="sk-sp-secret")
+    config_path = tmp_path / "config.json"
+    config.save(config_path)
+
+    saved_data = json.loads(config_path.read_text())
+    assert "coding_plan_key" not in saved_data
+
+
+def test_config_coding_plan_from_json(tmp_path):
+    """Load config with coding_plan_protocol from JSON"""
+    data = {
+        "model": "qwen3.5",
+        "coding_plan_protocol": "anthropic",
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(data))
+
+    config = Config.load(config_path)
+    assert config.model == "qwen3.5"
+    assert config.coding_plan_protocol == "anthropic"

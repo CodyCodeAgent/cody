@@ -62,6 +62,8 @@ class Config(BaseModel):
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
     claude_oauth_token: Optional[str] = None
+    coding_plan_key: Optional[str] = None
+    coding_plan_protocol: Literal['openai', 'anthropic'] = 'openai'
     auth: AuthConfig = Field(default_factory=AuthConfig)
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
@@ -106,6 +108,12 @@ class Config(BaseModel):
         env_oauth = os.environ.get("CLAUDE_OAUTH_TOKEN")
         if env_oauth:
             config.claude_oauth_token = env_oauth
+        env_coding_plan = os.environ.get("CODY_CODING_PLAN_KEY")
+        if env_coding_plan:
+            config.coding_plan_key = env_coding_plan
+        env_coding_plan_proto = os.environ.get("CODY_CODING_PLAN_PROTOCOL")
+        if env_coding_plan_proto:
+            config.coding_plan_protocol = env_coding_plan_proto
         return config
 
     def save(self, path: Union[Path, str]):
@@ -119,4 +127,5 @@ class Config(BaseModel):
         data = self.model_dump(exclude_none=True)
         data.pop("model_api_key", None)
         data.pop("claude_oauth_token", None)
+        data.pop("coding_plan_key", None)
         path.write_text(json.dumps(data, indent=2, default=str))

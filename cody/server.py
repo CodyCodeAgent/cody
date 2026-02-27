@@ -29,6 +29,8 @@ class RunRequest(BaseModel):
     model: Optional[str] = None
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
+    coding_plan_key: Optional[str] = None
+    coding_plan_protocol: Optional[str] = None
     skills: Optional[list[str]] = None
     session_id: Optional[str] = None
 
@@ -325,6 +327,10 @@ async def run_agent(request: RunRequest):
             config.model_base_url = request.model_base_url
         if request.model_api_key:
             config.model_api_key = request.model_api_key
+        if request.coding_plan_key:
+            config.coding_plan_key = request.coding_plan_key
+        if request.coding_plan_protocol:
+            config.coding_plan_protocol = request.coding_plan_protocol
         if request.skills is not None:
             config.skills.enabled = request.skills
 
@@ -793,6 +799,8 @@ class _WSConnection:
         model_str = data.get("model")
         base_url_str = data.get("model_base_url")
         api_key_str = data.get("model_api_key")
+        coding_plan_key_str = data.get("coding_plan_key")
+        coding_plan_protocol_str = data.get("coding_plan_protocol")
         session_id = data.get("session_id")
 
         self._cancel_event = asyncio.Event()
@@ -805,6 +813,10 @@ class _WSConnection:
                 config.model_base_url = base_url_str
             if api_key_str:
                 config.model_api_key = api_key_str
+            if coding_plan_key_str:
+                config.coding_plan_key = coding_plan_key_str
+            if coding_plan_protocol_str:
+                config.coding_plan_protocol = coding_plan_protocol_str
 
             workdir = Path(workdir_str) if workdir_str else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
