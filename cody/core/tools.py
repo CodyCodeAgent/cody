@@ -5,12 +5,10 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from pydantic_ai import RunContext
 
-if TYPE_CHECKING:
-    from .runner import CodyDeps
+from .deps import CodyDeps
 
 
 def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
