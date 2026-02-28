@@ -1,0 +1,94 @@
+# CLAUDE.md — Cody 项目指南
+
+## 项目概述
+
+Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**。
+
+- **Core Engine** (`cody/core/`) — 所有功能逻辑，不依赖任何 CLI / Server 框架
+- **CLI** (`cody/cli.py`) — Click 命令行
+- **TUI** (`cody/tui.py`) — Textual 全屏终端
+- **RPC Server** (`cody/server.py`) — FastAPI HTTP/WebSocket
+- **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)
+- **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端
+
+当前版本：**v1.1.1**
+
+## 架构要点
+
+```
+cli.py / tui.py / server.py  →  core/runner.py  →  core/tools.py
+                                      ↓
+                              pydantic-ai, sqlite3, httpx
+```
+
+- `core/` **不允许**导入 `cli.py`、`tui.py` 或 `server.py`
+- 新功能先在 `core/` 实现，再在 shell 层暴露
+- 工具注册是声明式的：在 `tools.py` 底部的 `*_TOOLS` 列表中添加即可，不需要改 `runner.py`
+- 详细架构图见 `docs/ARCHITECTURE.md`
+
+## 关键文件
+
+| 文件 | 作用 |
+|------|------|
+| `core/runner.py` | 中枢引擎 — Agent 创建、工具注册、run/stream 执行 |
+| `core/tools.py` | 30+ 工具函数 + 底部声明式工具注册表 |
+| `core/errors.py` | 错误码 + ToolError 异常层级（server 按类型映射 HTTP 状态码） |
+| `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON |
+| `core/deps.py` | CodyDeps 数据类，工具的依赖注入容器 |
+| `server.py` | FastAPI 壳子，顶部 docstring 有缓存策略说明 |
+| `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
+| `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |
+
+## 开发命令
+
+```bash
+# 安装
+pip install -e ".[dev]"
+
+# 测试（493 个，不需要真实 API Key）
+python3 -m pytest tests/ -v
+
+# Lint（必须零告警）
+python3 -m ruff check cody/ tests/
+
+# 启动 Server
+cody-server --port 8000
+
+# 启动 TUI
+cody tui
+```
+
+## 版本管理
+
+版本号在 **5 个位置**，必须同步更新：
+
+1. `pyproject.toml` → `version = "x.y.z"`
+2. `cody/__init__.py` → `__version__ = "x.y.z"`
+3. `cody/server.py` → `HealthResponse.version` 和 `FastAPI(version=)`
+4. `cody/core/mcp_client.py` → `clientInfo.version`
+5. `tests/test_server.py` → 版本断言
+
+同时更新 `CHANGELOG.md` 添加版本条目，`CONTRIBUTING.md` 中的版本号。
+
+## 代码规范
+
+- **Python 3.9+**，不用 `match/case`
+- **行宽 100**，ruff 管理
+- **异步测试** 用 `@pytest.mark.asyncio`，`pyproject.toml` 已配 `asyncio_mode = "auto"`
+- **文件操作测试** 用 `tmp_path` fixture
+- 工具异常用 `ToolInvalidParams` / `ToolPathDenied` / `ToolPermissionDenied`，不用通用 `ValueError`
+
+## 已知注意事项
+
+1. **循环依赖** — `sub_agent.py` 的 `_execute()` 使用延迟导入，不能移到模块顶部
+2. **Server 缓存** — Config 按 workdir 缓存（deep copy 返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读最新 skill 文件）
+
+## 文档结构
+
+| 文档 | 内容 |
+|------|------|
+| `docs/ARCHITECTURE.md` | 架构图、组件说明、数据流 |
+| `docs/API.md` | RPC API 接口文档 |
+| `docs/FEATURES.md` | 功能清单 + 路线图 |
+| `CONTRIBUTING.md` | 开发规范 + 快速上手路径 |
+| `CHANGELOG.md` | 版本历史 |

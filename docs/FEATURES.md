@@ -434,7 +434,7 @@ fmt.Println(result.Output)
     cody "检查代码质量并生成报告" > review.md
 ```
 
-### 4. 多项目管理
+### 5. 多项目管理
 ```bash
 # 项目 A 有自己的 skills
 cd ~/project-a
@@ -577,31 +577,6 @@ cody "使用项目 B 的配置"
 
 **v1.0.0 总计：418 个 Python 测试 + 25 个 Go 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板，Go SDK**
 
-### v1.1.0 — Thinking Mode & StreamEvent ✅ 已完成
-
-> **本阶段目标：统一流式事件系统，支持 thinking 模式，所有端获得完整的 AI 执行过程信息。**
-
-**Thinking Mode**
-- [x] `enable_thinking` + `thinking_budget` 配置字段
-- [x] CLI `--thinking/--no-thinking` 和 `--thinking-budget` 参数（run/chat/tui）
-- [x] Server 请求参数支持 `enable_thinking` 和 `thinking_budget`
-- [x] 环境变量 `CODY_ENABLE_THINKING` / `CODY_THINKING_BUDGET`
-
-**CodyResult 架构**
-- [x] `CodyResult` 数据模型 — output + thinking + tool_traces + usage
-- [x] `ToolTrace` — 记录每次工具调用的 tool_name、args、result
-- [x] 内核给出全部信息，上层（CLI/TUI/Server）选择怎么展示
-
-**StreamEvent 统一流式事件系统**
-- [x] 5 种结构化事件类型：`ThinkingEvent`、`TextDeltaEvent`、`ToolCallEvent`、`ToolResultEvent`、`DoneEvent`
-- [x] `run_stream()` 基于 pydantic-ai `run_stream_events()` API，实时 yield 结构化事件
-- [x] CLI run/chat 从同步 `run_sync()` 改为异步流式 `run_stream()`，打字机效果输出
-- [x] TUI 消费 StreamEvent，修复 message history 重建 bug
-- [x] Server SSE/WebSocket 发送结构化事件（thinking/tool_call/tool_result/text_delta/done）
-- [x] `_serialize_stream_event()` 统一 SSE 和 WebSocket 的序列化
-
-**v1.1.0 总计：474 个 Python 测试 + 25 个 Go 测试**
-
 ### v1.0.1 — Agent Skills 开放标准 & 阿里云百炼 ✅ 已完成
 
 > **本阶段目标：Skill 系统对齐 [Agent Skills 开放标准](https://agentskills.io/)，集成阿里云百炼 Coding Plan。**
@@ -632,6 +607,31 @@ cody "使用项目 B 的配置"
 - [x] Claude OAuth token 认证支持
 
 **v1.0.1 总计：446 个 Python 测试 + 25 个 Go 测试，ruff 零告警**
+
+### v1.1.0 — Thinking Mode & StreamEvent ✅ 已完成
+
+> **本阶段目标：统一流式事件系统，支持 thinking 模式，所有端获得完整的 AI 执行过程信息。**
+
+**Thinking Mode**
+- [x] `enable_thinking` + `thinking_budget` 配置字段
+- [x] CLI `--thinking/--no-thinking` 和 `--thinking-budget` 参数（run/chat/tui）
+- [x] Server 请求参数支持 `enable_thinking` 和 `thinking_budget`
+- [x] 环境变量 `CODY_ENABLE_THINKING` / `CODY_THINKING_BUDGET`
+
+**CodyResult 架构**
+- [x] `CodyResult` 数据模型 — output + thinking + tool_traces + usage
+- [x] `ToolTrace` — 记录每次工具调用的 tool_name、args、result
+- [x] 内核给出全部信息，上层（CLI/TUI/Server）选择怎么展示
+
+**StreamEvent 统一流式事件系统**
+- [x] 5 种结构化事件类型：`ThinkingEvent`、`TextDeltaEvent`、`ToolCallEvent`、`ToolResultEvent`、`DoneEvent`
+- [x] `run_stream()` 基于 pydantic-ai `run_stream_events()` API，实时 yield 结构化事件
+- [x] CLI run/chat 从同步 `run_sync()` 改为异步流式 `run_stream()`，打字机效果输出
+- [x] TUI 消费 StreamEvent，修复 message history 重建 bug
+- [x] Server SSE/WebSocket 发送结构化事件（thinking/tool_call/tool_result/text_delta/done）
+- [x] `_serialize_stream_event()` 统一 SSE 和 WebSocket 的序列化
+
+**v1.1.0 总计：476 个 Python 测试 + 25 个 Go 测试**
 
 ---
 

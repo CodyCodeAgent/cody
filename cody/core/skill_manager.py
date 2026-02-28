@@ -132,8 +132,9 @@ class Skill:
 class SkillManager:
     """Manage and load skills per Agent Skills open standard."""
 
-    def __init__(self, config: "Config"):
+    def __init__(self, config: "Config", workdir: Path):
         self.config = config
+        self.workdir = workdir
         self.skills: dict[str, Skill] = {}
         self._load_skills()
 
@@ -145,7 +146,7 @@ class SkillManager:
         """
         # Priority: project > global > builtin
         search_paths = [
-            (Path.cwd() / ".cody" / "skills", "project"),
+            (self.workdir / ".cody" / "skills", "project"),
             (Path.home() / ".cody" / "skills", "global"),
             (Path(__file__).parent.parent / "skills", "builtin"),
         ]

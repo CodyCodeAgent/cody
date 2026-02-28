@@ -1,4 +1,17 @@
-"""Agent runner - core execution engine"""
+"""Agent runner — the core execution engine of Cody.
+
+AgentRunner is the central orchestrator. It:
+  1. Creates a pydantic-ai Agent with the resolved model and system prompt
+  2. Registers all tools via tools.register_tools() (declarative, not per-tool)
+  3. Assembles CodyDeps (config, workdir, skill_manager, mcp, lsp, audit,
+     permissions, file_history, todo_list) for dependency injection
+  4. Provides run() / run_stream() / run_sync() for one-shot execution
+  5. Provides run_with_session() / run_stream_with_session() for multi-turn
+  6. Auto-compacts message history when approaching token limits
+
+Dependency direction: server.py / cli.py / tui.py → runner.py → tools.py
+Core never imports from shells.
+"""
 
 import json
 import logging
@@ -163,10 +176,10 @@ StreamEvent = Union[ThinkingEvent, TextDeltaEvent, ToolCallEvent, ToolResultEven
 class AgentRunner:
     """Run Cody Agent with full context"""
 
-    def __init__(self, config: Optional[Config] = None, workdir: Optional[Path] = None):
-        self.config = config or Config.load()
-        self.workdir = Path(workdir) if workdir else Path.cwd()
-        self.skill_manager = SkillManager(self.config)
+    def __init__(self, config: Config, workdir: Path):
+        self.workdir = workdir
+        self.config = config
+        self.skill_manager = SkillManager(self.config, workdir=self.workdir)
 
         # MCP client (created lazily on start)
         self._mcp_client: Optional[MCPClient] = None
@@ -267,7 +280,11 @@ class AgentRunner:
         return self.config.model
 
     def _create_agent(self) -> Agent:
-        """Create Pydantic AI Agent with tools"""
+        """Create Pydantic AI Agent with tools.
+
+        Tools are registered declaratively via tools.register_tools() —
+        see tools.py CORE_TOOLS / MCP_TOOLS for the full list.
+        """
         # Build system prompt with available skills (Agent Skills standard)
         skills_xml = self.skill_manager.to_prompt_xml()
         system_parts = [
@@ -288,53 +305,7 @@ class AgentRunner:
             system_prompt="\n\n".join(system_parts),
         )
 
-        # Register tools — file operations
-        agent.tool(tools.read_file)
-        agent.tool(tools.write_file)
-        agent.tool(tools.edit_file)
-        agent.tool(tools.list_directory)
-        # Search tools
-        agent.tool(tools.grep)
-        agent.tool(tools.glob)
-        agent.tool(tools.patch)
-        agent.tool(tools.search_files)
-        # Command execution
-        agent.tool(tools.exec_command)
-        # Skill discovery
-        agent.tool(tools.list_skills)
-        agent.tool(tools.read_skill)
-
-        # Sub-agent tools
-        agent.tool(tools.spawn_agent)
-        agent.tool(tools.get_agent_status)
-        agent.tool(tools.kill_agent)
-
-        # MCP tool (dynamic proxy)
-        if self._mcp_client:
-            agent.tool(tools.mcp_call)
-            agent.tool(tools.mcp_list_tools)
-
-        # Web tools
-        agent.tool(tools.webfetch)
-        agent.tool(tools.websearch)
-
-        # LSP tools
-        agent.tool(tools.lsp_diagnostics)
-        agent.tool(tools.lsp_definition)
-        agent.tool(tools.lsp_references)
-        agent.tool(tools.lsp_hover)
-
-        # File history tools
-        agent.tool(tools.undo_file)
-        agent.tool(tools.redo_file)
-        agent.tool(tools.list_file_changes)
-
-        # Task management tools
-        agent.tool(tools.todo_write)
-        agent.tool(tools.todo_read)
-
-        # User interaction tools
-        agent.tool(tools.question)
+        tools.register_tools(agent, include_mcp=bool(self._mcp_client))
 
         return agent
 

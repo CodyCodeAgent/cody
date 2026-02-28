@@ -117,6 +117,27 @@ LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list
 
 All tools share the signature `async def tool(ctx: RunContext[CodyDeps], ...) -> str`.
 
+**Declarative tool registry:** Tools are organized into categorized lists at the bottom of `tools.py`:
+```
+FILE_TOOLS      — read_file, write_file, edit_file, list_directory
+SEARCH_TOOLS    — grep, glob, patch, search_files
+COMMAND_TOOLS   — exec_command
+SKILL_TOOLS     — list_skills, read_skill
+SUB_AGENT_TOOLS — spawn_agent, get_agent_status, kill_agent
+MCP_TOOLS       — mcp_call, mcp_list_tools
+WEB_TOOLS       — webfetch, websearch
+LSP_TOOLS       — lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
+FILE_HISTORY_TOOLS — undo_file, redo_file, list_file_changes
+TODO_TOOLS      — todo_write, todo_read
+USER_TOOLS      — question
+
+CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + USER_TOOLS  (all except MCP)
+```
+
+**Registration functions:**
+- `register_tools(agent, include_mcp=False)` — used by `AgentRunner` to register all tools
+- `register_sub_agent_tools(agent, agent_type)` — registers a subset based on agent type (`code`, `research`, `test`, `generic`)
+
 **30+ tools across 11 categories:**
 
 | Category | Tools | Permission |
@@ -132,6 +153,8 @@ All tools share the signature `async def tool(ctx: RunContext[CodyDeps], ...) ->
 | File History | undo_file, redo_file, list_file_changes | undo/redo=confirm, list=allow |
 | Task Mgmt | todo_write, todo_read | allow |
 | User I/O | question | allow |
+
+**Typed exceptions:** Tool errors use a typed hierarchy (`ToolError` base, with `ToolPermissionDenied`, `ToolPathDenied`, `ToolInvalidParams`) defined in `core/errors.py`. The server catches these by type instead of string-matching, mapping them to correct HTTP status codes (403/400/500).
 
 **Security:** All mutating tools call `_check_permission(ctx, tool_name)` before execution. File tools call `_resolve_and_check(workdir, path)` for path traversal protection.
 

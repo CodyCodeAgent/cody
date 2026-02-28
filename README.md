@@ -283,7 +283,7 @@ Supports two protocols:
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (474 tests)
+# Run tests (476 tests)
 python3 -m pytest tests/ -v
 
 # Lint
@@ -299,8 +299,7 @@ python3 -m ruff format cody/ tests/
 - [Go SDK](sdk/go/README.md) — Go client with zero dependencies
 - [Architecture](docs/ARCHITECTURE.md) — System design, component diagram, data flows
 - [Features & Roadmap](docs/FEATURES.md) — Full feature list, version history, competitive analysis
-- [Handoff Guide](docs/HANDOFF.md) — For developers joining the project
-- [Contributing](CONTRIBUTING.md) — Code standards, test requirements, git workflow
+- [Contributing](CONTRIBUTING.md) — Code standards, test requirements, git workflow, onboarding guide
 
 ## License
 

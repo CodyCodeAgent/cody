@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
+from cody.core.config import Config
 from cody.core.runner import CodyResult
 from cody.server import app
 
@@ -34,7 +35,7 @@ def test_health():
 def test_health_returns_version():
     client = TestClient(app)
     resp = client.get("/health")
-    assert resp.json()["version"] == "1.1.0"
+    assert resp.json()["version"] == "1.1.1"
 
 
 # ── Tool endpoint ────────────────────────────────────────────────────────────
@@ -231,12 +232,8 @@ def test_run_agent_with_model_override():
         instance = MockRunner.return_value
         instance.run = AsyncMock(return_value=mock_result)
 
-        with patch("cody.server.Config.load") as mock_load:
-            config = MagicMock()
-            config.model = "anthropic:claude-sonnet-4-0"
-            config.skills = MagicMock()
-            mock_load.return_value = config
-
+        config = Config()
+        with patch("cody.server._get_config", return_value=config):
             client = TestClient(app)
             resp = client.post("/run", json={
                 "prompt": "test",
@@ -244,7 +241,7 @@ def test_run_agent_with_model_override():
             })
 
     assert resp.status_code == 200
-    # Verify model was overridden
+    # Verify model was overridden via apply_overrides
     assert config.model == "openai:gpt-4o"
 
 

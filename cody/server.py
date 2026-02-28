@@ -1,4 +1,21 @@
-"""RPC Server for Cody"""
+"""RPC Server for Cody.
+
+Thin FastAPI shell over the core engine. All business logic lives in core/.
+
+Caching strategy:
+  - Config: cached per-workdir, deep-copied on access so request overrides
+    don't leak across requests.
+  - SessionStore: global singleton (one SQLite connection shared).
+  - SkillManager: always created fresh — disk is the source of truth so
+    newly added/changed skill files are visible immediately.
+  - AuditLogger, AuthManager, RateLimiter: global singletons (config-stable).
+
+Error handling:
+  Tool-layer typed exceptions (ToolPermissionDenied, ToolPathDenied,
+  ToolInvalidParams) are caught by type and mapped to HTTP 403/400/500.
+  CodyAPIError passes through the FastAPI exception_handler. Everything
+  else becomes a generic 500.
+"""
 
 import asyncio
 import json
@@ -14,10 +31,15 @@ import uvicorn
 from .core import Config, AgentRunner, SessionStore
 from .core.audit import AuditLogger, AuditEvent
 from .core.auth import AuthError, AuthManager
-from .core.errors import CodyAPIError, ErrorCode, ErrorDetail
+from .core.errors import (
+    CodyAPIError, ErrorCode, ErrorDetail,
+    ToolError, ToolPermissionDenied, ToolPathDenied, ToolInvalidParams,
+)
 from .core.rate_limiter import RateLimiter
 from .core.skill_manager import SkillManager
 from .core.deps import CodyDeps
+from .core.file_history import FileHistory
+from .core.permissions import PermissionLevel, PermissionManager
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -65,7 +87,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.1.0"
+    version: str = "1.1.1"
 
 
 class ErrorResponse(BaseModel):
@@ -92,11 +114,13 @@ class SessionDetailResponse(SessionResponse):
 app = FastAPI(
     title="Cody RPC Server",
     description="AI Coding Assistant RPC API",
-    version="1.1.0",
+    version="1.1.1",
 )
 
 
 # ── Server-level singletons ─────────────────────────────────────────────────
+# These are lazily initialized on first use and live for the process lifetime.
+# _reset_server_state() clears them all (used in tests).
 
 _audit_logger: Optional[AuditLogger] = None
 _auth_manager: Optional[AuthManager] = None
@@ -115,7 +139,7 @@ def _get_auth_manager() -> Optional[AuthManager]:
     global _auth_manager
     if _auth_manager is None:
         try:
-            config = Config.load()
+            config = Config.load(workdir=Path.cwd())
             _auth_manager = AuthManager(config=config.auth)
         except Exception:
             return None
@@ -127,7 +151,7 @@ def _get_rate_limiter() -> Optional[RateLimiter]:
     if not _rate_limiter_checked:
         _rate_limiter_checked = True
         try:
-            config = Config.load()
+            config = Config.load(workdir=Path.cwd())
             if config.rate_limit.enabled:
                 _rate_limiter = RateLimiter(
                     max_requests=config.rate_limit.max_requests,
@@ -138,13 +162,24 @@ def _get_rate_limiter() -> Optional[RateLimiter]:
     return _rate_limiter
 
 
+# SessionStore: single instance, one SQLite connection for all requests.
+_session_store: Optional[SessionStore] = None
+
+# Config: cached per-workdir key. model_copy(deep=True) on read so that
+# apply_overrides() in one request doesn't mutate the cached original.
+_config_cache: dict[str, Config] = {}
+
+
 def _reset_server_state():
     """Reset server-level singletons (for testing)."""
     global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked
+    global _session_store, _config_cache
     _audit_logger = None
     _auth_manager = None
     _rate_limiter = None
     _rate_limiter_checked = False
+    _session_store = None
+    _config_cache.clear()
 
 
 # ── Error handler ────────────────────────────────────────────────────────────
@@ -175,8 +210,54 @@ def _raise_structured(
 
 
 def _get_session_store() -> SessionStore:
-    """Get the session store (simple factory, no DI overhead)."""
-    return SessionStore()
+    """Get the session store singleton."""
+    global _session_store
+    if _session_store is None:
+        _session_store = SessionStore()
+    return _session_store
+
+
+def _get_config(workdir: Path) -> Config:
+    """Get config for a workdir, cached to avoid repeated disk reads."""
+    key = str(workdir)
+    if key not in _config_cache:
+        _config_cache[key] = Config.load(workdir=workdir)
+    return _config_cache[key].model_copy(deep=True)
+
+
+def _get_skill_manager(config: Config, workdir: Path) -> SkillManager:
+    """Create a fresh SkillManager so newly added/changed skills are visible."""
+    return SkillManager(config, workdir=workdir)
+
+
+def _create_full_deps(config: Config, workdir: Path) -> CodyDeps:
+    """Create a complete CodyDeps with all optional dependencies populated."""
+    return CodyDeps(
+        config=config,
+        workdir=workdir,
+        skill_manager=_get_skill_manager(config, workdir),
+        audit_logger=_get_audit_logger(),
+        permission_manager=PermissionManager(
+            overrides=config.permissions.overrides,
+            default_level=PermissionLevel(config.permissions.default_level),
+        ),
+        file_history=FileHistory(workdir=workdir),
+    )
+
+
+def _config_from_request(request: RunRequest) -> Config:
+    """Load config (cached) and apply request-level overrides on a copy."""
+    workdir = Path(request.workdir) if request.workdir else Path.cwd()
+    return _get_config(workdir).apply_overrides(
+        model=request.model,
+        model_base_url=request.model_base_url,
+        model_api_key=request.model_api_key,
+        coding_plan_key=request.coding_plan_key,
+        coding_plan_protocol=request.coding_plan_protocol,
+        enable_thinking=request.enable_thinking,
+        thinking_budget=request.thinking_budget,
+        skills=request.skills,
+    )
 
 
 # ── Middleware: Auth ─────────────────────────────────────────────────────────
@@ -330,24 +411,7 @@ async def health():
 async def run_agent(request: RunRequest):
     """Run agent with prompt, optionally within a session."""
     try:
-        config = Config.load()
-        if request.model:
-            config.model = request.model
-        if request.model_base_url:
-            config.model_base_url = request.model_base_url
-        if request.model_api_key:
-            config.model_api_key = request.model_api_key
-        if request.coding_plan_key:
-            config.coding_plan_key = request.coding_plan_key
-        if request.coding_plan_protocol:
-            config.coding_plan_protocol = request.coding_plan_protocol
-        if request.enable_thinking is not None:
-            config.enable_thinking = request.enable_thinking
-        if request.thinking_budget is not None:
-            config.thinking_budget = request.thinking_budget
-        if request.skills is not None:
-            config.skills.enabled = request.skills
-
+        config = _config_from_request(request)
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
         runner = AgentRunner(config=config, workdir=workdir)
 
@@ -390,6 +454,10 @@ async def run_agent(request: RunRequest):
             usage=usage_data,
         )
 
+    except (ToolPermissionDenied, ToolPathDenied) as e:
+        _raise_structured(e.code, e.message, status_code=403)
+    except ToolError as e:
+        _raise_structured(e.code, e.message, status_code=400)
     except ValueError as e:
         msg = str(e)
         if "Session not found" in msg:
@@ -454,20 +522,7 @@ async def run_agent_stream(request: RunRequest):
 
     async def generate() -> AsyncIterator[str]:
         try:
-            config = Config.load()
-            if request.model:
-                config.model = request.model
-            if request.model_base_url:
-                config.model_base_url = request.model_base_url
-            if request.model_api_key:
-                config.model_api_key = request.model_api_key
-            if request.enable_thinking is not None:
-                config.enable_thinking = request.enable_thinking
-            if request.thinking_budget is not None:
-                config.thinking_budget = request.thinking_budget
-            if request.skills is not None:
-                config.skills.enabled = request.skills
-
+            config = _config_from_request(request)
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
 
@@ -511,14 +566,12 @@ async def call_tool(request: ToolRequest):
         )
 
     try:
-        config = Config.load()
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
-        deps = CodyDeps(
-            config=config,
-            workdir=workdir,
-            skill_manager=SkillManager(config),
-        )
+        config = _get_config(workdir)
+        deps = _create_full_deps(config, workdir)
 
+        # Shim: tools expect RunContext[CodyDeps] but we only need ctx.deps.
+        # A lightweight object avoids pulling in pydantic-ai Agent machinery.
         class ToolContext:
             def __init__(self, deps):
                 self.deps = deps
@@ -528,16 +581,12 @@ async def call_tool(request: ToolRequest):
 
         return ToolResponse(result=result)
 
-    except PermissionError as e:
-        _raise_structured(
-            ErrorCode.PERMISSION_DENIED, str(e), status_code=403
-        )
-    except ValueError as e:
-        msg = str(e)
-        if "Access denied" in msg or "outside working directory" in msg:
-            _raise_structured(ErrorCode.PERMISSION_DENIED, msg, status_code=403)
-        else:
-            _raise_structured(ErrorCode.INVALID_PARAMS, msg, status_code=400)
+    except (ToolPermissionDenied, ToolPathDenied) as e:
+        _raise_structured(e.code, e.message, status_code=403)
+    except ToolInvalidParams as e:
+        _raise_structured(e.code, e.message, status_code=400)
+    except ToolError as e:
+        _raise_structured(e.code, e.message, status_code=500)
     except CodyAPIError:
         raise
     except Exception as e:
@@ -551,12 +600,13 @@ async def call_tool(request: ToolRequest):
 
 
 @app.get("/skills")
-async def list_skills():
+async def list_skills(workdir: Optional[str] = None):
     """List all available skills"""
     try:
-        config = Config.load()
-        skill_manager = SkillManager(config)
-        skills = skill_manager.list_skills()
+        wd = Path(workdir) if workdir else Path.cwd()
+        config = _get_config(wd)
+        sm = _get_skill_manager(config, wd)
+        skills = sm.list_skills()
 
         return {
             "skills": [
@@ -579,12 +629,13 @@ async def list_skills():
 
 
 @app.get("/skills/{skill_name}")
-async def get_skill(skill_name: str):
+async def get_skill(skill_name: str, workdir: Optional[str] = None):
     """Get skill documentation"""
     try:
-        config = Config.load()
-        skill_manager = SkillManager(config)
-        skill = skill_manager.get_skill(skill_name)
+        wd = Path(workdir) if workdir else Path.cwd()
+        config = _get_config(wd)
+        sm = _get_skill_manager(config, wd)
+        skill = sm.get_skill(skill_name)
         if not skill:
             _raise_structured(
                 ErrorCode.SKILL_NOT_FOUND,
@@ -732,14 +783,15 @@ _sub_agent_manager = None
 _sub_agent_lock = asyncio.Lock()
 
 
-async def _get_sub_agent_manager():
+async def _get_sub_agent_manager(workdir: Optional[Path] = None):
     global _sub_agent_manager
     if _sub_agent_manager is None:
         async with _sub_agent_lock:
             if _sub_agent_manager is None:
                 from .core.sub_agent import SubAgentManager
-                config = Config.load()
-                _sub_agent_manager = SubAgentManager(config=config, workdir=Path.cwd())
+                wd = workdir or Path.cwd()
+                config = _get_config(wd)
+                _sub_agent_manager = SubAgentManager(config=config, workdir=wd)
     return _sub_agent_manager
 
 
@@ -747,13 +799,15 @@ class SpawnRequest(BaseModel):
     task: str
     type: str = "generic"
     timeout: Optional[float] = None
+    workdir: Optional[str] = None
 
 
 @app.post("/agent/spawn")
 async def spawn_agent(request: SpawnRequest):
     """Spawn a sub-agent"""
     try:
-        manager = await _get_sub_agent_manager()
+        wd = Path(request.workdir) if request.workdir else Path.cwd()
+        manager = await _get_sub_agent_manager(workdir=wd)
         agent_id = await manager.spawn(
             request.task, request.type, request.timeout
         )
@@ -778,7 +832,7 @@ async def spawn_agent(request: SpawnRequest):
 @app.get("/agent/{agent_id}")
 async def get_agent_status(agent_id: str):
     """Get sub-agent status"""
-    manager = await _get_sub_agent_manager()
+    manager = await _get_sub_agent_manager(Path.cwd())
     result = manager.get_status(agent_id)
     if result is None:
         _raise_structured(
@@ -799,7 +853,7 @@ async def get_agent_status(agent_id: str):
 @app.delete("/agent/{agent_id}")
 async def kill_agent(agent_id: str):
     """Kill a running sub-agent"""
-    manager = await _get_sub_agent_manager()
+    manager = await _get_sub_agent_manager(Path.cwd())
     result = manager.get_status(agent_id)
     if result is None:
         _raise_structured(
@@ -871,36 +925,21 @@ class _WSConnection:
             })
             return
 
-        workdir_str = data.get("workdir")
-        model_str = data.get("model")
-        base_url_str = data.get("model_base_url")
-        api_key_str = data.get("model_api_key")
-        coding_plan_key_str = data.get("coding_plan_key")
-        coding_plan_protocol_str = data.get("coding_plan_protocol")
-        enable_thinking = data.get("enable_thinking")
-        thinking_budget = data.get("thinking_budget")
         session_id = data.get("session_id")
 
         self._cancel_event = asyncio.Event()
 
         try:
-            config = Config.load()
-            if model_str:
-                config.model = model_str
-            if base_url_str:
-                config.model_base_url = base_url_str
-            if api_key_str:
-                config.model_api_key = api_key_str
-            if coding_plan_key_str:
-                config.coding_plan_key = coding_plan_key_str
-            if coding_plan_protocol_str:
-                config.coding_plan_protocol = coding_plan_protocol_str
-            if enable_thinking is not None:
-                config.enable_thinking = enable_thinking
-            if thinking_budget is not None:
-                config.thinking_budget = thinking_budget
-
-            workdir = Path(workdir_str) if workdir_str else Path.cwd()
+            workdir = Path(data["workdir"]) if data.get("workdir") else Path.cwd()
+            config = _get_config(workdir).apply_overrides(
+                model=data.get("model"),
+                model_base_url=data.get("model_base_url"),
+                model_api_key=data.get("model_api_key"),
+                coding_plan_key=data.get("coding_plan_key"),
+                coding_plan_protocol=data.get("coding_plan_protocol"),
+                enable_thinking=data.get("enable_thinking"),
+                thinking_budget=data.get("thinking_budget"),
+            )
             runner = AgentRunner(config=config, workdir=workdir)
 
             await self.send_event("start", {"session_id": session_id})
