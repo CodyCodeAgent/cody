@@ -314,3 +314,52 @@ def test_config_save_excludes_oauth_token(tmp_path):
 
     saved_data = json.loads(config_path.read_text())
     assert "claude_oauth_token" not in saved_data
+
+
+# ── Config.resolve_model ────────────────────────────────────────────────────
+
+
+def test_resolve_model_default_string():
+    """Without any provider config, resolve_model returns the model string"""
+    config = Config(model="anthropic:claude-sonnet-4-0")
+    result = config.resolve_model()
+    assert result == "anthropic:claude-sonnet-4-0"
+
+
+def test_resolve_model_with_base_url():
+    """With model_base_url, resolve_model returns an OpenAIChatModel"""
+    from pydantic_ai.models.openai import OpenAIChatModel
+
+    config = Config(
+        model="glm-4",
+        model_base_url="https://open.bigmodel.cn/api/paas/v4/",
+        model_api_key="sk-test",
+    )
+    result = config.resolve_model()
+    assert isinstance(result, OpenAIChatModel)
+
+
+def test_resolve_model_with_oauth_token():
+    """With claude_oauth_token, resolve_model returns an AnthropicModel"""
+    from pydantic_ai.models.anthropic import AnthropicModel
+
+    config = Config(
+        model="anthropic:claude-sonnet-4-0",
+        claude_oauth_token="oauth-test-token",
+    )
+    result = config.resolve_model()
+    assert isinstance(result, AnthropicModel)
+
+
+def test_resolve_model_base_url_priority_over_oauth():
+    """model_base_url takes priority over claude_oauth_token"""
+    from pydantic_ai.models.openai import OpenAIChatModel
+
+    config = Config(
+        model="glm-4",
+        model_base_url="https://open.bigmodel.cn/api/paas/v4/",
+        model_api_key="sk-test",
+        claude_oauth_token="oauth-test-token",
+    )
+    result = config.resolve_model()
+    assert isinstance(result, OpenAIChatModel)

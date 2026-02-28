@@ -31,9 +31,10 @@ def main():
 @click.option('--model', help='AI model to use')
 @click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
 @click.option('--model-api-key', help='API key for custom model provider')
+@click.option('--claude-oauth-token', help='Claude OAuth token (alternative to API key)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, model_base_url, model_api_key, workdir, verbose):
+def run(prompt, model, model_base_url, model_api_key, claude_oauth_token, workdir, verbose):
     """Run a single task with Cody
 
     Examples:
@@ -53,6 +54,8 @@ def run(prompt, model, model_base_url, model_api_key, workdir, verbose):
         config.model_base_url = model_base_url
     if model_api_key:
         config.model_api_key = model_api_key
+    if claude_oauth_token:
+        config.claude_oauth_token = claude_oauth_token
 
     runner = AgentRunner(config=config, workdir=workdir)
 
@@ -76,10 +79,11 @@ def run(prompt, model, model_base_url, model_api_key, workdir, verbose):
 @click.option('--model', help='AI model to use')
 @click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
 @click.option('--model-api-key', help='API key for custom model provider')
+@click.option('--claude-oauth-token', help='Claude OAuth token (alternative to API key)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, model_base_url, model_api_key, workdir, session_id, continue_last):
+def chat(model, model_base_url, model_api_key, claude_oauth_token, workdir, session_id, continue_last):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -98,6 +102,8 @@ def chat(model, model_base_url, model_api_key, workdir, session_id, continue_las
         config.model_base_url = model_base_url
     if model_api_key:
         config.model_api_key = model_api_key
+    if claude_oauth_token:
+        config.claude_oauth_token = claude_oauth_token
 
     workdir_path = Path(workdir) if workdir else Path.cwd()
     store = SessionStore()
@@ -490,10 +496,11 @@ def config_show():
 @click.option('--model', help='AI model to use')
 @click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
 @click.option('--model-api-key', help='API key for custom model provider')
+@click.option('--claude-oauth-token', help='Claude OAuth token (alternative to API key)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, model_base_url, model_api_key, workdir, session_id, continue_last):
+def tui(model, model_base_url, model_api_key, claude_oauth_token, workdir, session_id, continue_last):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -509,6 +516,7 @@ def tui(model, model_base_url, model_api_key, workdir, session_id, continue_last
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
+        claude_oauth_token=claude_oauth_token,
         workdir=workdir,
         session_id=session_id,
         continue_last=continue_last,
@@ -529,6 +537,9 @@ def config_set(key, value):
     elif key == 'model_api_key':
         console.print("[yellow]Warning: API keys should be set via CODY_MODEL_API_KEY env var[/yellow]")
         cfg.model_api_key = value
+    elif key == 'claude_oauth_token':
+        console.print("[yellow]Warning: OAuth tokens should be set via CLAUDE_OAUTH_TOKEN env var[/yellow]")
+        cfg.claude_oauth_token = value
     else:
         console.print(f"[yellow]Unknown config key: {key}[/yellow]")
         return

@@ -85,38 +85,8 @@ class AgentRunner:
         self.agent = self._create_agent()
 
     def _resolve_model(self):
-        """Resolve model to a Pydantic AI model instance.
-
-        Priority:
-        1. model_base_url → OpenAIProvider (OpenAI-compatible APIs)
-        2. claude_oauth_token → AnthropicProvider with OAuth auth_token
-        3. Default → model string for Pydantic AI's built-in routing
-           (uses ANTHROPIC_API_KEY env var for Anthropic models)
-        """
-        if self.config.model_base_url:
-            from pydantic_ai.models.openai import OpenAIChatModel
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            provider = OpenAIProvider(
-                base_url=self.config.model_base_url,
-                api_key=self.config.model_api_key or "not-set",
-            )
-            return OpenAIChatModel(self.config.model, provider=provider)
-
-        if self.config.claude_oauth_token:
-            from anthropic import AsyncAnthropic
-            from pydantic_ai.models.anthropic import AnthropicModel
-            from pydantic_ai.providers.anthropic import AnthropicProvider
-
-            client = AsyncAnthropic(auth_token=self.config.claude_oauth_token)
-            provider = AnthropicProvider(anthropic_client=client)
-            # Strip "anthropic:" prefix if present for AnthropicModel
-            model_name = self.config.model
-            if model_name.startswith("anthropic:"):
-                model_name = model_name[len("anthropic:"):]
-            return AnthropicModel(model_name, provider=provider)
-
-        return self.config.model
+        """Resolve model to a Pydantic AI model instance."""
+        return self.config.resolve_model()
 
     def _create_agent(self) -> Agent:
         """Create Pydantic AI Agent with tools"""

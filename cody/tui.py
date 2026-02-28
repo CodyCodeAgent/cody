@@ -112,6 +112,7 @@ class CodyTUI(App):
         model: Optional[str] = None,
         model_base_url: Optional[str] = None,
         model_api_key: Optional[str] = None,
+        claude_oauth_token: Optional[str] = None,
         workdir: Optional[Path] = None,
         session_id: Optional[str] = None,
         continue_last: bool = False,
@@ -120,6 +121,7 @@ class CodyTUI(App):
         self._model_override = model
         self._model_base_url_override = model_base_url
         self._model_api_key_override = model_api_key
+        self._claude_oauth_token_override = claude_oauth_token
         self._workdir = (workdir or Path.cwd()).resolve()
         self._session_id_arg = session_id
         self._continue_last = continue_last
@@ -147,6 +149,8 @@ class CodyTUI(App):
             self._config.model_base_url = self._model_base_url_override
         if self._model_api_key_override:
             self._config.model_api_key = self._model_api_key_override
+        if self._claude_oauth_token_override:
+            self._config.claude_oauth_token = self._claude_oauth_token_override
 
         self._runner = AgentRunner(config=self._config, workdir=self._workdir)
         self._store = SessionStore()
@@ -387,6 +391,7 @@ def run_tui(
     model: Optional[str] = None,
     model_base_url: Optional[str] = None,
     model_api_key: Optional[str] = None,
+    claude_oauth_token: Optional[str] = None,
     workdir: Optional[str] = None,
     session_id: Optional[str] = None,
     continue_last: bool = False,
@@ -397,6 +402,7 @@ def run_tui(
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
+        claude_oauth_token=claude_oauth_token,
         workdir=workdir_path,
         session_id=session_id,
         continue_last=continue_last,
