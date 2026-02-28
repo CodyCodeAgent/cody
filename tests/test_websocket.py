@@ -1,6 +1,5 @@
 """Tests for WebSocket API"""
 
-import asyncio
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -295,7 +294,7 @@ def test_ws_run_error_mid_stream():
     async def mid_error_stream(prompt, message_history=None):
         yield TextDeltaEvent(content="partial")
         raise RuntimeError("mid-stream boom")
-        yield  # noqa: unreachable
+        yield  # noqa: F841
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value

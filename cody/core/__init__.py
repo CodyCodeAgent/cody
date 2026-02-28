@@ -49,6 +49,7 @@ __all__ = [
     "FileChange",
     "RateLimiter",
     "RateLimitResult",
+    "CodyDeps",
     "CodyResult",
     "ToolTrace",
     "StreamEvent",
