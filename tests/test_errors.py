@@ -85,10 +85,11 @@ def test_session_not_found_structured(tmp_path):
 
 
 def test_tool_error_includes_details(tmp_path):
+    """write_file should return 403 for path traversal"""
     client = TestClient(app)
     resp = client.post("/tool", json={
-        "tool": "read_file",
-        "params": {"path": "../../../etc/passwd"},
+        "tool": "write_file",
+        "params": {"path": "../../../evil.txt", "content": "bad"},
         "workdir": str(tmp_path),
     })
     assert resp.status_code == 403

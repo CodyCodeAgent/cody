@@ -77,11 +77,13 @@ async def test_list_directory(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_security_check_path_traversal(tmp_path):
+async def test_read_file_outside_workdir_allowed(tmp_path):
+    """read_file allows reading outside workdir (read-only is safe)"""
     ctx = MockContext(tmp_path)
 
-    with pytest.raises(ValueError, match="outside working directory"):
-        await read_file(ctx, "../../../etc/passwd")
+    # Reading outside workdir is allowed but file may not exist
+    with pytest.raises(FileNotFoundError):
+        await read_file(ctx, "../../../nonexistent_file.txt")
 
 
 @pytest.mark.asyncio
@@ -93,8 +95,8 @@ async def test_security_check_write_outside(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_security_check_symlink_escape(tmp_path):
-    """Symlinks that escape workdir should be caught"""
+async def test_security_check_symlink_write_escape(tmp_path):
+    """Write via symlinks that escape workdir should be caught"""
     ctx = MockContext(tmp_path)
 
     # Create a symlink pointing outside
@@ -102,7 +104,7 @@ async def test_security_check_symlink_escape(tmp_path):
     link.symlink_to("/tmp")
 
     with pytest.raises(ValueError, match="outside working directory"):
-        await read_file(ctx, "escape/some_file")
+        await write_file(ctx, "escape/evil.txt", "bad content")
 
 
 # ── Grep tests ───────────────────────────────────────────────────────────────

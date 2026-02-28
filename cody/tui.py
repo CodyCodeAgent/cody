@@ -114,6 +114,8 @@ class CodyTUI(App):
         model_api_key: Optional[str] = None,
         coding_plan_key: Optional[str] = None,
         coding_plan_protocol: Optional[str] = None,
+        thinking: Optional[bool] = None,
+        thinking_budget: Optional[int] = None,
         workdir: Optional[Path] = None,
         session_id: Optional[str] = None,
         continue_last: bool = False,
@@ -124,6 +126,8 @@ class CodyTUI(App):
         self._model_api_key_override = model_api_key
         self._coding_plan_key_override = coding_plan_key
         self._coding_plan_protocol_override = coding_plan_protocol
+        self._thinking_override = thinking
+        self._thinking_budget_override = thinking_budget
         self._workdir = (workdir or Path.cwd()).resolve()
         self._session_id_arg = session_id
         self._continue_last = continue_last
@@ -155,6 +159,10 @@ class CodyTUI(App):
             self._config.coding_plan_key = self._coding_plan_key_override
         if self._coding_plan_protocol_override:
             self._config.coding_plan_protocol = self._coding_plan_protocol_override
+        if self._thinking_override is not None:
+            self._config.enable_thinking = self._thinking_override
+        if self._thinking_budget_override is not None:
+            self._config.thinking_budget = self._thinking_budget_override
 
         self._runner = AgentRunner(config=self._config, workdir=self._workdir)
         self._store = SessionStore()
@@ -251,7 +259,12 @@ class CodyTUI(App):
 
     @work(thread=False)
     async def _run_agent(self, prompt: str) -> None:
-        """Stream agent response in background."""
+        """Stream agent response with structured events."""
+        from cody.core.runner import (
+            ThinkingEvent, TextDeltaEvent, ToolCallEvent,
+            ToolResultEvent, DoneEvent,
+        )
+
         self.is_running = True
         self._set_input_enabled(False)
         self._cancel_event = asyncio.Event()
@@ -260,36 +273,32 @@ class CodyTUI(App):
         scroll = self.query_one("#chat-scroll", VerticalScroll)
 
         try:
-            async for chunk in self._runner.run_stream(
+            async for event in self._runner.run_stream(
                 prompt, message_history=self._message_history
             ):
                 if self._cancel_event.is_set():
                     bubble.append("\n\n[dim italic](cancelled)[/dim italic]")
                     break
-                bubble.append(chunk)
-                scroll.scroll_end(animate=False)
 
-            # Get full response
-            response_text = bubble.full_text
-
-            # Update history — re-run non-streaming to get proper message objects
-            # For simplicity, manually append to history
-            from pydantic_ai.messages import (
-                ModelRequest,
-                ModelResponse,
-                TextPart,
-                UserPromptPart,
-            )
-            self._message_history.append(
-                ModelRequest(parts=[UserPromptPart(content=prompt)])
-            )
-            self._message_history.append(
-                ModelResponse(parts=[TextPart(content=response_text)])
-            )
-
-            # Save assistant message
-            if self._store and not self._cancel_event.is_set():
-                self._store.add_message(self._session_id, "assistant", response_text)
+                if isinstance(event, ThinkingEvent):
+                    pass  # TUI: skip thinking display for now
+                elif isinstance(event, ToolCallEvent):
+                    args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+                    bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
+                    scroll.scroll_end(animate=False)
+                elif isinstance(event, ToolResultEvent):
+                    pass  # keep UI clean
+                elif isinstance(event, TextDeltaEvent):
+                    bubble.append(event.content)
+                    scroll.scroll_end(animate=False)
+                elif isinstance(event, DoneEvent):
+                    # Use real message history from pydantic-ai (includes tool calls)
+                    self._message_history = event.result.all_messages()
+                    # Save assistant message
+                    if self._store and not self._cancel_event.is_set():
+                        self._store.add_message(
+                            self._session_id, "assistant", event.result.output
+                        )
 
         except Exception as e:
             bubble.append(f"\n\n[bold red]Error: {e}[/bold red]")
@@ -397,6 +406,8 @@ def run_tui(
     model_api_key: Optional[str] = None,
     coding_plan_key: Optional[str] = None,
     coding_plan_protocol: Optional[str] = None,
+    thinking: Optional[bool] = None,
+    thinking_budget: Optional[int] = None,
     workdir: Optional[str] = None,
     session_id: Optional[str] = None,
     continue_last: bool = False,
@@ -409,6 +420,8 @@ def run_tui(
         model_api_key=model_api_key,
         coding_plan_key=coding_plan_key,
         coding_plan_protocol=coding_plan_protocol,
+        thinking=thinking,
+        thinking_budget=thinking_budget,
         workdir=workdir_path,
         session_id=session_id,
         continue_last=continue_last,

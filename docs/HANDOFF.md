@@ -32,7 +32,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 
 ### 版本
 
-当前版本：**1.0.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
+当前版本：**1.1.0** (`pyproject.toml` / `cody/__init__.py` / `server.py`)
 
 ---
 
@@ -64,7 +64,7 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 446 个测试
+├── tests/                   # 474 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
@@ -369,42 +369,7 @@ cody-server --port 9000       # 指定端口
 
 ## 8. 版本历史
 
-### v1.0.3 — Claude OAuth 认证支持 ✅ 已完成
-
-- [x] **Claude OAuth token** — 通过 `claude_oauth_token` 或 `CLAUDE_OAUTH_TOKEN` 环境变量使用 OAuth 认证
-- [x] **替代 API Key** — 使用 `claude login` 获取的 OAuth token，无需申请 API Key
-- [x] **安全保存** — `Config.save()` 不写入 OAuth token，避免明文泄露
-- [x] **优先级清晰** — `model_base_url`（OpenAI 兼容）> `claude_oauth_token`（OAuth）> `ANTHROPIC_API_KEY`（默认）
-
-### v1.0.2 — 自定义模型提供商支持 ✅ 已完成
-
-- [x] **OpenAI 兼容 API 支持** — 通过 `model_base_url` + `model_api_key` 接入智谱 GLM、阿里 DashScope 等
-- [x] **环境变量优先** — `CODY_MODEL` / `CODY_MODEL_BASE_URL` / `CODY_MODEL_API_KEY` 优先级高于配置文件
-- [x] **安全保存** — `Config.save()` 不写入 API Key，避免明文泄露
-- [x] **全链路支持** — CLI (`--model-base-url`)、Server (API 请求体)、TUI、WebSocket 均支持
-- [x] **456 个测试全部通过**
-
-### v1.0.1 — Agent Skills 开放标准 ✅ 已完成
-
-- [x] **Skill 格式迁移** — 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
-- [x] **SkillManager 重构** — frontmatter 解析、名称校验、`validate_skill()`
-- [x] **渐进式加载** — 启动时只加载元数据，`to_prompt_xml()` 注入 system prompt
-- [x] **446 个 Python 测试 + 25 个 Go 测试**
-
-### v1.0.0 — 生产就绪 ✅ 已完成
-
-- [x] **CI/CD 模板** — 3 个 GitHub Actions 模板（代码审查、Issue 自动修复、测试生成）
-- [x] **更多内置 Skills** — 从 5 个扩展到 11 个（新增 rust, go, java, web, cicd, testing）
-- [x] **Go SDK** — 零依赖 Go 客户端，25 个测试
-
-### v0.5.0 — 安全与可靠性 ✅ 已完成
-
-- [x] **OAuth 2.0 认证** — `AuthManager` API key + HMAC-SHA256 token
-- [x] **工具级权限系统** — `PermissionManager` per-tool allow/deny/confirm
-- [x] **文件修改 undo/redo** — `FileHistory` + `undo_file`/`redo_file` 工具
-- [x] **审计日志** — `AuditLogger` SQLite 持久化 + `GET /audit` API
-- [x] **速率限制** — `RateLimiter` 滑动窗口 + Server 中间件
-- [x] **TUI 终端** — Textual 全屏界面
+详见 [CHANGELOG.md](../CHANGELOG.md)。
 
 ---
 
@@ -423,4 +388,4 @@ cody-server --port 9000       # 指定端口
 
 ---
 
-**最后更新：** 2026-02-26
+**最后更新：** 2026-02-28

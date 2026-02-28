@@ -31,8 +31,9 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 - 自定义 OpenAI 兼容 API 支持（智谱 GLM、阿里通义千问/DashScope 等）
 - 结构化输出
 - 工具调用（Function Calling）
-- 流式响应
+- 流式响应（结构化 StreamEvent：thinking / tool_call / tool_result / text_delta / done）
 - 会话管理
+- Thinking 模式（`--thinking` 开启，`--thinking-budget` 控制 token 预算）
 
 **认证方式：**
 - OAuth 2.0（推荐）
@@ -265,15 +266,15 @@ cody-server --host 0.0.0.0
 **POST /run/stream**
 ```json
 {
-  "prompt": "创建项目",
-  "stream": true
+  "prompt": "创建项目"
 }
 
-// SSE 流式响应
-data: {"type": "text", "content": "正在"}
-data: {"type": "text", "content": "创建"}
-data: {"type": "tool", "tool": "write_file", "args": {...}}
-data: {"type": "done", "output": "完成"}
+// SSE 流式响应（结构化事件）
+data: {"type": "thinking", "content": "Let me create..."}
+data: {"type": "tool_call", "tool_name": "write_file", "args": {"path": "main.py"}, "tool_call_id": "tc_1"}
+data: {"type": "tool_result", "tool_name": "write_file", "tool_call_id": "tc_1", "result": "Written 200 bytes"}
+data: {"type": "text_delta", "content": "项目已创建"}
+data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_traces": [...]}
 ```
 
 **POST /tool**
@@ -308,7 +309,7 @@ data: {"type": "done", "output": "完成"}
 ```json
 {
   "status": "ok",
-  "version": "0.1.0"
+  "version": "1.1.0"
 }
 ```
 
@@ -446,63 +447,6 @@ cody "使用项目 B 的配置"
 
 ---
 
-## 竞品分析
-
-### 主要竞品
-
-| 功能 | Cody | OpenCode/Crush | Claude Code | Cursor | Aider |
-|------|------|---------------|-------------|--------|-------|
-| CLI 模式 | ✅ | ✅ | ✅ | ❌ | ✅ |
-| 交互式 TUI | ✅（Textual） | ✅（Bubble Tea） | ✅ | N/A | ❌ |
-| **RPC Server** | **✅ 核心优势** | ❌ | ❌ | ❌ | ❌ |
-| Skill 系统 | ✅ | ✅ | ❌ | ❌ | ❌ |
-| MCP 支持 | ✅ | ✅ | ✅ | ❌ | ❌ |
-| LSP 集成 | ✅ | ✅（30+ 语言） | ❌ | ✅（内置） | ❌ |
-| 多模型 | ✅ | ✅（75+ 提供商） | ❌ | ✅ | ✅ |
-| 子 Agent | ✅ | ❌ | ✅ | ❌ | ❌ |
-| 会话管理 | ✅（SQLite） | ✅（SQLite） | ✅ | ✅ | ✅ |
-| Web 搜索/抓取 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Undo/Redo | ✅ | ✅ | ❌ | ✅ | ✅ |
-| GitHub 集成 | ❌ | ✅（PR/Issue 触发）| ✅ | ✅ | ✅ |
-| 开源 | ✅（MIT） | ✅（MIT） | ❌ | ❌ | ✅ |
-
-### OpenCode/Crush 重点能力分析
-
-**OpenCode**（SST 维护，MIT 开源，10.9K Stars）和 **Crush**（Charm 团队维护，原作者在此，Charm License 私有协议）是同源分裂的两个项目。它们的核心优势：
-
-1. **LSP 集成** — 内置 30+ 语言服务器，AI 不仅靠文本推理，还能获取编译器级别的类型信息、诊断错误、引用关系
-2. **精美 TUI** — 基于 Bubble Tea 的终端界面，Build/Plan 双模式，Vim 风格编辑器
-3. **会话系统** — SQLite 持久化，多会话切换，Auto Compact 自动摘要压缩上下文
-4. **丰富的内置工具** — bash, read, write, edit, grep, glob, patch, webfetch, websearch, todowrite, question 等
-5. **权限系统** — 工具级别的权限控制
-
-### Cody 的差异化优势
-
-1. **RPC Server 模式** — OpenCode/Crush 没有，Cody 可作为"可嵌入的 AI 编码引擎"
-2. **双 SDK（Python + Go）** — Python 和 Go 都有原生 SDK，覆盖主流后端生态
-3. **Python 生态** — AI/ML 生态更丰富（Pydantic AI、FastAPI），开发迭代更快
-4. **动态 Skill 系统** — 三层加载、项目级定制，比 OpenCode 的 skill 系统更完善
-5. **子 Agent 架构** — Python asyncio 并发 Agent 编排，code/research/test 专业化子 Agent
-
----
-
-## 战略定位
-
-**核心策略：引擎做厚，壳子做薄。**
-
-```
-CLI (薄壳) ──→ Core Engine (厚) ←── Server/SDK (薄壳)
-TUI (薄壳) ──↗
-```
-
-CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
-- **Core 引擎**（最高优先级） — 工具质量、Agent 能力、准确度，这是一切的基础
-- **Server + SDK**（差异化重点） — 可嵌入的交付方式，别人没有的东西
-- **子 Agent + MCP** — Python 生态天然适合 AI Agent 编排
-- **CLI + TUI** — 两种终端交互方式，CLI 适合脚本/单次任务，TUI 适合交互式对话
-
----
-
 ## 路线图
 
 ### v0.1.0（MVP）✅ 已完成
@@ -633,9 +577,34 @@ CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 
 **v1.0.0 总计：418 个 Python 测试 + 25 个 Go 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板，Go SDK**
 
-### v1.0.1 — Agent Skills 开放标准 ✅ 已完成
+### v1.1.0 — Thinking Mode & StreamEvent ✅ 已完成
 
-> **本阶段目标：Skill 系统完全对齐 [Agent Skills 开放标准](https://agentskills.io/)（agentskills.io）。**
+> **本阶段目标：统一流式事件系统，支持 thinking 模式，所有端获得完整的 AI 执行过程信息。**
+
+**Thinking Mode**
+- [x] `enable_thinking` + `thinking_budget` 配置字段
+- [x] CLI `--thinking/--no-thinking` 和 `--thinking-budget` 参数（run/chat/tui）
+- [x] Server 请求参数支持 `enable_thinking` 和 `thinking_budget`
+- [x] 环境变量 `CODY_ENABLE_THINKING` / `CODY_THINKING_BUDGET`
+
+**CodyResult 架构**
+- [x] `CodyResult` 数据模型 — output + thinking + tool_traces + usage
+- [x] `ToolTrace` — 记录每次工具调用的 tool_name、args、result
+- [x] 内核给出全部信息，上层（CLI/TUI/Server）选择怎么展示
+
+**StreamEvent 统一流式事件系统**
+- [x] 5 种结构化事件类型：`ThinkingEvent`、`TextDeltaEvent`、`ToolCallEvent`、`ToolResultEvent`、`DoneEvent`
+- [x] `run_stream()` 基于 pydantic-ai `run_stream_events()` API，实时 yield 结构化事件
+- [x] CLI run/chat 从同步 `run_sync()` 改为异步流式 `run_stream()`，打字机效果输出
+- [x] TUI 消费 StreamEvent，修复 message history 重建 bug
+- [x] Server SSE/WebSocket 发送结构化事件（thinking/tool_call/tool_result/text_delta/done）
+- [x] `_serialize_stream_event()` 统一 SSE 和 WebSocket 的序列化
+
+**v1.1.0 总计：474 个 Python 测试 + 25 个 Go 测试**
+
+### v1.0.1 — Agent Skills 开放标准 & 阿里云百炼 ✅ 已完成
+
+> **本阶段目标：Skill 系统对齐 [Agent Skills 开放标准](https://agentskills.io/)，集成阿里云百炼 Coding Plan。**
 
 **Skill 格式迁移**
 - [x] 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
@@ -655,8 +624,15 @@ CLI、TUI 和 Server 都只是 core 的接入层。我们的精力分配：
 - [x] `to_prompt_xml()` — 生成 `<available_skills>` XML 注入 system prompt
 - [x] Runner system prompt 自动注入 skills XML
 
+**阿里云百炼 Coding Plan**
+- [x] 集成百炼 Coding Plan API（Qwen3.5、GLM-5、Kimi K2.5、MiniMax M2.5 等）
+- [x] 支持 OpenAI 和 Anthropic 两种协议
+- [x] CLI `--coding-plan-key` / `--coding-plan-protocol` 参数
+- [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
+- [x] Claude OAuth token 认证支持
+
 **v1.0.1 总计：446 个 Python 测试 + 25 个 Go 测试，ruff 零告警**
 
 ---
 
-**最后更新：** 2026-02-25
+**最后更新：** 2026-02-28

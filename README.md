@@ -6,6 +6,8 @@ AI coding engine with RPC Server, dynamic skills, MCP integration, and LSP intel
 
 ## Features
 
+- **Thinking Mode** — `--thinking` flag enables model reasoning with configurable token budget
+- **Streaming Events** — Structured `StreamEvent` system: thinking, tool calls, text deltas, all in real-time
 - **30+ AI Tools** — File ops, search (grep/glob/patch), shell commands, undo/redo, task management, structured questions
 - **11 Built-in Skills** — git, github, docker, npm, python, rust, go, java, web, cicd, testing — AI reads SKILL.md to learn usage
 - **CI/CD Templates** — Ready-to-use GitHub Actions for AI code review, auto-fix, and test generation
@@ -33,7 +35,10 @@ export ANTHROPIC_API_KEY='your-key-here'
 cody init
 
 # Run a task
-cody "create a FastAPI hello world app"
+cody run "create a FastAPI hello world app"
+
+# With thinking mode
+cody run --thinking "design a REST API for user management"
 
 # Interactive chat
 cody chat
@@ -50,11 +55,12 @@ cody tui
 ### CLI
 
 ```bash
-cody "refactor auth.py"              # One-shot task
-cody chat                            # Interactive REPL
-cody --model opus "complex task"     # Specify model
-cody --continue "keep going"         # Resume last session
-cody --session abc123 "next step"    # Resume specific session
+cody run "refactor auth.py"              # One-shot task
+cody run --thinking "complex analysis"   # With thinking mode
+cody chat                                # Interactive REPL
+cody chat --thinking                     # Chat with thinking enabled
+cody chat --continue                     # Resume last session
+cody chat --session abc123               # Resume specific session
 ```
 
 ### TUI (Textual)
@@ -277,7 +283,7 @@ Supports two protocols:
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (446 tests)
+# Run tests (474 tests)
 python3 -m pytest tests/ -v
 
 # Lint

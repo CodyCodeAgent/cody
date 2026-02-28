@@ -64,6 +64,8 @@ class Config(BaseModel):
     claude_oauth_token: Optional[str] = None
     coding_plan_key: Optional[str] = None
     coding_plan_protocol: Literal['openai', 'anthropic'] = 'openai'
+    enable_thinking: bool = False
+    thinking_budget: Optional[int] = None
     auth: AuthConfig = Field(default_factory=AuthConfig)
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
@@ -114,6 +116,12 @@ class Config(BaseModel):
         env_coding_plan_proto = os.environ.get("CODY_CODING_PLAN_PROTOCOL")
         if env_coding_plan_proto:
             config.coding_plan_protocol = env_coding_plan_proto
+        env_thinking = os.environ.get("CODY_ENABLE_THINKING")
+        if env_thinking:
+            config.enable_thinking = env_thinking.lower() in ("1", "true", "yes")
+        env_thinking_budget = os.environ.get("CODY_THINKING_BUDGET")
+        if env_thinking_budget:
+            config.thinking_budget = int(env_thinking_budget)
         return config
 
     def save(self, path: Union[Path, str]):

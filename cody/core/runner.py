@@ -1,8 +1,10 @@
 """Agent runner - core execution engine"""
 
+import json
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, AsyncGenerator, Literal, Optional, Union
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
@@ -27,6 +29,135 @@ from .sub_agent import SubAgentManager
 from . import tools
 
 logger = logging.getLogger(__name__)
+
+
+# ── Result models ──────────────────────────────────────────────────────────
+
+
+@dataclass
+class ToolTrace:
+    """Record of a single tool call and its result."""
+    tool_name: str
+    args: dict[str, Any]
+    result: str
+    tool_call_id: str = ""
+
+
+@dataclass
+class CodyResult:
+    """Rich result from the Cody engine.
+
+    The core always provides all information. Upper layers (CLI, TUI, Server)
+    decide what to display and how to render it.
+    """
+    output: str
+    thinking: Optional[str] = None
+    tool_traces: list[ToolTrace] = field(default_factory=list)
+    _raw_result: Any = field(default=None, repr=False)
+
+    def usage(self):
+        """Proxy to pydantic-ai usage stats."""
+        if self._raw_result:
+            return self._raw_result.usage()
+        return None
+
+    def all_messages(self):
+        """Proxy to pydantic-ai message history (for multi-turn)."""
+        if self._raw_result:
+            return self._raw_result.all_messages()
+        return []
+
+    @staticmethod
+    def from_raw(raw_result) -> "CodyResult":
+        """Extract CodyResult from a pydantic-ai AgentRunResult.
+
+        Walks all_messages() to pull out ThinkingPart and ToolCall/ToolReturn pairs.
+        """
+        thinking_parts: list[str] = []
+        tool_calls: dict[str, ToolTrace] = {}  # keyed by tool_call_id
+        tool_traces: list[ToolTrace] = []
+
+        for msg in raw_result.all_messages():
+            if isinstance(msg, ModelResponse):
+                for part in msg.parts:
+                    if part.part_kind == "thinking" and part.content:
+                        thinking_parts.append(part.content)
+                    elif part.part_kind == "tool-call":
+                        args = part.args if isinstance(part.args, dict) else {}
+                        if isinstance(part.args, str):
+                            try:
+                                args = json.loads(part.args)
+                            except (json.JSONDecodeError, TypeError):
+                                args = {"raw": part.args}
+                        trace = ToolTrace(
+                            tool_name=part.tool_name,
+                            args=args,
+                            result="",
+                            tool_call_id=part.tool_call_id,
+                        )
+                        tool_calls[part.tool_call_id] = trace
+                        tool_traces.append(trace)
+
+            elif isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if part.part_kind == "tool-return":
+                        if part.tool_call_id in tool_calls:
+                            content = part.content
+                            if not isinstance(content, str):
+                                content = str(content)
+                            tool_calls[part.tool_call_id].result = content
+
+        return CodyResult(
+            output=raw_result.output,
+            thinking="\n\n".join(thinking_parts) if thinking_parts else None,
+            tool_traces=tool_traces,
+            _raw_result=raw_result,
+        )
+
+
+# ── Stream event types ────────────────────────────────────────────────────
+
+
+@dataclass
+class ThinkingEvent:
+    """Incremental thinking content from the model."""
+    content: str
+    event_type: Literal["thinking"] = "thinking"
+
+
+@dataclass
+class TextDeltaEvent:
+    """Incremental text output from the model."""
+    content: str
+    event_type: Literal["text_delta"] = "text_delta"
+
+
+@dataclass
+class ToolCallEvent:
+    """A tool call has been initiated."""
+    tool_name: str
+    args: dict[str, Any]
+    tool_call_id: str
+    event_type: Literal["tool_call"] = "tool_call"
+
+
+@dataclass
+class ToolResultEvent:
+    """A tool call has returned a result."""
+    tool_name: str
+    tool_call_id: str
+    result: str
+    event_type: Literal["tool_result"] = "tool_result"
+
+
+@dataclass
+class DoneEvent:
+    """Stream complete. Contains the full CodyResult."""
+    result: CodyResult
+    event_type: Literal["done"] = "done"
+
+
+StreamEvent = Union[ThinkingEvent, TextDeltaEvent, ToolCallEvent, ToolResultEvent, DoneEvent]
 
 
 class AgentRunner:
@@ -335,42 +466,127 @@ class AgentRunner:
 
         return new_history
 
+    # ── Model settings ────────────────────────────────────────────────────────
+
+    def _build_model_settings(self) -> Optional[dict[str, Any]]:
+        """Build model_settings dict for pydantic-ai, including thinking support.
+
+        Returns None if no special settings are needed.
+        """
+        if not self.config.enable_thinking:
+            return None
+
+        extra_body: dict[str, Any] = {"enable_thinking": True}
+        if self.config.thinking_budget is not None:
+            extra_body["thinking_budget"] = self.config.thinking_budget
+
+        return {"extra_body": extra_body}
+
     # ── Core run methods ─────────────────────────────────────────────────────
 
     async def run(
         self,
         prompt: str,
         message_history: Optional[list[ModelMessage]] = None,
-    ):
+    ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history"""
         deps = self._create_deps()
         message_history = self._compact_history_if_needed(message_history)
-        result = await self.agent.run(prompt, deps=deps, message_history=message_history)
-        return result
+        result = await self.agent.run(
+            prompt, deps=deps, message_history=message_history,
+            model_settings=self._build_model_settings(),
+        )
+        return CodyResult.from_raw(result)
 
     async def run_stream(
         self,
         prompt: str,
         message_history: Optional[list[ModelMessage]] = None,
-    ):
-        """Run agent with streaming"""
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """Run agent with streaming, yielding structured StreamEvent objects.
+
+        Events:
+          - ThinkingEvent: incremental thinking content
+          - TextDeltaEvent: incremental text output
+          - ToolCallEvent: tool call initiated
+          - ToolResultEvent: tool call result
+          - DoneEvent: stream complete with full CodyResult
+        """
+        from pydantic_ai.messages import (
+            PartStartEvent,
+            PartDeltaEvent,
+            FunctionToolCallEvent,
+            FunctionToolResultEvent,
+        )
+        from pydantic_ai.run import AgentRunResultEvent
+
         deps = self._create_deps()
         message_history = self._compact_history_if_needed(message_history)
-        async with self.agent.run_stream(
-            prompt, deps=deps, message_history=message_history
-        ) as result:
-            async for text in result.stream_text():
-                yield text
+
+        async for event in self.agent.run_stream_events(
+            prompt, deps=deps, message_history=message_history,
+            model_settings=self._build_model_settings(),
+        ):
+            if isinstance(event, PartStartEvent):
+                part = event.part
+                if part.part_kind == "thinking" and getattr(part, "content", ""):
+                    yield ThinkingEvent(content=part.content)
+                elif part.part_kind == "text" and getattr(part, "content", ""):
+                    yield TextDeltaEvent(content=part.content)
+
+            elif isinstance(event, PartDeltaEvent):
+                delta = event.delta
+                if delta.part_delta_kind == "thinking":
+                    content = getattr(delta, "content_delta", None)
+                    if content:
+                        yield ThinkingEvent(content=content)
+                elif delta.part_delta_kind == "text":
+                    content = getattr(delta, "content_delta", None)
+                    if content:
+                        yield TextDeltaEvent(content=content)
+
+            elif isinstance(event, FunctionToolCallEvent):
+                part = event.part
+                args = part.args if isinstance(part.args, dict) else {}
+                if isinstance(part.args, str):
+                    try:
+                        args = json.loads(part.args)
+                    except (json.JSONDecodeError, TypeError):
+                        args = {"raw": part.args}
+                yield ToolCallEvent(
+                    tool_name=part.tool_name,
+                    args=args,
+                    tool_call_id=part.tool_call_id,
+                )
+
+            elif isinstance(event, FunctionToolResultEvent):
+                result_part = event.result
+                if result_part.part_kind == "tool-return":
+                    content = result_part.content
+                    if not isinstance(content, str):
+                        content = str(content)
+                    yield ToolResultEvent(
+                        tool_name=result_part.tool_name,
+                        tool_call_id=result_part.tool_call_id,
+                        result=content,
+                    )
+
+            elif isinstance(event, AgentRunResultEvent):
+                cody_result = CodyResult.from_raw(event.result)
+                yield DoneEvent(result=cody_result)
 
     def run_sync(
         self,
         prompt: str,
         message_history: Optional[list[ModelMessage]] = None,
-    ):
+    ) -> CodyResult:
         """Run agent synchronously"""
         deps = self._create_deps()
-        result = self.agent.run_sync(prompt, deps=deps, message_history=message_history)
-        return result
+        result = self.agent.run_sync(
+            prompt, deps=deps, message_history=message_history,
+            model_settings=self._build_model_settings(),
+        )
+        return CodyResult.from_raw(result)
 
     # ── Session-aware run methods ────────────────────────────────────────────
 
@@ -379,10 +595,10 @@ class AgentRunner:
         prompt: str,
         store: SessionStore,
         session_id: Optional[str] = None,
-    ) -> tuple[object, str]:
+    ) -> tuple[CodyResult, str]:
         """Run agent with automatic session persistence.
 
-        Returns (result, session_id). Creates a new session if session_id is None.
+        Returns (CodyResult, session_id). Creates a new session if session_id is None.
         """
         sid, history = self.prepare_session(store, session_id)
         result = await self.run(prompt, message_history=history)
@@ -395,23 +611,16 @@ class AgentRunner:
         prompt: str,
         store: SessionStore,
         session_id: Optional[str] = None,
-    ):
+    ) -> AsyncGenerator[tuple[StreamEvent, str], None]:
         """Stream agent with automatic session persistence.
 
-        Yields text chunks. Saves user+assistant messages after stream completes.
-        Returns are yielded as (chunk, session_id) — session_id is in the first yield.
+        Yields (StreamEvent, session_id) tuples.
+        Saves user+assistant messages; assistant message saved when DoneEvent arrives.
         """
         sid, history = self.prepare_session(store, session_id)
         store.add_message(sid, "user", prompt)
 
-        chunks: list[str] = []
-        deps = self._create_deps()
-        async with self.agent.run_stream(
-            prompt, deps=deps, message_history=history
-        ) as result:
-            async for text in result.stream_text():
-                chunks.append(text)
-                yield text, sid
-
-        full_output = "".join(chunks)
-        store.add_message(sid, "assistant", full_output)
+        async for event in self.run_stream(prompt, message_history=history):
+            if isinstance(event, DoneEvent):
+                store.add_message(sid, "assistant", event.result.output)
+            yield event, sid

@@ -17,12 +17,29 @@ def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
         ctx.deps.permission_manager.check(tool_name)
 
 
-def _resolve_and_check(workdir: Path, path: str) -> Path:
-    """Resolve path and verify it's inside workdir. Returns resolved Path."""
-    full_path = (workdir / path).resolve()
+def _resolve_and_check(workdir: Path, path: str, *, allow_read_outside: bool = False) -> Path:
+    """Resolve path and verify it's inside workdir. Returns resolved Path.
+
+    If *allow_read_outside* is True, absolute paths outside workdir are
+    permitted (used for read-only operations).  The caller is responsible
+    for passing this flag only when appropriate.
+    """
+    # Absolute paths are resolved directly
+    if Path(path).is_absolute():
+        full_path = Path(path).resolve()
+    else:
+        full_path = (workdir / path).resolve()
+
     workdir_resolved = workdir.resolve()
     if not full_path.is_relative_to(workdir_resolved):
-        raise ValueError(f"Access denied: {path} is outside working directory")
+        if allow_read_outside:
+            # Allow but warn — the AI sees this message
+            return full_path
+        raise ValueError(
+            f"Access denied: {path} is outside working directory ({workdir_resolved}). "
+            f"Tip: use the 'question' tool to ask the user if they want to allow access, "
+            f"or ask the user to re-run with --workdir pointing to the correct directory."
+        )
     return full_path
 
 
@@ -176,9 +193,9 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
     """Read file contents
 
     Args:
-        path: Path to the file to read
+        path: Path to the file to read (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
 
     if not full_path.exists():
         raise FileNotFoundError(f"File not found: {path}")
@@ -269,9 +286,9 @@ async def list_directory(ctx: RunContext['CodyDeps'], path: str = ".") -> str:
     """List directory contents
 
     Args:
-        path: Directory path (relative to workdir)
+        path: Directory path (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
 
     if not full_path.exists():
         raise FileNotFoundError(f"Directory not found: {path}")
@@ -300,10 +317,10 @@ async def grep(
 
     Args:
         pattern: Regular expression pattern to search for
-        path: Directory or file to search in (relative to workdir)
+        path: Directory or file to search in (relative or absolute)
         include: Optional glob to filter filenames (e.g. "*.py")
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
 
     if not full_path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
@@ -359,9 +376,9 @@ async def glob(
 
     Args:
         pattern: Glob pattern (e.g. "**/*.py", "*.txt", "src/**/*.ts")
-        path: Base directory to search from (relative to workdir)
+        path: Base directory to search from (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
 
     if not full_path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
@@ -519,9 +536,9 @@ async def search_files(
 
     Args:
         query: Search query to match against file names
-        path: Directory to search in (relative to workdir)
+        path: Directory to search in (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
 
     if not full_path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
