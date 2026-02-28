@@ -32,7 +32,7 @@ cody/
 │   ├── permissions.py  # 工具级权限（allow/deny/confirm）
 │   ├── file_history.py # 文件 undo/redo 快照
 │   └── rate_limiter.py # 滑动窗口限流
-├── skills/         # 内置 Skills（git, github, docker, npm, python）
+├── skills/         # 内置 Skills（git, github, docker, npm, python, rust, go, java, web, cicd, testing）
 ├── server.py       # RPC Server（FastAPI），调用 core
 ├── tui.py          # TUI 界面（Textual），调用 core
 └── cli.py          # CLI 界面（Click），调用 core
@@ -220,28 +220,28 @@ python3 -m pytest tests/ -v
 | 模块 | 测试数 | 状态 |
 |------|--------|------|
 | core/tools.py | 51 | 完善 |
+| core/skill_manager.py | 40 | 完善 |
 | core/lsp_client.py | 34 | 完善 |
+| core/config.py | 33 | 完善 |
 | server.py | 32 | 完善 |
+| core/runner.py | 24 | 完善 |
+| core/auth.py | 23 | 完善 |
 | core/web.py | 22 | 完善 |
-| core/sub_agent.py | 22 | 完善 |
-| client.py | 19 | 完善 |
-| client retry | 18 | 完善 |
+| client.py | 21 | 完善 |
+| core/sub_agent.py | 21 | 完善 |
+| core/audit.py | 19 | 完善 |
+| core/permissions.py | 18 | 完善 |
+| client retry | 17 | 完善 |
 | core/context.py | 16 | 完善 |
 | cli.py | 16 | 基本覆盖 |
-| core/config.py | 15 | 完善 |
-| core/skill_manager.py | 14 | 完善 |
+| core/rate_limiter.py | 16 | 完善 |
+| core/file_history.py | 15 | 完善 |
 | core/session.py | 14 | 完善 |
-| core/mcp_client.py | 15 | 完善 |
-| core/runner.py | 12 | 完善 |
+| core/mcp_client.py | 14 | 完善 |
+| tui.py | 12 | 基本覆盖 |
 | core/errors.py | 11 | 完善 |
-| core/audit.py | 16 | 完善 |
-| core/auth.py | 14 | 完善 |
-| core/permissions.py | 14 | 完善 |
-| core/file_history.py | 16 | 完善 |
-| core/rate_limiter.py | 12 | 完善 |
-| tui.py | 10 | 基本覆盖 |
 | WebSocket | 7 | 基本覆盖 |
 
-**总计：418 个测试，ruff 零告警**
+**总计：476 个测试，ruff 零告警**
 
 **当前版本：v1.1.0（见 docs/FEATURES.md 版本记录）**

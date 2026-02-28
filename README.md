@@ -283,7 +283,7 @@ Supports two protocols:
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (474 tests)
+# Run tests (476 tests)
 python3 -m pytest tests/ -v
 
 # Lint

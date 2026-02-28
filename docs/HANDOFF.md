@@ -64,7 +64,7 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 474 个测试
+├── tests/                   # 476 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
