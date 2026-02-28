@@ -144,20 +144,18 @@ def _get_rate_limiter() -> Optional[RateLimiter]:
 
 
 _session_store: Optional[SessionStore] = None
-_skill_manager_cache: dict[str, SkillManager] = {}
 _config_cache: dict[str, Config] = {}
 
 
 def _reset_server_state():
     """Reset server-level singletons (for testing)."""
     global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked
-    global _session_store, _skill_manager_cache, _config_cache
+    global _session_store, _config_cache
     _audit_logger = None
     _auth_manager = None
     _rate_limiter = None
     _rate_limiter_checked = False
     _session_store = None
-    _skill_manager_cache.clear()
     _config_cache.clear()
 
 
@@ -205,11 +203,8 @@ def _get_config(workdir: Path) -> Config:
 
 
 def _get_skill_manager(config: Config, workdir: Path) -> SkillManager:
-    """Get SkillManager for a workdir, cached to avoid repeated disk scans."""
-    key = str(workdir)
-    if key not in _skill_manager_cache:
-        _skill_manager_cache[key] = SkillManager(config, workdir=workdir)
-    return _skill_manager_cache[key]
+    """Create a fresh SkillManager so newly added/changed skills are visible."""
+    return SkillManager(config, workdir=workdir)
 
 
 def _create_full_deps(config: Config, workdir: Path) -> CodyDeps:
