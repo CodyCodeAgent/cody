@@ -31,13 +31,52 @@ cli.py / tui.py / server.py  →  core/runner.py  →  core/tools.py
 | 文件 | 作用 |
 |------|------|
 | `core/runner.py` | 中枢引擎 — Agent 创建、工具注册、run/stream 执行 |
-| `core/tools.py` | 30+ 工具函数 + 底部声明式工具注册表 |
+| `core/tools.py` | 28 个工具函数 + 底部声明式工具注册表 |
 | `core/errors.py` | 错误码 + ToolError 异常层级（server 按类型映射 HTTP 状态码） |
 | `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON |
 | `core/deps.py` | CodyDeps 数据类，工具的依赖注入容器 |
 | `server.py` | FastAPI 壳子，顶部 docstring 有缓存策略说明 |
 | `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
 | `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |
+
+## CLI 命令速查
+
+```bash
+# 单次执行
+cody run "create hello.py"
+cody run --thinking "complex analysis"     # 启用思考模式
+cody run -v "debug this"                   # 显示工具调用结果
+cody run --workdir /path/to/project "fix"  # 指定工作目录
+
+# 交互对话
+cody chat                                  # 多轮 REPL
+cody chat --continue                       # 续上次会话
+cody chat --session <id>                   # 恢复指定会话
+cody chat --workdir /path/to/project       # 指定工作目录
+
+# TUI
+cody tui                                   # 全屏终端
+cody tui --continue                        # 续上次会话
+cody tui --workdir /path/to/project        # 指定工作目录
+
+# 会话管理
+cody sessions list                         # 列出会话
+cody sessions show <id>                    # 查看会话内容
+cody sessions delete <id>                  # 删除会话
+
+# Skills 管理
+cody skills list                           # 列出所有技能
+cody skills show git                       # 查看技能文档
+cody skills enable github                  # 启用技能
+cody skills disable docker                 # 禁用技能
+
+# 配置
+cody config show                           # 查看当前配置
+cody config set model "anthropic:claude-sonnet-4-0"  # 设置模型
+cody init                                  # 初始化 .cody/ 目录
+```
+
+所有命令默认在当前目录工作，`--workdir` 可覆盖。
 
 ## 开发命令
 
