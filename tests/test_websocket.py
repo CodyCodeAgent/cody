@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from cody.core.runner import TextDeltaEvent, DoneEvent, CodyResult
 from cody.server import app
 
 
@@ -47,8 +48,9 @@ def test_ws_run_missing_prompt():
 def test_ws_run_stream():
     """Run via WebSocket with streaming"""
     async def fake_stream(prompt, message_history=None):
-        for chunk in ["Hello", " WS"]:
-            yield chunk
+        yield TextDeltaEvent(content="Hello")
+        yield TextDeltaEvent(content=" WS")
+        yield DoneEvent(result=CodyResult(output="Hello WS"))
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -61,18 +63,18 @@ def test_ws_run_stream():
                 "data": {"prompt": "test ws"},
             })
 
-            # Should receive: start, text, text, done
+            # Should receive: start, text_delta, text_delta, done
             events = []
             for _ in range(4):
                 events.append(ws.receive_json())
 
             types = [e["type"] for e in events]
             assert "start" in types
-            assert "text" in types
+            assert "text_delta" in types
             assert "done" in types
 
             # Check text chunks
-            text_events = [e for e in events if e["type"] == "text"]
+            text_events = [e for e in events if e["type"] == "text_delta"]
             contents = [e["content"] for e in text_events]
             assert "Hello" in contents
             assert " WS" in contents
