@@ -10,6 +10,7 @@ from cody.core.tools import (
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
 from cody.core.deps import CodyDeps
+from cody.core.errors import ToolPathDenied, ToolInvalidParams
 
 
 class MockContext:
@@ -56,7 +57,7 @@ async def test_edit_file_text_not_found(tmp_path):
     ctx = MockContext(tmp_path)
     (tmp_path / "code.py").write_text("def foo():\n    pass\n")
 
-    with pytest.raises(ValueError, match="Text not found"):
+    with pytest.raises(ToolInvalidParams, match="Text not found"):
         await edit_file(ctx, "code.py", "nonexistent text", "new text")
 
 
@@ -91,7 +92,7 @@ async def test_read_file_outside_workdir_allowed(tmp_path):
 async def test_security_check_write_outside(tmp_path):
     ctx = MockContext(tmp_path)
 
-    with pytest.raises(ValueError, match="outside working directory"):
+    with pytest.raises(ToolPathDenied, match="outside working directory"):
         await write_file(ctx, "../../evil.txt", "bad content")
 
 
@@ -104,7 +105,7 @@ async def test_security_check_symlink_write_escape(tmp_path):
     link = tmp_path / "escape"
     link.symlink_to("/tmp")
 
-    with pytest.raises(ValueError, match="outside working directory"):
+    with pytest.raises(ToolPathDenied, match="outside working directory"):
         await write_file(ctx, "escape/evil.txt", "bad content")
 
 
@@ -158,7 +159,7 @@ async def test_grep_invalid_regex(tmp_path):
     ctx = MockContext(tmp_path)
     (tmp_path / "file.txt").write_text("test\n")
 
-    with pytest.raises(ValueError, match="Invalid regex"):
+    with pytest.raises(ToolInvalidParams, match="Invalid regex"):
         await grep(ctx, "[invalid")
 
 

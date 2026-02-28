@@ -14,10 +14,15 @@ import uvicorn
 from .core import Config, AgentRunner, SessionStore
 from .core.audit import AuditLogger, AuditEvent
 from .core.auth import AuthError, AuthManager
-from .core.errors import CodyAPIError, ErrorCode, ErrorDetail
+from .core.errors import (
+    CodyAPIError, ErrorCode, ErrorDetail,
+    ToolError, ToolPermissionDenied, ToolPathDenied, ToolInvalidParams,
+)
 from .core.rate_limiter import RateLimiter
 from .core.skill_manager import SkillManager
 from .core.deps import CodyDeps
+from .core.file_history import FileHistory
+from .core.permissions import PermissionLevel, PermissionManager
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -138,13 +143,22 @@ def _get_rate_limiter() -> Optional[RateLimiter]:
     return _rate_limiter
 
 
+_session_store: Optional[SessionStore] = None
+_skill_manager_cache: dict[str, SkillManager] = {}
+_config_cache: dict[str, Config] = {}
+
+
 def _reset_server_state():
     """Reset server-level singletons (for testing)."""
     global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked
+    global _session_store, _skill_manager_cache, _config_cache
     _audit_logger = None
     _auth_manager = None
     _rate_limiter = None
     _rate_limiter_checked = False
+    _session_store = None
+    _skill_manager_cache.clear()
+    _config_cache.clear()
 
 
 # ── Error handler ────────────────────────────────────────────────────────────
@@ -175,14 +189,48 @@ def _raise_structured(
 
 
 def _get_session_store() -> SessionStore:
-    """Get the session store (simple factory, no DI overhead)."""
-    return SessionStore()
+    """Get the session store singleton."""
+    global _session_store
+    if _session_store is None:
+        _session_store = SessionStore()
+    return _session_store
+
+
+def _get_config(workdir: Path) -> Config:
+    """Get config for a workdir, cached to avoid repeated disk reads."""
+    key = str(workdir)
+    if key not in _config_cache:
+        _config_cache[key] = Config.load(workdir=workdir)
+    return _config_cache[key].model_copy(deep=True)
+
+
+def _get_skill_manager(config: Config, workdir: Path) -> SkillManager:
+    """Get SkillManager for a workdir, cached to avoid repeated disk scans."""
+    key = str(workdir)
+    if key not in _skill_manager_cache:
+        _skill_manager_cache[key] = SkillManager(config, workdir=workdir)
+    return _skill_manager_cache[key]
+
+
+def _create_full_deps(config: Config, workdir: Path) -> CodyDeps:
+    """Create a complete CodyDeps with all optional dependencies populated."""
+    return CodyDeps(
+        config=config,
+        workdir=workdir,
+        skill_manager=_get_skill_manager(config, workdir),
+        audit_logger=_get_audit_logger(),
+        permission_manager=PermissionManager(
+            overrides=config.permissions.overrides,
+            default_level=PermissionLevel(config.permissions.default_level),
+        ),
+        file_history=FileHistory(workdir=workdir),
+    )
 
 
 def _config_from_request(request: RunRequest) -> Config:
-    """Load config and apply request-level overrides."""
+    """Load config (cached) and apply request-level overrides on a copy."""
     workdir = Path(request.workdir) if request.workdir else Path.cwd()
-    return Config.load(workdir=workdir).apply_overrides(
+    return _get_config(workdir).apply_overrides(
         model=request.model,
         model_base_url=request.model_base_url,
         model_api_key=request.model_api_key,
@@ -388,6 +436,10 @@ async def run_agent(request: RunRequest):
             usage=usage_data,
         )
 
+    except (ToolPermissionDenied, ToolPathDenied) as e:
+        _raise_structured(e.code, e.message, status_code=403)
+    except ToolError as e:
+        _raise_structured(e.code, e.message, status_code=400)
     except ValueError as e:
         msg = str(e)
         if "Session not found" in msg:
@@ -497,12 +549,8 @@ async def call_tool(request: ToolRequest):
 
     try:
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
-        config = Config.load(workdir=workdir)
-        deps = CodyDeps(
-            config=config,
-            workdir=workdir,
-            skill_manager=SkillManager(config, workdir=workdir),
-        )
+        config = _get_config(workdir)
+        deps = _create_full_deps(config, workdir)
 
         class ToolContext:
             def __init__(self, deps):
@@ -513,16 +561,12 @@ async def call_tool(request: ToolRequest):
 
         return ToolResponse(result=result)
 
-    except PermissionError as e:
-        _raise_structured(
-            ErrorCode.PERMISSION_DENIED, str(e), status_code=403
-        )
-    except ValueError as e:
-        msg = str(e)
-        if "Access denied" in msg or "outside working directory" in msg:
-            _raise_structured(ErrorCode.PERMISSION_DENIED, msg, status_code=403)
-        else:
-            _raise_structured(ErrorCode.INVALID_PARAMS, msg, status_code=400)
+    except (ToolPermissionDenied, ToolPathDenied) as e:
+        _raise_structured(e.code, e.message, status_code=403)
+    except ToolInvalidParams as e:
+        _raise_structured(e.code, e.message, status_code=400)
+    except ToolError as e:
+        _raise_structured(e.code, e.message, status_code=500)
     except CodyAPIError:
         raise
     except Exception as e:
@@ -540,9 +584,9 @@ async def list_skills(workdir: Optional[str] = None):
     """List all available skills"""
     try:
         wd = Path(workdir) if workdir else Path.cwd()
-        config = Config.load(workdir=wd)
-        skill_manager = SkillManager(config, workdir=wd)
-        skills = skill_manager.list_skills()
+        config = _get_config(wd)
+        sm = _get_skill_manager(config, wd)
+        skills = sm.list_skills()
 
         return {
             "skills": [
@@ -569,9 +613,9 @@ async def get_skill(skill_name: str, workdir: Optional[str] = None):
     """Get skill documentation"""
     try:
         wd = Path(workdir) if workdir else Path.cwd()
-        config = Config.load(workdir=wd)
-        skill_manager = SkillManager(config, workdir=wd)
-        skill = skill_manager.get_skill(skill_name)
+        config = _get_config(wd)
+        sm = _get_skill_manager(config, wd)
+        skill = sm.get_skill(skill_name)
         if not skill:
             _raise_structured(
                 ErrorCode.SKILL_NOT_FOUND,
@@ -719,14 +763,15 @@ _sub_agent_manager = None
 _sub_agent_lock = asyncio.Lock()
 
 
-async def _get_sub_agent_manager(workdir: Path):
+async def _get_sub_agent_manager(workdir: Optional[Path] = None):
     global _sub_agent_manager
     if _sub_agent_manager is None:
         async with _sub_agent_lock:
             if _sub_agent_manager is None:
                 from .core.sub_agent import SubAgentManager
-                config = Config.load(workdir=workdir)
-                _sub_agent_manager = SubAgentManager(config=config, workdir=workdir)
+                wd = workdir or Path.cwd()
+                config = _get_config(wd)
+                _sub_agent_manager = SubAgentManager(config=config, workdir=wd)
     return _sub_agent_manager
 
 
@@ -767,7 +812,7 @@ async def spawn_agent(request: SpawnRequest):
 @app.get("/agent/{agent_id}")
 async def get_agent_status(agent_id: str):
     """Get sub-agent status"""
-    manager = await _get_sub_agent_manager()
+    manager = await _get_sub_agent_manager(Path.cwd())
     result = manager.get_status(agent_id)
     if result is None:
         _raise_structured(
@@ -788,7 +833,7 @@ async def get_agent_status(agent_id: str):
 @app.delete("/agent/{agent_id}")
 async def kill_agent(agent_id: str):
     """Kill a running sub-agent"""
-    manager = await _get_sub_agent_manager()
+    manager = await _get_sub_agent_manager(Path.cwd())
     result = manager.get_status(agent_id)
     if result is None:
         _raise_structured(
@@ -866,7 +911,7 @@ class _WSConnection:
 
         try:
             workdir = Path(data["workdir"]) if data.get("workdir") else Path.cwd()
-            config = Config.load(workdir=workdir).apply_overrides(
+            config = _get_config(workdir).apply_overrides(
                 model=data.get("model"),
                 model_base_url=data.get("model_base_url"),
                 model_api_key=data.get("model_api_key"),

@@ -9,10 +9,11 @@ from pathlib import Path
 from pydantic_ai import RunContext
 
 from .deps import CodyDeps
+from .errors import ToolPermissionDenied, ToolPathDenied, ToolInvalidParams
 
 
 def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
-    """Check permission before tool execution. Raises PermissionDeniedError if denied."""
+    """Check permission before tool execution. Raises ToolPermissionDenied if denied."""
     if ctx.deps.permission_manager:
         ctx.deps.permission_manager.check(tool_name)
 
@@ -35,7 +36,7 @@ def _resolve_and_check(workdir: Path, path: str, *, allow_read_outside: bool = F
         if allow_read_outside:
             # Allow but warn — the AI sees this message
             return full_path
-        raise ValueError(
+        raise ToolPathDenied(
             f"Access denied: {path} is outside working directory ({workdir_resolved}). "
             f"Tip: use the 'question' tool to ask the user if they want to allow access, "
             f"or ask the user to re-run with --workdir pointing to the correct directory."
@@ -260,7 +261,7 @@ async def edit_file(
     content = full_path.read_text()
 
     if old_text not in content:
-        raise ValueError(f"Text not found in file: {old_text[:50]}...")
+        raise ToolInvalidParams(f"Text not found in file: {old_text[:50]}...")
 
     new_content = content.replace(old_text, new_text, 1)
     full_path.write_text(new_content)
@@ -294,7 +295,7 @@ async def list_directory(ctx: RunContext['CodyDeps'], path: str = ".") -> str:
         raise FileNotFoundError(f"Directory not found: {path}")
 
     if not full_path.is_dir():
-        raise ValueError(f"Not a directory: {path}")
+        raise ToolInvalidParams(f"Not a directory: {path}")
 
     items = []
     for item in sorted(full_path.iterdir()):
@@ -328,7 +329,7 @@ async def grep(
     try:
         regex = re.compile(pattern)
     except re.error as e:
-        raise ValueError(f"Invalid regex pattern: {e}")
+        raise ToolInvalidParams(f"Invalid regex pattern: {e}")
 
     matches: list[str] = []
     max_matches = 200
@@ -384,7 +385,7 @@ async def glob(
         raise FileNotFoundError(f"Path not found: {path}")
 
     if not full_path.is_dir():
-        raise ValueError(f"Not a directory: {path}")
+        raise ToolInvalidParams(f"Not a directory: {path}")
 
     workdir_resolved = ctx.deps.workdir.resolve()
     gitignore_patterns = _parse_gitignore(workdir_resolved)
@@ -468,7 +469,7 @@ async def patch(
         if line.startswith("@@"):
             hunk_match = re.match(r"@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@", line)
             if not hunk_match:
-                raise ValueError(f"Invalid hunk header: {line.rstrip()}")
+                raise ToolInvalidParams(f"Invalid hunk header: {line.rstrip()}")
             hunk_start = int(hunk_match.group(1)) - 1  # 0-indexed
 
             # Copy lines before this hunk
@@ -544,7 +545,7 @@ async def search_files(
         raise FileNotFoundError(f"Path not found: {path}")
 
     if not full_path.is_dir():
-        raise ValueError(f"Not a directory: {path}")
+        raise ToolInvalidParams(f"Not a directory: {path}")
 
     workdir_resolved = ctx.deps.workdir.resolve()
     gitignore_patterns = _parse_gitignore(workdir_resolved)
@@ -597,13 +598,13 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
     if ctx.deps.config.security.allowed_commands:
         base_cmd = command.split()[0]
         if base_cmd not in ctx.deps.config.security.allowed_commands:
-            raise PermissionError(f"Command not allowed: {base_cmd}")
+            raise ToolPermissionDenied(f"Command not allowed: {base_cmd}")
 
     # Check for dangerous patterns
     dangerous_patterns = ['rm -rf /', 'dd if=', ':(){']
     for pattern in dangerous_patterns:
         if pattern in command:
-            raise PermissionError(f"Dangerous command detected: {pattern}")
+            raise ToolPermissionDenied(f"Dangerous command detected: {pattern}")
 
     try:
         result = subprocess.run(
@@ -682,7 +683,7 @@ async def read_skill(ctx: RunContext['CodyDeps'], skill_name: str) -> str:
     """
     skill = ctx.deps.skill_manager.get_skill(skill_name)
     if not skill:
-        raise ValueError(f"Skill not found: {skill_name}")
+        raise ToolInvalidParams(f"Skill not found: {skill_name}")
 
     return skill.instructions
 
@@ -1103,3 +1104,51 @@ async def question(
     # In non-interactive mode, return the question as-is for the caller to handle
     # The actual user interaction happens at the shell layer (CLI/TUI/Server)
     return "\n".join(parts)
+
+
+# ── Tool registry ─────────────────────────────────────────────────────────
+# Declarative tool sets. runner and sub_agent import these instead of
+# hard-coding agent.tool() calls.
+
+FILE_TOOLS = [read_file, write_file, edit_file, list_directory]
+SEARCH_TOOLS = [grep, glob, patch, search_files]
+COMMAND_TOOLS = [exec_command]
+SKILL_TOOLS = [list_skills, read_skill]
+SUB_AGENT_TOOLS = [spawn_agent, get_agent_status, kill_agent]
+MCP_TOOLS = [mcp_call, mcp_list_tools]
+WEB_TOOLS = [webfetch, websearch]
+LSP_TOOLS = [lsp_diagnostics, lsp_definition, lsp_references, lsp_hover]
+FILE_HISTORY_TOOLS = [undo_file, redo_file, list_file_changes]
+TODO_TOOLS = [todo_write, todo_read]
+USER_TOOLS = [question]
+
+# All tools for the main agent (MCP excluded — conditional on config)
+CORE_TOOLS = (
+    FILE_TOOLS + SEARCH_TOOLS + COMMAND_TOOLS + SKILL_TOOLS
+    + SUB_AGENT_TOOLS + WEB_TOOLS + LSP_TOOLS
+    + FILE_HISTORY_TOOLS + TODO_TOOLS + USER_TOOLS
+)
+
+# Subsets for sub-agent types
+SUB_AGENT_TOOLSETS = {
+    "code": FILE_TOOLS + SEARCH_TOOLS + COMMAND_TOOLS,
+    "generic": FILE_TOOLS + SEARCH_TOOLS + COMMAND_TOOLS,
+    "research": [read_file, list_directory, grep, glob, search_files],
+    "test": [read_file, write_file, edit_file, list_directory, grep, glob, exec_command],
+}
+
+
+def register_tools(agent, *, include_mcp: bool = False) -> None:
+    """Register all core tools on an agent. Optionally include MCP tools."""
+    for tool_func in CORE_TOOLS:
+        agent.tool(tool_func)
+    if include_mcp:
+        for tool_func in MCP_TOOLS:
+            agent.tool(tool_func)
+
+
+def register_sub_agent_tools(agent, agent_type: str) -> None:
+    """Register the appropriate tool subset for a sub-agent type."""
+    tool_set = SUB_AGENT_TOOLSETS.get(agent_type, SUB_AGENT_TOOLSETS["generic"])
+    for tool_func in tool_set:
+        agent.tool(tool_func)

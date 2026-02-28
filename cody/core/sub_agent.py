@@ -267,6 +267,9 @@ class SubAgentManager:
         from . import tools
         from .deps import CodyDeps
         from .skill_manager import SkillManager
+        from .file_history import FileHistory
+        from .audit import AuditLogger
+        from .permissions import PermissionLevel, PermissionManager
 
         system_prompt = _AGENT_PROMPTS.get(agent_type, _AGENT_PROMPTS[AgentType.GENERIC])
 
@@ -276,36 +279,18 @@ class SubAgentManager:
             system_prompt=system_prompt,
         )
 
-        # Register a subset of tools based on agent type
-        if agent_type in (AgentType.CODE, AgentType.GENERIC):
-            agent.tool(tools.read_file)
-            agent.tool(tools.write_file)
-            agent.tool(tools.edit_file)
-            agent.tool(tools.list_directory)
-            agent.tool(tools.grep)
-            agent.tool(tools.glob)
-            agent.tool(tools.patch)
-            agent.tool(tools.search_files)
-            agent.tool(tools.exec_command)
-        elif agent_type == AgentType.RESEARCH:
-            agent.tool(tools.read_file)
-            agent.tool(tools.list_directory)
-            agent.tool(tools.grep)
-            agent.tool(tools.glob)
-            agent.tool(tools.search_files)
-        elif agent_type == AgentType.TEST:
-            agent.tool(tools.read_file)
-            agent.tool(tools.write_file)
-            agent.tool(tools.edit_file)
-            agent.tool(tools.list_directory)
-            agent.tool(tools.grep)
-            agent.tool(tools.glob)
-            agent.tool(tools.exec_command)
+        tools.register_sub_agent_tools(agent, agent_type.value)
 
         deps = CodyDeps(
             config=self.config,
             workdir=self.workdir,
             skill_manager=SkillManager(self.config, workdir=self.workdir),
+            audit_logger=AuditLogger(),
+            permission_manager=PermissionManager(
+                overrides=self.config.permissions.overrides,
+                default_level=PermissionLevel(self.config.permissions.default_level),
+            ),
+            file_history=FileHistory(workdir=self.workdir),
         )
 
         result = await agent.run(task, deps=deps)

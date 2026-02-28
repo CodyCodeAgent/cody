@@ -288,53 +288,7 @@ class AgentRunner:
             system_prompt="\n\n".join(system_parts),
         )
 
-        # Register tools — file operations
-        agent.tool(tools.read_file)
-        agent.tool(tools.write_file)
-        agent.tool(tools.edit_file)
-        agent.tool(tools.list_directory)
-        # Search tools
-        agent.tool(tools.grep)
-        agent.tool(tools.glob)
-        agent.tool(tools.patch)
-        agent.tool(tools.search_files)
-        # Command execution
-        agent.tool(tools.exec_command)
-        # Skill discovery
-        agent.tool(tools.list_skills)
-        agent.tool(tools.read_skill)
-
-        # Sub-agent tools
-        agent.tool(tools.spawn_agent)
-        agent.tool(tools.get_agent_status)
-        agent.tool(tools.kill_agent)
-
-        # MCP tool (dynamic proxy)
-        if self._mcp_client:
-            agent.tool(tools.mcp_call)
-            agent.tool(tools.mcp_list_tools)
-
-        # Web tools
-        agent.tool(tools.webfetch)
-        agent.tool(tools.websearch)
-
-        # LSP tools
-        agent.tool(tools.lsp_diagnostics)
-        agent.tool(tools.lsp_definition)
-        agent.tool(tools.lsp_references)
-        agent.tool(tools.lsp_hover)
-
-        # File history tools
-        agent.tool(tools.undo_file)
-        agent.tool(tools.redo_file)
-        agent.tool(tools.list_file_changes)
-
-        # Task management tools
-        agent.tool(tools.todo_write)
-        agent.tool(tools.todo_read)
-
-        # User interaction tools
-        agent.tool(tools.question)
+        tools.register_tools(agent, include_mcp=bool(self._mcp_client))
 
         return agent
 

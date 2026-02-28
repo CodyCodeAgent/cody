@@ -232,10 +232,8 @@ def test_run_agent_with_model_override():
         instance = MockRunner.return_value
         instance.run = AsyncMock(return_value=mock_result)
 
-        with patch("cody.server.Config.load") as mock_load:
-            config = Config()
-            mock_load.return_value = config
-
+        config = Config()
+        with patch("cody.server._get_config", return_value=config):
             client = TestClient(app)
             resp = client.post("/run", json={
                 "prompt": "test",

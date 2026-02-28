@@ -58,3 +58,36 @@ class CodyAPIError(Exception):
         if self.details:
             body["error"]["details"] = self.details
         return body
+
+
+# ── Tool-layer exceptions ─────────────────────────────────────────────────
+
+
+class ToolError(Exception):
+    """Base exception for tool execution errors."""
+
+    def __init__(self, code: ErrorCode, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(message)
+
+
+class ToolPermissionDenied(ToolError):
+    """Raised when a tool operation is denied by permission checks."""
+
+    def __init__(self, message: str):
+        super().__init__(ErrorCode.PERMISSION_DENIED, message)
+
+
+class ToolPathDenied(ToolError):
+    """Raised when a path is outside the allowed working directory."""
+
+    def __init__(self, message: str):
+        super().__init__(ErrorCode.PERMISSION_DENIED, message)
+
+
+class ToolInvalidParams(ToolError):
+    """Raised when tool parameters are invalid."""
+
+    def __init__(self, message: str):
+        super().__init__(ErrorCode.INVALID_PARAMS, message)
