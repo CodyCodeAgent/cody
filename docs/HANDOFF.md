@@ -64,7 +64,7 @@ cody/
 │       ├── permissions.py   # 工具级权限 (allow/deny/confirm)
 │       ├── file_history.py  # 文件 undo/redo 快照
 │       └── rate_limiter.py  # 滑动窗口限流
-├── tests/                   # 476 个测试
+├── tests/                   # 493 个测试
 ├── docs/
 │   ├── API.md               # RPC API 文档
 │   ├── ARCHITECTURE.md      # 架构设计文档
@@ -86,7 +86,7 @@ cody/
 项目的 **中枢**。负责：
 - 创建 Pydantic AI `Agent` 实例
 - 通过 `_resolve_model()` 解析模型：支持内置 provider 字符串和自定义 OpenAI 兼容 API
-- 注册所有工具 (tools, skills, MCP, LSP, sub-agent, web)
+- 通过 `tools.register_tools(agent)` 声明式注册所有工具（不再逐个 `agent.tool()` 调用）
 - 组装 `CodyDeps` 依赖注入给工具函数
 - 提供 `run()` / `run_stream()` / `run_sync()` 三种执行方式
 - 提供 `run_with_session()` / `run_stream_with_session()` 会话感知版本
@@ -102,7 +102,7 @@ AgentRunner
   ├── AuditLogger
   ├── PermissionManager
   ├── FileHistory
-  └── tools.* (通过 agent.tool() 注册)
+  └── tools.register_tools(agent) (声明式注册)
 ```
 
 ### 3.2 工具系统 (`core/tools.py`)
@@ -204,6 +204,14 @@ class ErrorCode(str, Enum):
     AGENT_ERROR = "AGENT_ERROR"             # 500
     SERVER_ERROR = "SERVER_ERROR"           # 500
 ```
+
+**工具层异常：** 工具函数抛出 typed 异常而非通用 `ValueError`/`PermissionError`：
+- `ToolError(code, message)` — 基类
+- `ToolPermissionDenied` — 权限拒绝 (403)
+- `ToolPathDenied` — 路径越权 (403)
+- `ToolInvalidParams` — 参数错误 (400)
+
+Server 端按类型捕获这些异常，直接映射到对应 HTTP 状态码，不再需要字符串匹配。
 
 Server 和 SDK 都使用 `CodyAPIError` 异常，序列化为 `{"error": {"code": "...", "message": "..."}}`。
 
@@ -346,8 +354,7 @@ cody-server --port 9000       # 指定端口
 ### 架构注意
 
 1. **循环依赖** — `sub_agent.py` 中的 `_execute()` 使用延迟导入，不能移到模块顶部
-2. **Server 单例** — `server.py` 中 `_sub_agent_manager` 用 `asyncio.Lock()` 延迟初始化，不是最优方案但能工作。生产环境建议改为依赖注入
-3. **SessionStore** — 每次请求 new 一个 `SessionStore()` 实例，每个实例独立连接 SQLite。并发场景 SQLite 可能成瓶颈
+2. **Server 缓存策略** — `server.py` 中 Config 按 workdir 缓存（deep copy 后返回，避免 mutation 泄漏），SessionStore 为全局单例，SkillManager 每次请求新建（保证读到最新 skill 文件）
 
 ### 文档状态
 

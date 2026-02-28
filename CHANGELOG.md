@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.1.1] - 2026-02-28
+
+### Changed
+- **Declarative tool registry** — Tools organized into categorized lists (`FILE_TOOLS`, `SEARCH_TOOLS`, etc.) with `register_tools()` / `register_sub_agent_tools()` replacing 48 lines of individual `agent.tool()` calls
+- **Typed tool exceptions** — New `ToolError` hierarchy (`ToolPermissionDenied`, `ToolPathDenied`, `ToolInvalidParams`) replacing generic `ValueError`/`PermissionError` with string matching in server error handlers
+- **Server caching** — Config cached per-workdir (deep copy on access); SessionStore as global singleton; SkillManager always fresh from disk
+- **Complete CodyDeps** — `/tool` endpoint and sub-agents now create full `CodyDeps` with audit_logger, permission_manager, file_history (previously missing)
+
 ## [1.1.0] - 2026-02-28
 
 ### Added
