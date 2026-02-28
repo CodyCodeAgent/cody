@@ -1,4 +1,21 @@
-"""RPC Server for Cody"""
+"""RPC Server for Cody.
+
+Thin FastAPI shell over the core engine. All business logic lives in core/.
+
+Caching strategy:
+  - Config: cached per-workdir, deep-copied on access so request overrides
+    don't leak across requests.
+  - SessionStore: global singleton (one SQLite connection shared).
+  - SkillManager: always created fresh — disk is the source of truth so
+    newly added/changed skill files are visible immediately.
+  - AuditLogger, AuthManager, RateLimiter: global singletons (config-stable).
+
+Error handling:
+  Tool-layer typed exceptions (ToolPermissionDenied, ToolPathDenied,
+  ToolInvalidParams) are caught by type and mapped to HTTP 403/400/500.
+  CodyAPIError passes through the FastAPI exception_handler. Everything
+  else becomes a generic 500.
+"""
 
 import asyncio
 import json
@@ -102,6 +119,8 @@ app = FastAPI(
 
 
 # ── Server-level singletons ─────────────────────────────────────────────────
+# These are lazily initialized on first use and live for the process lifetime.
+# _reset_server_state() clears them all (used in tests).
 
 _audit_logger: Optional[AuditLogger] = None
 _auth_manager: Optional[AuthManager] = None
@@ -143,7 +162,11 @@ def _get_rate_limiter() -> Optional[RateLimiter]:
     return _rate_limiter
 
 
+# SessionStore: single instance, one SQLite connection for all requests.
 _session_store: Optional[SessionStore] = None
+
+# Config: cached per-workdir key. model_copy(deep=True) on read so that
+# apply_overrides() in one request doesn't mutate the cached original.
 _config_cache: dict[str, Config] = {}
 
 
@@ -547,6 +570,8 @@ async def call_tool(request: ToolRequest):
         config = _get_config(workdir)
         deps = _create_full_deps(config, workdir)
 
+        # Shim: tools expect RunContext[CodyDeps] but we only need ctx.deps.
+        # A lightweight object avoids pulling in pydantic-ai Agent machinery.
         class ToolContext:
             def __init__(self, deps):
                 self.deps = deps

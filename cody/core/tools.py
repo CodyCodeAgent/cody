@@ -1,4 +1,19 @@
-"""Core tools for Cody Agent"""
+"""Core tools for Cody Agent.
+
+Every tool has the same signature:
+    async def tool_name(ctx: RunContext[CodyDeps], ...) -> str
+
+Tools are grouped into categorized lists at the bottom of this file
+(FILE_TOOLS, SEARCH_TOOLS, etc.). runner.py and sub_agent.py call
+register_tools() / register_sub_agent_tools() instead of hard-coding
+individual agent.tool() calls — adding a new tool is one list edit.
+
+Error conventions:
+  - ToolInvalidParams  → bad arguments          (server maps to 400)
+  - ToolPathDenied     → path outside workdir    (server maps to 403)
+  - ToolPermissionDenied → permission check fail (server maps to 403)
+  - FileNotFoundError  → missing file/dir        (server maps to 500)
+"""
 
 import fnmatch
 import os
@@ -1107,8 +1122,14 @@ async def question(
 
 
 # ── Tool registry ─────────────────────────────────────────────────────────
-# Declarative tool sets. runner and sub_agent import these instead of
-# hard-coding agent.tool() calls.
+# Declarative tool sets. runner.py and sub_agent.py call register_tools()
+# or register_sub_agent_tools() to batch-register these on Agent instances.
+#
+# To add a new tool:
+#   1. Define the async function above.
+#   2. Append it to the appropriate *_TOOLS list below.
+#   3. If sub-agents should use it, add to the relevant SUB_AGENT_TOOLSETS.
+#   That's it — no changes needed in runner.py or sub_agent.py.
 
 FILE_TOOLS = [read_file, write_file, edit_file, list_directory]
 SEARCH_TOOLS = [grep, glob, patch, search_files]
@@ -1129,7 +1150,10 @@ CORE_TOOLS = (
     + FILE_HISTORY_TOOLS + TODO_TOOLS + USER_TOOLS
 )
 
-# Subsets for sub-agent types
+# Subsets for sub-agent types.
+# "research" is read-only (no write/exec) to prevent side effects.
+# "test" can write files and run commands but not spawn further sub-agents.
+# "code" and "generic" get the full file+search+command set.
 SUB_AGENT_TOOLSETS = {
     "code": FILE_TOOLS + SEARCH_TOOLS + COMMAND_TOOLS,
     "generic": FILE_TOOLS + SEARCH_TOOLS + COMMAND_TOOLS,

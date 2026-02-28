@@ -2,6 +2,15 @@
 
 Allows the main agent to spawn specialized sub-agents that run concurrently
 and return results back.
+
+Each sub-agent type gets a different tool subset (see tools.SUB_AGENT_TOOLSETS):
+  - code/generic: file + search + command (can modify files)
+  - research: read-only (no writes, no exec) to prevent side effects
+  - test: can write test files and run commands but not spawn further sub-agents
+
+IMPORTANT: _execute() uses delayed imports (from . import tools, from .deps ...)
+to break the circular dependency runner → sub_agent → runner.  Do NOT move
+these imports to module level.
 """
 
 import asyncio

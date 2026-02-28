@@ -1,4 +1,17 @@
-"""Agent runner - core execution engine"""
+"""Agent runner — the core execution engine of Cody.
+
+AgentRunner is the central orchestrator. It:
+  1. Creates a pydantic-ai Agent with the resolved model and system prompt
+  2. Registers all tools via tools.register_tools() (declarative, not per-tool)
+  3. Assembles CodyDeps (config, workdir, skill_manager, mcp, lsp, audit,
+     permissions, file_history, todo_list) for dependency injection
+  4. Provides run() / run_stream() / run_sync() for one-shot execution
+  5. Provides run_with_session() / run_stream_with_session() for multi-turn
+  6. Auto-compacts message history when approaching token limits
+
+Dependency direction: server.py / cli.py / tui.py → runner.py → tools.py
+Core never imports from shells.
+"""
 
 import json
 import logging
@@ -267,7 +280,11 @@ class AgentRunner:
         return self.config.model
 
     def _create_agent(self) -> Agent:
-        """Create Pydantic AI Agent with tools"""
+        """Create Pydantic AI Agent with tools.
+
+        Tools are registered declaratively via tools.register_tools() —
+        see tools.py CORE_TOOLS / MCP_TOOLS for the full list.
+        """
         # Build system prompt with available skills (Agent Skills standard)
         skills_xml = self.skill_manager.to_prompt_xml()
         system_parts = [
