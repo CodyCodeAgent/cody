@@ -263,6 +263,24 @@ def test_skill_priority_project_over_builtin(tmp_path, monkeypatch):
     assert "Custom project git" in git.instructions
 
 
+def test_skill_workdir_finds_project_skills(tmp_path):
+    """SkillManager(workdir=X) discovers skills in X/.cody/skills, not cwd."""
+    project_dir = tmp_path / "my-project"
+    project_skills = project_dir / ".cody" / "skills" / "custom"
+    project_skills.mkdir(parents=True)
+    (project_skills / "SKILL.md").write_text(
+        "---\nname: custom\ndescription: Workdir skill.\n---\n\n# Custom\n\nBody."
+    )
+
+    # No monkeypatch of cwd — workdir should be enough
+    config = Config()
+    manager = SkillManager(config, workdir=project_dir)
+    skill = manager.get_skill("custom")
+    assert skill is not None
+    assert skill.source == "project"
+    assert skill.description == "Workdir skill."
+
+
 # ── Enabled filter ───────────────────────────────────────────────────────────
 
 

@@ -94,7 +94,7 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         console.print("Example: cody run 'create a hello.py file'")
         return
 
-    config = Config.load().apply_overrides(
+    config = Config.load(workdir=workdir).apply_overrides(
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
@@ -155,7 +155,9 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         cody chat --continue
         cody chat --session abc123
     """
-    config = Config.load().apply_overrides(
+    workdir_path = Path(workdir) if workdir else Path.cwd()
+
+    config = Config.load(workdir=workdir_path).apply_overrides(
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
@@ -164,8 +166,6 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
     )
-
-    workdir_path = Path(workdir) if workdir else Path.cwd()
     store = SessionStore()
 
     # Resolve session

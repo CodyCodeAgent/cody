@@ -181,7 +181,7 @@ def _get_session_store() -> SessionStore:
 
 def _config_from_request(request: RunRequest) -> Config:
     """Load config and apply request-level overrides."""
-    return Config.load().apply_overrides(
+    return Config.load(workdir=request.workdir).apply_overrides(
         model=request.model,
         model_base_url=request.model_base_url,
         model_api_key=request.model_api_key,
@@ -495,12 +495,12 @@ async def call_tool(request: ToolRequest):
         )
 
     try:
-        config = Config.load()
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
+        config = Config.load(workdir=workdir)
         deps = CodyDeps(
             config=config,
             workdir=workdir,
-            skill_manager=SkillManager(config),
+            skill_manager=SkillManager(config, workdir=workdir),
         )
 
         class ToolContext:
@@ -535,11 +535,12 @@ async def call_tool(request: ToolRequest):
 
 
 @app.get("/skills")
-async def list_skills():
+async def list_skills(workdir: Optional[str] = None):
     """List all available skills"""
     try:
-        config = Config.load()
-        skill_manager = SkillManager(config)
+        wd = Path(workdir) if workdir else None
+        config = Config.load(workdir=wd)
+        skill_manager = SkillManager(config, workdir=wd)
         skills = skill_manager.list_skills()
 
         return {
@@ -563,11 +564,12 @@ async def list_skills():
 
 
 @app.get("/skills/{skill_name}")
-async def get_skill(skill_name: str):
+async def get_skill(skill_name: str, workdir: Optional[str] = None):
     """Get skill documentation"""
     try:
-        config = Config.load()
-        skill_manager = SkillManager(config)
+        wd = Path(workdir) if workdir else None
+        config = Config.load(workdir=wd)
+        skill_manager = SkillManager(config, workdir=wd)
         skill = skill_manager.get_skill(skill_name)
         if not skill:
             _raise_structured(
@@ -716,14 +718,15 @@ _sub_agent_manager = None
 _sub_agent_lock = asyncio.Lock()
 
 
-async def _get_sub_agent_manager():
+async def _get_sub_agent_manager(workdir: Optional[Path] = None):
     global _sub_agent_manager
     if _sub_agent_manager is None:
         async with _sub_agent_lock:
             if _sub_agent_manager is None:
                 from .core.sub_agent import SubAgentManager
-                config = Config.load()
-                _sub_agent_manager = SubAgentManager(config=config, workdir=Path.cwd())
+                wd = workdir or Path.cwd()
+                config = Config.load(workdir=wd)
+                _sub_agent_manager = SubAgentManager(config=config, workdir=wd)
     return _sub_agent_manager
 
 
@@ -731,13 +734,15 @@ class SpawnRequest(BaseModel):
     task: str
     type: str = "generic"
     timeout: Optional[float] = None
+    workdir: Optional[str] = None
 
 
 @app.post("/agent/spawn")
 async def spawn_agent(request: SpawnRequest):
     """Spawn a sub-agent"""
     try:
-        manager = await _get_sub_agent_manager()
+        wd = Path(request.workdir) if request.workdir else None
+        manager = await _get_sub_agent_manager(workdir=wd)
         agent_id = await manager.spawn(
             request.task, request.type, request.timeout
         )
@@ -860,7 +865,8 @@ class _WSConnection:
         self._cancel_event = asyncio.Event()
 
         try:
-            config = Config.load().apply_overrides(
+            workdir = Path(data["workdir"]) if data.get("workdir") else Path.cwd()
+            config = Config.load(workdir=workdir).apply_overrides(
                 model=data.get("model"),
                 model_base_url=data.get("model_base_url"),
                 model_api_key=data.get("model_api_key"),
@@ -869,8 +875,6 @@ class _WSConnection:
                 enable_thinking=data.get("enable_thinking"),
                 thinking_budget=data.get("thinking_budget"),
             )
-
-            workdir = Path(data["workdir"]) if data.get("workdir") else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
 
             await self.send_event("start", {"session_id": session_id})

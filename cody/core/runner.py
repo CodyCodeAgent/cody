@@ -164,9 +164,9 @@ class AgentRunner:
     """Run Cody Agent with full context"""
 
     def __init__(self, config: Optional[Config] = None, workdir: Optional[Path] = None):
-        self.config = config or Config.load()
         self.workdir = Path(workdir) if workdir else Path.cwd()
-        self.skill_manager = SkillManager(self.config)
+        self.config = config or Config.load(workdir=self.workdir)
+        self.skill_manager = SkillManager(self.config, workdir=self.workdir)
 
         # MCP client (created lazily on start)
         self._mcp_client: Optional[MCPClient] = None

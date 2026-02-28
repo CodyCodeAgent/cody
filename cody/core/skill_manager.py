@@ -132,8 +132,9 @@ class Skill:
 class SkillManager:
     """Manage and load skills per Agent Skills open standard."""
 
-    def __init__(self, config: "Config"):
+    def __init__(self, config: "Config", workdir: Optional[Path] = None):
         self.config = config
+        self.workdir = Path(workdir) if workdir else None
         self.skills: dict[str, Skill] = {}
         self._load_skills()
 
@@ -144,8 +145,9 @@ class SkillManager:
         Full SKILL.md body is loaded on demand (progressive disclosure).
         """
         # Priority: project > global > builtin
+        project_base = self.workdir if self.workdir else Path.cwd()
         search_paths = [
-            (Path.cwd() / ".cody" / "skills", "project"),
+            (project_base / ".cody" / "skills", "project"),
             (Path.home() / ".cody" / "skills", "global"),
             (Path(__file__).parent.parent / "skills", "builtin"),
         ]

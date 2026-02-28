@@ -74,11 +74,20 @@ class Config(BaseModel):
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
 
     @classmethod
-    def load(cls, path: Optional[Union[Path, str]] = None) -> "Config":
-        """Load configuration from file"""
+    def load(
+        cls,
+        path: Optional[Union[Path, str]] = None,
+        workdir: Optional[Union[Path, str]] = None,
+    ) -> "Config":
+        """Load configuration from file.
+
+        When *workdir* is given, project-local config is searched in
+        ``<workdir>/.cody/config.json`` instead of the process cwd.
+        """
         if path is None:
             # Try project config first, then global
-            project_config = Path.cwd() / ".cody" / "config.json"
+            base = Path(workdir) if workdir else Path.cwd()
+            project_config = base / ".cody" / "config.json"
             global_config = Path.home() / ".cody" / "config.json"
             
             if project_config.exists():

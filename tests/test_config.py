@@ -384,3 +384,57 @@ def test_config_coding_plan_from_json(tmp_path):
     config = Config.load(config_path)
     assert config.model == "qwen3.5"
     assert config.coding_plan_protocol == "anthropic"
+
+
+# ── Config.load with workdir ────────────────────────────────────────────────
+
+
+def test_config_load_workdir_finds_project_config(tmp_path, monkeypatch):
+    """Config.load(workdir=X) looks for .cody/config.json in X, not cwd."""
+    # Put a project config in a different directory than cwd
+    project_dir = tmp_path / "my-project"
+    (project_dir / ".cody").mkdir(parents=True)
+    (project_dir / ".cody" / "config.json").write_text(
+        json.dumps({"model": "project-model"})
+    )
+
+    # cwd has no config
+    cwd_dir = tmp_path / "elsewhere"
+    cwd_dir.mkdir()
+    monkeypatch.setattr(Path, "cwd", lambda: cwd_dir)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "nohome")
+    (tmp_path / "nohome").mkdir()
+
+    config = Config.load(workdir=project_dir)
+    assert config.model == "project-model"
+
+
+def test_config_load_workdir_none_uses_cwd(tmp_path, monkeypatch):
+    """Config.load(workdir=None) falls back to cwd as before."""
+    (tmp_path / ".cody").mkdir()
+    (tmp_path / ".cody" / "config.json").write_text(
+        json.dumps({"model": "cwd-model"})
+    )
+    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "nohome")
+    (tmp_path / "nohome").mkdir()
+
+    config = Config.load()
+    assert config.model == "cwd-model"
+
+
+def test_config_load_workdir_no_project_config_falls_to_global(tmp_path, monkeypatch):
+    """When workdir has no .cody/config.json, global config is tried."""
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    home_dir = tmp_path / "home"
+    (home_dir / ".cody").mkdir(parents=True)
+    (home_dir / ".cody" / "config.json").write_text(
+        json.dumps({"model": "global-model"})
+    )
+
+    monkeypatch.setattr(Path, "home", lambda: home_dir)
+
+    config = Config.load(workdir=project_dir)
+    assert config.model == "global-model"

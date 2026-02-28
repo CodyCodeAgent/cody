@@ -148,7 +148,7 @@ class CodyTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._config = Config.load().apply_overrides(
+        self._config = Config.load(workdir=self._workdir).apply_overrides(
             model=self._model_override,
             model_base_url=self._model_base_url_override,
             model_api_key=self._model_api_key_override,
