@@ -8,7 +8,7 @@ AI coding engine with RPC Server, dynamic skills, MCP integration, and LSP intel
 
 - **Thinking Mode** — `--thinking` flag enables model reasoning with configurable token budget
 - **Streaming Events** — Structured `StreamEvent` system: thinking, tool calls, text deltas, all in real-time
-- **30+ AI Tools** — File ops, search (grep/glob/patch), shell commands, undo/redo, task management, structured questions
+- **28 AI Tools** — File ops, search (grep/glob/patch), shell commands, undo/redo, task management, structured questions
 - **11 Built-in Skills** — git, github, docker, npm, python, rust, go, java, web, cicd, testing — AI reads SKILL.md to learn usage
 - **CI/CD Templates** — Ready-to-use GitHub Actions for AI code review, auto-fix, and test generation
 - **RPC Server + SDK** — FastAPI HTTP/WebSocket server, Python SDK (sync + async), Go SDK, embeddable into any system
@@ -40,11 +40,14 @@ cody run "create a FastAPI hello world app"
 # With thinking mode
 cody run --thinking "design a REST API for user management"
 
+# Specify working directory
+cody run "refactor auth.py" --workdir /path/to/project
+
 # Interactive chat
 cody chat
 
 # Continue previous conversation
-cody --continue "add tests for the API"
+cody chat --continue
 
 # Full-screen TUI
 cody tui
@@ -57,11 +60,16 @@ cody tui
 ```bash
 cody run "refactor auth.py"              # One-shot task
 cody run --thinking "complex analysis"   # With thinking mode
+cody run -v "debug this"                 # Verbose (show tool results)
+cody run --workdir /path/to/project "fix tests"  # Specify working directory
 cody chat                                # Interactive REPL
 cody chat --thinking                     # Chat with thinking enabled
 cody chat --continue                     # Resume last session
 cody chat --session abc123               # Resume specific session
+cody chat --workdir /path/to/project     # Chat in specific directory
 ```
+
+Chat slash commands: `/quit`, `/sessions`, `/clear`, `/help`.
 
 ### TUI (Textual)
 
@@ -69,6 +77,7 @@ cody chat --session abc123               # Resume specific session
 cody tui                             # Full-screen terminal UI
 cody tui --continue                  # Resume last session
 cody tui --session <id>              # Resume specific session
+cody tui --workdir /path/to/project  # Specify working directory
 ```
 
 Features: streaming output, multi-session management, slash commands (/help, /new, /sessions, /clear), keyboard shortcuts (Ctrl+N, Ctrl+C, Ctrl+Q).
@@ -81,6 +90,14 @@ cody-server --port 9000              # Custom port
 ```
 
 Endpoints: `POST /run`, `POST /run/stream` (SSE), `POST /tool`, `GET /skills`, `GET /sessions`, `WS /ws`, `GET /audit`, `GET /health`. Full docs: [docs/API.md](docs/API.md).
+
+### Session Management
+
+```bash
+cody sessions list                   # List recent sessions
+cody sessions show <id>              # Show session conversation
+cody sessions delete <id>            # Delete a session
+```
 
 ### Python SDK
 
@@ -128,7 +145,7 @@ for chunk := range ch {
 
 Zero dependencies, automatic retry, context cancellation. Full docs: [sdk/go/README.md](sdk/go/README.md).
 
-## Tool Set (30+)
+## Tool Set (28)
 
 | Category | Tools |
 |----------|-------|
@@ -172,6 +189,7 @@ Instructions for the AI agent...
 
 ```bash
 cody skills list                     # List available skills
+cody skills show git                 # Show skill documentation
 cody skills enable github            # Enable a skill
 cody skills disable docker           # Disable a skill
 ```
@@ -268,6 +286,14 @@ Supports two protocols:
 
 > Note: Coding Plan API Key (`sk-sp-xxxxx`) is different from regular DashScope API Key (`sk-xxxxx`). Do not mix them.
 
+### Config CLI
+
+```bash
+cody config show                     # Show current configuration
+cody config set model "anthropic:claude-sonnet-4-0"  # Set model
+cody config set model_base_url "https://..."          # Set custom API URL
+```
+
 ### Global config (`~/.cody/config.json`)
 
 ```json
@@ -283,7 +309,7 @@ Supports two protocols:
 # Install with dev deps
 pip install -e ".[dev]"
 
-# Run tests (476 tests)
+# Run tests (493 tests)
 python3 -m pytest tests/ -v
 
 # Lint
