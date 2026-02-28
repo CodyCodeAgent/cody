@@ -163,9 +163,9 @@ StreamEvent = Union[ThinkingEvent, TextDeltaEvent, ToolCallEvent, ToolResultEven
 class AgentRunner:
     """Run Cody Agent with full context"""
 
-    def __init__(self, config: Optional[Config] = None, workdir: Optional[Path] = None):
-        self.workdir = Path(workdir) if workdir else Path.cwd()
-        self.config = config or Config.load(workdir=self.workdir)
+    def __init__(self, config: Config, workdir: Path):
+        self.workdir = workdir
+        self.config = config
         self.skill_manager = SkillManager(self.config, workdir=self.workdir)
 
         # MCP client (created lazily on start)

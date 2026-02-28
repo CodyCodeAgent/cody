@@ -115,7 +115,7 @@ def _get_auth_manager() -> Optional[AuthManager]:
     global _auth_manager
     if _auth_manager is None:
         try:
-            config = Config.load()
+            config = Config.load(workdir=Path.cwd())
             _auth_manager = AuthManager(config=config.auth)
         except Exception:
             return None
@@ -127,7 +127,7 @@ def _get_rate_limiter() -> Optional[RateLimiter]:
     if not _rate_limiter_checked:
         _rate_limiter_checked = True
         try:
-            config = Config.load()
+            config = Config.load(workdir=Path.cwd())
             if config.rate_limit.enabled:
                 _rate_limiter = RateLimiter(
                     max_requests=config.rate_limit.max_requests,
@@ -181,7 +181,8 @@ def _get_session_store() -> SessionStore:
 
 def _config_from_request(request: RunRequest) -> Config:
     """Load config and apply request-level overrides."""
-    return Config.load(workdir=request.workdir).apply_overrides(
+    workdir = Path(request.workdir) if request.workdir else Path.cwd()
+    return Config.load(workdir=workdir).apply_overrides(
         model=request.model,
         model_base_url=request.model_base_url,
         model_api_key=request.model_api_key,
@@ -538,7 +539,7 @@ async def call_tool(request: ToolRequest):
 async def list_skills(workdir: Optional[str] = None):
     """List all available skills"""
     try:
-        wd = Path(workdir) if workdir else None
+        wd = Path(workdir) if workdir else Path.cwd()
         config = Config.load(workdir=wd)
         skill_manager = SkillManager(config, workdir=wd)
         skills = skill_manager.list_skills()
@@ -567,7 +568,7 @@ async def list_skills(workdir: Optional[str] = None):
 async def get_skill(skill_name: str, workdir: Optional[str] = None):
     """Get skill documentation"""
     try:
-        wd = Path(workdir) if workdir else None
+        wd = Path(workdir) if workdir else Path.cwd()
         config = Config.load(workdir=wd)
         skill_manager = SkillManager(config, workdir=wd)
         skill = skill_manager.get_skill(skill_name)
@@ -718,15 +719,14 @@ _sub_agent_manager = None
 _sub_agent_lock = asyncio.Lock()
 
 
-async def _get_sub_agent_manager(workdir: Optional[Path] = None):
+async def _get_sub_agent_manager(workdir: Path):
     global _sub_agent_manager
     if _sub_agent_manager is None:
         async with _sub_agent_lock:
             if _sub_agent_manager is None:
                 from .core.sub_agent import SubAgentManager
-                wd = workdir or Path.cwd()
-                config = Config.load(workdir=wd)
-                _sub_agent_manager = SubAgentManager(config=config, workdir=wd)
+                config = Config.load(workdir=workdir)
+                _sub_agent_manager = SubAgentManager(config=config, workdir=workdir)
     return _sub_agent_manager
 
 
@@ -741,7 +741,7 @@ class SpawnRequest(BaseModel):
 async def spawn_agent(request: SpawnRequest):
     """Spawn a sub-agent"""
     try:
-        wd = Path(request.workdir) if request.workdir else None
+        wd = Path(request.workdir) if request.workdir else Path.cwd()
         manager = await _get_sub_agent_manager(workdir=wd)
         agent_id = await manager.spawn(
             request.task, request.type, request.timeout

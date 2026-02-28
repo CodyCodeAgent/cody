@@ -15,11 +15,12 @@ from cody.core.deps import CodyDeps
 class MockContext:
     """Mock RunContext for testing"""
     def __init__(self, workdir):
+        workdir = Path(workdir)
         config = Config()
         self.deps = CodyDeps(
             config=config,
-            workdir=Path(workdir),
-            skill_manager=SkillManager(config),
+            workdir=workdir,
+            skill_manager=SkillManager(config, workdir=workdir),
         )
 
 

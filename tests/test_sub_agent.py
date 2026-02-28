@@ -16,8 +16,8 @@ from cody.core.sub_agent import (
 
 
 @pytest.fixture
-def config():
-    return Config.load()
+def config(tmp_path):
+    return Config.load(workdir=tmp_path)
 
 
 @pytest.fixture

@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from cody.core.config import (
     AuthConfig,
     Config,
@@ -146,14 +148,12 @@ def test_config_save_creates_parent_dirs(tmp_path):
 
 
 def test_config_load_default_fallback(tmp_path, monkeypatch):
-    """Config.load() with no path falls back to default when no config files exist"""
-    # Point cwd and home to empty dirs so no config.json is found
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
+    """Config.load(workdir=...) falls back to default when no config files exist"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.model == "anthropic:claude-sonnet-4-0"
 
 
@@ -226,37 +226,34 @@ def test_config_save_excludes_api_key(tmp_path):
 
 def test_config_env_overrides_model(tmp_path, monkeypatch):
     """CODY_MODEL env var overrides config file value"""
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CODY_MODEL", "glm-4")
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.model == "glm-4"
 
 
 def test_config_env_overrides_base_url(tmp_path, monkeypatch):
     """CODY_MODEL_BASE_URL env var overrides config file value"""
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CODY_MODEL_BASE_URL", "https://custom.api.com/v1")
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.model_base_url == "https://custom.api.com/v1"
 
 
 def test_config_env_overrides_api_key(tmp_path, monkeypatch):
     """CODY_MODEL_API_KEY env var overrides config file value"""
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-from-env")
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.model_api_key == "sk-from-env"
 
 
@@ -296,13 +293,12 @@ def test_config_claude_oauth_token_set():
 
 def test_config_env_overrides_claude_oauth_token(tmp_path, monkeypatch):
     """CLAUDE_OAUTH_TOKEN env var overrides config"""
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CLAUDE_OAUTH_TOKEN", "oauth-from-env")
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.claude_oauth_token == "oauth-from-env"
 
 
@@ -340,25 +336,23 @@ def test_config_coding_plan_protocol_anthropic():
 
 def test_config_env_overrides_coding_plan_key(tmp_path, monkeypatch):
     """CODY_CODING_PLAN_KEY env var overrides config"""
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CODY_CODING_PLAN_KEY", "sk-sp-from-env")
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.coding_plan_key == "sk-sp-from-env"
 
 
 def test_config_env_overrides_coding_plan_protocol(tmp_path, monkeypatch):
     """CODY_CODING_PLAN_PROTOCOL env var overrides config"""
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path / "project")
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CODY_CODING_PLAN_PROTOCOL", "anthropic")
-    config = Config.load()
+    config = Config.load(workdir=tmp_path / "project")
     assert config.coding_plan_protocol == "anthropic"
 
 
@@ -409,18 +403,10 @@ def test_config_load_workdir_finds_project_config(tmp_path, monkeypatch):
     assert config.model == "project-model"
 
 
-def test_config_load_workdir_none_uses_cwd(tmp_path, monkeypatch):
-    """Config.load(workdir=None) falls back to cwd as before."""
-    (tmp_path / ".cody").mkdir()
-    (tmp_path / ".cody" / "config.json").write_text(
-        json.dumps({"model": "cwd-model"})
-    )
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "nohome")
-    (tmp_path / "nohome").mkdir()
-
-    config = Config.load()
-    assert config.model == "cwd-model"
+def test_config_load_requires_workdir_when_no_path():
+    """Config.load() without path or workdir raises TypeError."""
+    with pytest.raises(TypeError, match="requires workdir"):
+        Config.load()
 
 
 def test_config_load_workdir_no_project_config_falls_to_global(tmp_path, monkeypatch):

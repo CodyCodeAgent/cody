@@ -77,17 +77,19 @@ class Config(BaseModel):
     def load(
         cls,
         path: Optional[Union[Path, str]] = None,
+        *,
         workdir: Optional[Union[Path, str]] = None,
     ) -> "Config":
         """Load configuration from file.
 
-        When *workdir* is given, project-local config is searched in
-        ``<workdir>/.cody/config.json`` instead of the process cwd.
+        *path* — explicit config file; skips discovery.
+        *workdir* — required when *path* is omitted; project-local config is
+        searched in ``<workdir>/.cody/config.json``.
         """
         if path is None:
-            # Try project config first, then global
-            base = Path(workdir) if workdir else Path.cwd()
-            project_config = base / ".cody" / "config.json"
+            if workdir is None:
+                raise TypeError("Config.load() requires workdir when path is not given")
+            project_config = Path(workdir) / ".cody" / "config.json"
             global_config = Path.home() / ".cody" / "config.json"
             
             if project_config.exists():

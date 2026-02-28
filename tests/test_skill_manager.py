@@ -154,7 +154,7 @@ def test_skill_documentation_missing(tmp_path):
 def test_skill_manager_loads_builtin():
     """SkillManager loads at least the built-in git skill."""
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     skills = manager.list_skills()
     names = [s.name for s in skills]
     assert "git" in names
@@ -162,7 +162,7 @@ def test_skill_manager_loads_builtin():
 
 def test_skill_manager_get_skill():
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     git = manager.get_skill("git")
     assert git is not None
     assert git.name == "git"
@@ -171,14 +171,14 @@ def test_skill_manager_get_skill():
 
 def test_skill_manager_get_skill_not_found():
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     assert manager.get_skill("nonexistent_skill_xyz") is None
 
 
 def test_skill_description_from_frontmatter():
     """Description comes from YAML frontmatter, not markdown heading."""
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     git = manager.get_skill("git")
     assert git is not None
     # Should be the frontmatter description, not "Git Operations"
@@ -189,7 +189,7 @@ def test_skill_description_from_frontmatter():
 def test_skill_metadata_fields():
     """Skills should have metadata from frontmatter."""
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     git = manager.get_skill("git")
     assert git is not None
     assert git.metadata.get("author") == "cody"
@@ -201,7 +201,7 @@ def test_skill_metadata_fields():
 
 def test_enable_skill():
     config = Config(skills={"enabled": [], "disabled": ["git"]})
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
 
     git = manager.get_skill("git")
     assert git is not None
@@ -215,7 +215,7 @@ def test_enable_skill():
 
 def test_disable_skill():
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
 
     git = manager.get_skill("git")
     assert git is not None
@@ -229,14 +229,14 @@ def test_disable_skill():
 def test_enable_nonexistent_skill():
     """Enabling a skill that doesn't exist is a no-op."""
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     manager.enable_skill("nonexistent_skill_xyz")
     # No error raised
 
 
 def test_disable_nonexistent_skill():
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     manager.disable_skill("nonexistent_skill_xyz")
     # No error raised
 
@@ -244,7 +244,7 @@ def test_disable_nonexistent_skill():
 # ── Priority loading ─────────────────────────────────────────────────────────
 
 
-def test_skill_priority_project_over_builtin(tmp_path, monkeypatch):
+def test_skill_priority_project_over_builtin(tmp_path):
     """Project skills take priority over builtin skills."""
     project_skills = tmp_path / ".cody" / "skills" / "git"
     project_skills.mkdir(parents=True)
@@ -253,10 +253,8 @@ def test_skill_priority_project_over_builtin(tmp_path, monkeypatch):
         "# Project Git\n\nCustom project git."
     )
 
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
-
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=tmp_path)
     git = manager.get_skill("git")
     assert git is not None
     assert git.source == "project"
@@ -287,14 +285,14 @@ def test_skill_workdir_finds_project_skills(tmp_path):
 def test_is_enabled_default():
     """By default all skills are enabled."""
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     assert manager._is_enabled("anything") is True
 
 
 def test_is_enabled_whitelist():
     """When enabled list is set, only listed skills are enabled."""
     config = Config(skills={"enabled": ["git"], "disabled": []})
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     assert manager._is_enabled("git") is True
     assert manager._is_enabled("docker") is False
 
@@ -302,7 +300,7 @@ def test_is_enabled_whitelist():
 def test_is_enabled_blacklist():
     """Disabled list takes precedence."""
     config = Config(skills={"enabled": [], "disabled": ["git"]})
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     assert manager._is_enabled("git") is False
 
 
@@ -312,7 +310,7 @@ def test_is_enabled_blacklist():
 def test_to_prompt_xml():
     """Generates <available_skills> XML for system prompt."""
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     xml = manager.to_prompt_xml()
     assert "<available_skills>" in xml
     assert "</available_skills>" in xml
@@ -338,7 +336,7 @@ def test_to_prompt_xml_empty():
 def test_validate_skill_valid(tmp_path):
     skill_dir = _make_skill_dir(tmp_path)
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     problems = manager.validate_skill(skill_dir)
     assert problems == []
 
@@ -347,7 +345,7 @@ def test_validate_skill_missing_skill_md(tmp_path):
     skill_dir = tmp_path / "bad"
     skill_dir.mkdir()
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     problems = manager.validate_skill(skill_dir)
     assert any("Missing SKILL.md" in p for p in problems)
 
@@ -357,7 +355,7 @@ def test_validate_skill_no_frontmatter(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# No frontmatter\n\nJust markdown.")
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     problems = manager.validate_skill(skill_dir)
     assert any("frontmatter" in p.lower() for p in problems)
 
@@ -367,7 +365,7 @@ def test_validate_skill_missing_name(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("---\ndescription: something\n---\n\nBody.")
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     problems = manager.validate_skill(skill_dir)
     assert any("name" in p.lower() for p in problems)
 
@@ -377,7 +375,7 @@ def test_validate_skill_missing_description(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("---\nname: bad\n---\n\nBody.")
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     problems = manager.validate_skill(skill_dir)
     assert any("description" in p.lower() for p in problems)
 
@@ -389,7 +387,7 @@ def test_validate_skill_name_mismatch(tmp_path):
         "---\nname: correct\ndescription: something\n---\n\nBody."
     )
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=Path.cwd())
     problems = manager.validate_skill(skill_dir)
     assert any("does not match" in p for p in problems)
 
@@ -397,16 +395,14 @@ def test_validate_skill_name_mismatch(tmp_path):
 # ── Skills without frontmatter are skipped ───────────────────────────────────
 
 
-def test_plain_markdown_skill_skipped(tmp_path, monkeypatch):
+def test_plain_markdown_skill_skipped(tmp_path):
     """Skills without YAML frontmatter are skipped (no backward compat)."""
     project_skills = tmp_path / ".cody" / "skills" / "legacy"
     project_skills.mkdir(parents=True)
     (project_skills / "SKILL.md").write_text("# Legacy Skill\n\nNo frontmatter.")
 
-    monkeypatch.setattr(Path, "cwd", lambda: tmp_path)
-
     config = Config()
-    manager = SkillManager(config)
+    manager = SkillManager(config, workdir=tmp_path)
     assert manager.get_skill("legacy") is None
 
 

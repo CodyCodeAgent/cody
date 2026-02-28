@@ -452,8 +452,9 @@ def skills():
 @skills.command('list')
 def skills_list():
     """List all available skills"""
-    config = Config.load()
-    runner = AgentRunner(config=config)
+    workdir = Path.cwd()
+    config = Config.load(workdir=workdir)
+    runner = AgentRunner(config=config, workdir=workdir)
 
     all_skills = runner.skill_manager.list_skills()
 
@@ -474,8 +475,9 @@ def skills_list():
 @click.argument('skill_name')
 def skills_show(skill_name):
     """Show skill documentation"""
-    config = Config.load()
-    runner = AgentRunner(config=config)
+    workdir = Path.cwd()
+    config = Config.load(workdir=workdir)
+    runner = AgentRunner(config=config, workdir=workdir)
 
     skill = runner.skill_manager.get_skill(skill_name)
     if not skill:
@@ -490,8 +492,9 @@ def skills_show(skill_name):
 @click.argument('skill_name')
 def skills_enable(skill_name):
     """Enable a skill"""
-    config = Config.load()
-    runner = AgentRunner(config=config)
+    workdir = Path.cwd()
+    config = Config.load(workdir=workdir)
+    runner = AgentRunner(config=config, workdir=workdir)
 
     skill = runner.skill_manager.get_skill(skill_name)
     if not skill:
@@ -512,8 +515,9 @@ def skills_enable(skill_name):
 @click.argument('skill_name')
 def skills_disable(skill_name):
     """Disable a skill"""
-    config = Config.load()
-    runner = AgentRunner(config=config)
+    workdir = Path.cwd()
+    config = Config.load(workdir=workdir)
+    runner = AgentRunner(config=config, workdir=workdir)
 
     skill = runner.skill_manager.get_skill(skill_name)
     if not skill:
@@ -542,7 +546,7 @@ def config():
 @config.command('show')
 def config_show():
     """Show current configuration"""
-    cfg = Config.load()
+    cfg = Config.load(workdir=Path.cwd())
     console.print_json(cfg.model_dump_json(indent=2))
 
 
@@ -592,7 +596,7 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
 @click.argument('value')
 def config_set(key, value):
     """Set configuration value"""
-    cfg = Config.load()
+    cfg = Config.load(workdir=Path.cwd())
 
     if key == 'model':
         cfg.model = value

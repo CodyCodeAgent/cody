@@ -305,7 +305,7 @@ class SubAgentManager:
         deps = CodyDeps(
             config=self.config,
             workdir=self.workdir,
-            skill_manager=SkillManager(self.config),
+            skill_manager=SkillManager(self.config, workdir=self.workdir),
         )
 
         result = await agent.run(task, deps=deps)
