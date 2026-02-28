@@ -265,7 +265,7 @@ class SubAgentManager:
         # Deferred imports to break circular dependency:
         # runner → sub_agent → runner. Do NOT move these to module level.
         from . import tools
-        from .runner import CodyDeps
+        from .deps import CodyDeps
         from .skill_manager import SkillManager
 
         system_prompt = _AGENT_PROMPTS.get(agent_type, _AGENT_PROMPTS[AgentType.GENERIC])

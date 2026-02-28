@@ -9,7 +9,7 @@ from cody.core.tools import (
 )
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
-from cody.core.runner import CodyDeps
+from cody.core.deps import CodyDeps
 
 
 class MockContext:

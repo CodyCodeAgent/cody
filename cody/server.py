@@ -17,7 +17,7 @@ from .core.auth import AuthError, AuthManager
 from .core.errors import CodyAPIError, ErrorCode, ErrorDetail
 from .core.rate_limiter import RateLimiter
 from .core.skill_manager import SkillManager
-from .core.runner import CodyDeps
+from .core.deps import CodyDeps
 
 
 # ── Request / Response models ────────────────────────────────────────────────

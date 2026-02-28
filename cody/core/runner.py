@@ -1,7 +1,6 @@
 """Agent runner - core execution engine"""
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +16,7 @@ from pydantic_ai.messages import (
 from .audit import AuditLogger
 from .config import Config
 from .context import compact_messages
+from .deps import CodyDeps
 from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
@@ -27,21 +27,6 @@ from .sub_agent import SubAgentManager
 from . import tools
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class CodyDeps:
-    """Dependencies for Cody Agent"""
-    config: Config
-    workdir: Path
-    skill_manager: SkillManager
-    mcp_client: Optional[MCPClient] = None
-    sub_agent_manager: Optional[SubAgentManager] = None
-    lsp_client: Optional[LSPClient] = None
-    audit_logger: Optional[AuditLogger] = None
-    permission_manager: Optional[PermissionManager] = None
-    file_history: Optional[FileHistory] = None
-    todo_list: Optional[list] = None
 
 
 class AgentRunner:

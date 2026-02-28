@@ -10,6 +10,7 @@ from .lsp_client import LSPClient
 from .mcp_client import MCPClient
 from .permissions import PermissionDeniedError, PermissionLevel, PermissionManager
 from .rate_limiter import RateLimitResult, RateLimiter
+from .deps import CodyDeps
 from .runner import AgentRunner
 from .session import SessionStore
 from .skill_manager import SkillManager
