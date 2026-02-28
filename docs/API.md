@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 1.0.0
+**版本：** 1.1.0
 
 ---
 
@@ -41,6 +41,8 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | model_base_url | string | ❌ | 自定义 OpenAI 兼容 API 地址 |
 | model_api_key | string | ❌ | 自定义模型提供商的 API Key |
 | claude_oauth_token | string | ❌ | Claude OAuth token（替代 API Key，来自 `claude login`） |
+| enable_thinking | bool | ❌ | 启用 thinking 模式（需模型支持） |
+| thinking_budget | int | ❌ | thinking 最大 token 数（如 10000） |
 | skills | string[] | ❌ | 启用的 Skills 列表 |
 | session_id | string | ❌ | 会话 ID，用于多轮对话 |
 
@@ -67,10 +69,12 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 {
   "status": "success",
   "output": "已创建 FastAPI 项目",
+  "thinking": "Let me analyze the requirements...",
+  "tool_traces": [
+    {"tool_name": "write_file", "args": {"path": "main.py"}, "result": "Written 200 bytes"}
+  ],
   "session_id": "abc123",
   "usage": {
-    "input_tokens": 150,
-    "output_tokens": 80,
     "total_tokens": 230
   }
 }
@@ -88,29 +92,33 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 #### POST /run/stream
 
-以 Server-Sent Events (SSE) 方式流式返回结果。请求体与 `POST /run` 相同。
+以 Server-Sent Events (SSE) 方式流式返回**结构化事件**。请求体与 `POST /run` 相同。
 
 **响应（SSE）：**
 ```
-data: {"type": "text", "content": "正在"}
+data: {"type": "thinking", "content": "Let me analyze..."}
 
-data: {"type": "text", "content": "创建"}
+data: {"type": "tool_call", "tool_name": "read_file", "args": {"path": "main.py"}, "tool_call_id": "tc_1"}
 
-data: {"type": "done"}
+data: {"type": "tool_result", "tool_name": "read_file", "tool_call_id": "tc_1", "result": "..."}
+
+data: {"type": "text_delta", "content": "这是"}
+
+data: {"type": "text_delta", "content": "文件内容"}
+
+data: {"type": "done", "output": "这是文件内容", "thinking": "...", "tool_traces": [...], "usage": {"total_tokens": 230}}
 ```
 
-带 session_id 的流式响应：
-```
-data: {"type": "text", "content": "正在创建...", "session_id": "abc123"}
-
-data: {"type": "done"}
-```
+带 session_id 时，每个事件都包含 `session_id` 字段。
 
 **事件类型：**
 | 事件 | 说明 |
 |------|------|
-| text | 流式文本片段，包含 `content` 字段 |
-| done | 任务完成 |
+| thinking | 模型思考过程（增量），`content` 字段 |
+| tool_call | 工具调用发起，包含 `tool_name`、`args`、`tool_call_id` |
+| tool_result | 工具返回结果，包含 `tool_name`、`tool_call_id`、`result` |
+| text_delta | 流式文本片段（增量），`content` 字段 |
+| done | 任务完成，包含 `output`、`thinking`、`tool_traces`、`usage` |
 | error | 错误发生，包含结构化错误信息 |
 
 **SSE 错误示例：**
@@ -385,7 +393,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 ```json
 {
   "status": "ok",
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
 ```
 
@@ -505,8 +513,11 @@ curl -H 'Authorization: Bearer <signed-token>' http://localhost:8000/run ...
 | 事件 | 说明 |
 |------|------|
 | `start` | 任务开始，包含 session_id |
-| `text` | 流式文本片段 |
-| `done` | 任务完成，包含完整输出 |
+| `thinking` | 模型思考过程（增量） |
+| `tool_call` | 工具调用发起 |
+| `tool_result` | 工具返回结果 |
+| `text_delta` | 流式文本片段（增量） |
+| `done` | 任务完成，包含完整输出、thinking、tool_traces、usage |
 | `error` | 错误，包含结构化错误信息 |
 | `cancelled` | 任务已取消 |
 | `pong` | 心跳响应 |
@@ -514,8 +525,11 @@ curl -H 'Authorization: Bearer <signed-token>' http://localhost:8000/run ...
 **事件示例：**
 ```json
 {"type": "start", "session_id": "abc123"}
-{"type": "text", "content": "正在创建..."}
-{"type": "done", "output": "完成创建"}
+{"type": "thinking", "content": "Let me analyze..."}
+{"type": "tool_call", "tool_name": "read_file", "args": {"path": "main.py"}, "tool_call_id": "tc_1"}
+{"type": "tool_result", "tool_name": "read_file", "tool_call_id": "tc_1", "result": "..."}
+{"type": "text_delta", "content": "这是文件内容"}
+{"type": "done", "output": "这是文件内容", "thinking": "...", "tool_traces": [...], "usage": {"total_tokens": 230}}
 {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 {"type": "cancelled"}
 {"type": "pong"}
@@ -640,4 +654,4 @@ curl http://localhost:8000/health
 
 ---
 
-**最后更新：** 2026-02-25
+**最后更新：** 2026-02-28

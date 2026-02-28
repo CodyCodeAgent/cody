@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 
+from cody.core.runner import CodyResult
+
 from cody.client import (
     AsyncCodyClient,
     CodyClient,
@@ -232,13 +234,14 @@ async def test_async_health():
 
 @pytest.mark.asyncio
 async def test_async_run():
-    mock_result = MagicMock()
-    mock_result.output = "async result"
     mock_usage = MagicMock()
     mock_usage.input_tokens = 20
     mock_usage.output_tokens = 10
     mock_usage.total_tokens = 30
-    mock_result.usage.return_value = mock_usage
+    mock_raw = MagicMock()
+    mock_raw.usage.return_value = mock_usage
+    mock_raw.all_messages.return_value = []
+    mock_result = CodyResult(output="async result", _raw_result=mock_raw)
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -324,9 +327,12 @@ async def test_async_get_skill_not_found():
 
 @pytest.mark.asyncio
 async def test_async_stream():
+    from cody.core.runner import TextDeltaEvent, DoneEvent, CodyResult
+
     async def fake_stream(prompt, message_history=None):
-        for chunk in ["Hello", " async"]:
-            yield chunk
+        yield TextDeltaEvent(content="Hello")
+        yield TextDeltaEvent(content=" async")
+        yield DoneEvent(result=CodyResult(output="Hello async"))
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -337,7 +343,7 @@ async def test_async_stream():
         async for chunk in client.stream("test"):
             chunks.append(chunk)
 
-    text_chunks = [c for c in chunks if c.type == "text"]
+    text_chunks = [c for c in chunks if c.type == "text_delta"]
     assert len(text_chunks) == 2
     assert text_chunks[0].content == "Hello"
     assert text_chunks[1].content == " async"

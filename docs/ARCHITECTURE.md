@@ -86,6 +86,26 @@ The central orchestrator. Responsibilities:
 - Provide `run()`, `run_stream()`, `run_sync()` execution methods
 - Session-aware variants: `run_with_session()`, `run_stream_with_session()`
 - Manage lifecycle of MCP and LSP clients
+- Optional thinking mode (`enable_thinking` + `thinking_budget` in config)
+
+**StreamEvent system:** `run_stream()` yields structured `StreamEvent` objects (not raw text):
+```
+ThinkingEvent    — incremental thinking content (delta)
+TextDeltaEvent   — incremental text output (delta)
+ToolCallEvent    — tool call initiated (tool_name, args, tool_call_id)
+ToolResultEvent  — tool call result (tool_name, result)
+DoneEvent        — stream complete, contains full CodyResult
+```
+Core provides all data; shells (CLI/TUI/Server) decide rendering.
+
+**CodyResult:** Rich result model returned by `run()` / `run_sync()` and via `DoneEvent`:
+```
+CodyResult
+├── output: str            # final text output
+├── thinking: str | None   # concatenated thinking content
+├── tool_traces: list      # all tool calls with args and results
+└── _raw_result            # pydantic-ai AgentRunResult (for all_messages, usage)
+```
 
 **CodyDeps carries:**
 ```
@@ -192,31 +212,39 @@ Server wires these as middleware: auth → rate_limit → audit.
 ### CLI Mode
 
 ```
-User Input → Click CLI (cli.py) → AgentRunner.run(prompt)
-  → Pydantic AI Agent → Tool calls → File/Exec/Skill/MCP/LSP
-  → Results → Agent → LLM → Final Output → Display
+User Input → Click CLI (cli.py) → AgentRunner.run_stream(prompt)
+  → Pydantic AI run_stream_events() → StreamEvent objects
+  → ThinkingEvent → dim text
+  → ToolCallEvent → "→ tool(args)"
+  → TextDeltaEvent → streaming text output
+  → DoneEvent → usage stats
 ```
 
 ### TUI Mode
 
 ```
-User Input → Textual App (tui.py) → AgentRunner.run_stream_with_session()
-  → Pydantic AI Agent → Tool calls → ...
-  → Stream chunks → TUI StreamBubble → Real-time display
-  → Session auto-persisted to SQLite
+User Input → Textual App (tui.py) → AgentRunner.run_stream()
+  → StreamEvent objects → TUI StreamBubble
+  → TextDeltaEvent → real-time text display
+  → ToolCallEvent → tool call indicator
+  → DoneEvent → update message history + persist to SQLite
 ```
 
 ### RPC Mode
 
 ```
 HTTP POST /run → FastAPI (server.py) → AgentRunner.run_with_session()
-  → ... → JSON Response {output, session_id, usage}
+  → ... → JSON Response {output, thinking, tool_traces, session_id, usage}
 
-HTTP POST /run/stream → SSE stream
-  → ... → data: {"type":"text","content":"..."} events
+HTTP POST /run/stream → SSE stream (structured events)
+  → data: {"type":"thinking","content":"..."}
+  → data: {"type":"tool_call","tool_name":"...","args":{...}}
+  → data: {"type":"tool_result","tool_name":"...","result":"..."}
+  → data: {"type":"text_delta","content":"..."}
+  → data: {"type":"done","output":"...","thinking":"...","tool_traces":[...]}
 
-WS /ws → WebSocket bidirectional
-  → {"type":"run"} → stream → {"type":"text"} events
+WS /ws → WebSocket bidirectional (same event types as SSE)
+  → {"type":"run"} → stream → structured events
   → {"type":"cancel"} → abort → {"type":"cancelled"}
 ```
 
@@ -268,4 +296,4 @@ tui.py ──→  core/*  ←── server.py
 
 ---
 
-**Last updated:** 2026-02-25
+**Last updated:** 2026-02-28

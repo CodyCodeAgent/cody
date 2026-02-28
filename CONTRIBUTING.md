@@ -244,4 +244,4 @@ python3 -m pytest tests/ -v
 
 **总计：418 个测试，ruff 零告警**
 
-**下一步重点：v1.0.0 — TypeScript SDK、GitHub 集成、Docker 镜像（见 docs/FEATURES.md）**
+**当前版本：v1.1.0（见 docs/FEATURES.md 版本记录）**

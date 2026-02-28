@@ -1,5 +1,6 @@
 """CLI interface for Cody"""
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -9,12 +10,59 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from .core import Config, AgentRunner, SessionStore
+from .core.runner import (
+    CodyResult, ThinkingEvent, TextDeltaEvent,
+    ToolCallEvent, ToolResultEvent, DoneEvent,
+)
 
 console = Console()
 
 
+def _display_result(result: CodyResult, verbose: bool = False) -> None:
+    """Display a CodyResult with thinking, tool traces, and output.
+
+    Core provides all data; this shell decides rendering.
+    """
+    # 1. Thinking process (collapsed style)
+    if result.thinking:
+        # Truncate long thinking for display, show full in verbose
+        thinking_text = result.thinking
+        if not verbose and len(thinking_text) > 500:
+            thinking_text = thinking_text[:500] + "\n... (use -v to see full thinking)"
+        console.print(
+            Panel(
+                thinking_text,
+                title="[bold dim]Thinking[/bold dim]",
+                border_style="dim",
+                expand=False,
+            )
+        )
+
+    # 2. Tool execution traces
+    if result.tool_traces:
+        for trace in result.tool_traces:
+            args_str = ", ".join(f"{k}={v!r}" for k, v in trace.args.items())
+            # Truncate long results
+            trace_result = trace.result
+            if not verbose and len(trace_result) > 200:
+                trace_result = trace_result[:200] + "..."
+            console.print(f"  [dim]→ {trace.tool_name}({args_str})[/dim]")
+            if verbose and trace_result:
+                console.print(f"    [dim]{trace_result}[/dim]")
+        console.print()
+
+    # 3. Final output
+    console.print(Panel(result.output, title="[bold green]Cody", border_style="green"))
+
+    # 4. Usage stats
+    if verbose:
+        usage = result.usage()
+        if usage:
+            console.print(f"\n[dim]Tokens: {usage.total_tokens}[/dim]")
+
+
 @click.group()
-@click.version_option()
+@click.version_option(package_name="cody-ai")
 def main():
     """Cody - AI Coding Assistant
 
@@ -33,9 +81,11 @@ def main():
 @click.option('--model-api-key', help='API key for custom model provider')
 @click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
 @click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
+@click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
+@click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, workdir, verbose):
+def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, verbose):
     """Run a single task with Cody
 
     Examples:
@@ -60,20 +110,55 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         config.coding_plan_key = coding_plan_key
     if coding_plan_protocol:
         config.coding_plan_protocol = coding_plan_protocol
+    if thinking is not None:
+        config.enable_thinking = thinking
+    if thinking_budget is not None:
+        config.thinking_budget = thinking_budget
 
     runner = AgentRunner(config=config, workdir=workdir)
 
     if verbose:
         console.print(f"[dim]Model: {config.model}[/dim]")
         console.print(f"[dim]Workdir: {runner.workdir}[/dim]")
+        if config.enable_thinking:
+            budget = f" (budget: {config.thinking_budget})" if config.thinking_budget else ""
+            console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
-    with console.status("[bold green]Thinking..."):
-        result = runner.run_sync(prompt)
+    async def _run_stream():
+        in_thinking = False
+        result = None
+        async for event in runner.run_stream(prompt):
+            if isinstance(event, ThinkingEvent):
+                if not in_thinking:
+                    console.print("[dim]", end="")
+                    in_thinking = True
+                console.print(event.content, end="")
+            elif isinstance(event, ToolCallEvent):
+                if in_thinking:
+                    console.print("[/dim]")
+                    in_thinking = False
+                args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+                console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
+            elif isinstance(event, ToolResultEvent):
+                if verbose:
+                    preview = event.result[:200]
+                    console.print(f"    [dim]{preview}[/dim]")
+            elif isinstance(event, TextDeltaEvent):
+                if in_thinking:
+                    console.print("[/dim]")
+                    in_thinking = False
+                console.print(event.content, end="")
+            elif isinstance(event, DoneEvent):
+                if in_thinking:
+                    console.print("[/dim]")
+                console.print()
+                result = event.result
+        if verbose and result:
+            usage = result.usage()
+            if usage:
+                console.print(f"\n[dim]Tokens: {usage.total_tokens}[/dim]")
 
-    console.print(Panel(result.output, title="[bold green]Cody", border_style="green"))
-
-    if verbose:
-        console.print(f"\n[dim]Tokens: {result.usage().total_tokens}[/dim]")
+    asyncio.run(_run_stream())
 
 
 # ── Chat command (interactive REPL) ──────────────────────────────────────────
@@ -85,10 +170,12 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
 @click.option('--model-api-key', help='API key for custom model provider')
 @click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
 @click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
+@click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
+@click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, workdir, session_id, continue_last):
+def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, session_id, continue_last):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -112,6 +199,10 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         config.coding_plan_key = coding_plan_key
     if coding_plan_protocol:
         config.coding_plan_protocol = coding_plan_protocol
+    if thinking is not None:
+        config.enable_thinking = thinking
+    if thinking_budget is not None:
+        config.thinking_budget = thinking_budget
 
     workdir_path = Path(workdir) if workdir else Path.cwd()
     store = SessionStore()
@@ -188,28 +279,43 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
             # Save user message
             store.add_message(session.id, "user", user_input)
 
-            # Run agent
+            # Run agent with streaming
             try:
-                with console.status("[bold green]Thinking..."):
-                    result = runner.run_sync(user_input, message_history=message_history)
+                async def _stream_chat():
+                    in_thinking = False
+                    result = None
+                    async for event in runner.run_stream(user_input, message_history=message_history):
+                        if isinstance(event, ThinkingEvent):
+                            if not in_thinking:
+                                console.print("\n[dim]", end="")
+                                in_thinking = True
+                            console.print(event.content, end="")
+                        elif isinstance(event, ToolCallEvent):
+                            if in_thinking:
+                                console.print("[/dim]")
+                                in_thinking = False
+                            args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+                            console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
+                        elif isinstance(event, ToolResultEvent):
+                            pass  # keep chat clean
+                        elif isinstance(event, TextDeltaEvent):
+                            if in_thinking:
+                                console.print("[/dim]")
+                                in_thinking = False
+                            console.print(event.content, end="")
+                        elif isinstance(event, DoneEvent):
+                            if in_thinking:
+                                console.print("[/dim]")
+                            result = event.result
+                    return result
+
+                result = asyncio.run(_stream_chat())
+                console.print("\n")
 
                 # Update history for next turn
-                message_history = result.all_messages()
-
-                # Display response
-                assistant_text = result.output
-                console.print()
-                console.print(
-                    Panel(
-                        Markdown(assistant_text),
-                        title="[bold green]Cody[/bold green]",
-                        border_style="green",
-                    )
-                )
-                console.print()
-
-                # Save assistant message
-                store.add_message(session.id, "assistant", assistant_text)
+                if result:
+                    message_history = result.all_messages()
+                    store.add_message(session.id, "assistant", result.output)
 
             except Exception as e:
                 console.print(f"\n[red]Error: {e}[/red]\n")
@@ -506,10 +612,12 @@ def config_show():
 @click.option('--model-api-key', help='API key for custom model provider')
 @click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
 @click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
+@click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
+@click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, workdir, session_id, continue_last):
+def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, session_id, continue_last):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -528,6 +636,8 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
         model_api_key=model_api_key,
         coding_plan_key=coding_plan_key,
         coding_plan_protocol=coding_plan_protocol,
+        thinking=thinking,
+        thinking_budget=thinking_budget,
         workdir=workdir,
         session_id=session_id,
         continue_last=continue_last,

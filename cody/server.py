@@ -31,13 +31,23 @@ class RunRequest(BaseModel):
     model_api_key: Optional[str] = None
     coding_plan_key: Optional[str] = None
     coding_plan_protocol: Optional[str] = None
+    enable_thinking: Optional[bool] = None
+    thinking_budget: Optional[int] = None
     skills: Optional[list[str]] = None
     session_id: Optional[str] = None
+
+
+class ToolTraceResponse(BaseModel):
+    tool_name: str
+    args: dict
+    result: str
 
 
 class RunResponse(BaseModel):
     status: str = "success"
     output: str
+    thinking: Optional[str] = None
+    tool_traces: Optional[list[ToolTraceResponse]] = None
     session_id: Optional[str] = None
     usage: Optional[dict] = None
 
@@ -55,7 +65,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
 
 
 class ErrorResponse(BaseModel):
@@ -82,7 +92,7 @@ class SessionDetailResponse(SessionResponse):
 app = FastAPI(
     title="Cody RPC Server",
     description="AI Coding Assistant RPC API",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 
@@ -331,6 +341,10 @@ async def run_agent(request: RunRequest):
             config.coding_plan_key = request.coding_plan_key
         if request.coding_plan_protocol:
             config.coding_plan_protocol = request.coding_plan_protocol
+        if request.enable_thinking is not None:
+            config.enable_thinking = request.enable_thinking
+        if request.thinking_budget is not None:
+            config.thinking_budget = request.thinking_budget
         if request.skills is not None:
             config.skills.enabled = request.skills
 
@@ -347,14 +361,33 @@ async def run_agent(request: RunRequest):
             result = await runner.run(request.prompt)
             sid = None
 
+        # Build tool traces for response
+        traces = None
+        if result.tool_traces:
+            traces = [
+                ToolTraceResponse(
+                    tool_name=t.tool_name,
+                    args=t.args,
+                    result=t.result[:500] if t.result else "",
+                )
+                for t in result.tool_traces
+            ]
+
+        usage_data = None
+        usage = result.usage()
+        if usage:
+            usage_data = {
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "total_tokens": usage.total_tokens,
+            }
+
         return RunResponse(
             output=result.output,
+            thinking=result.thinking,
+            tool_traces=traces,
             session_id=sid,
-            usage={
-                "input_tokens": result.usage().input_tokens,
-                "output_tokens": result.usage().output_tokens,
-                "total_tokens": result.usage().total_tokens,
-            },
+            usage=usage_data,
         )
 
     except ValueError as e:
@@ -371,9 +404,53 @@ async def run_agent(request: RunRequest):
         )
 
 
+def _serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
+    """Convert a StreamEvent to a JSON-serializable dict for SSE/WebSocket."""
+    from .core.runner import (
+        ThinkingEvent, TextDeltaEvent, ToolCallEvent,
+        ToolResultEvent, DoneEvent,
+    )
+
+    base: dict[str, Any] = {"type": event.event_type}
+    if session_id:
+        base["session_id"] = session_id
+
+    if isinstance(event, ThinkingEvent):
+        base["content"] = event.content
+    elif isinstance(event, TextDeltaEvent):
+        base["content"] = event.content
+    elif isinstance(event, ToolCallEvent):
+        base["tool_name"] = event.tool_name
+        base["args"] = event.args
+        base["tool_call_id"] = event.tool_call_id
+    elif isinstance(event, ToolResultEvent):
+        base["tool_name"] = event.tool_name
+        base["tool_call_id"] = event.tool_call_id
+        base["result"] = event.result[:500]
+    elif isinstance(event, DoneEvent):
+        base["output"] = event.result.output
+        base["thinking"] = event.result.thinking
+        if event.result.tool_traces:
+            base["tool_traces"] = [
+                {
+                    "tool_name": t.tool_name,
+                    "args": t.args,
+                    "result": t.result[:500],
+                }
+                for t in event.result.tool_traces
+            ]
+        usage = event.result.usage()
+        if usage:
+            base["usage"] = {
+                "total_tokens": usage.total_tokens,
+            }
+
+    return base
+
+
 @app.post("/run/stream")
 async def run_agent_stream(request: RunRequest):
-    """Run agent with streaming response, optionally within a session."""
+    """Run agent with streaming response, emitting structured events."""
 
     async def generate() -> AsyncIterator[str]:
         try:
@@ -384,6 +461,10 @@ async def run_agent_stream(request: RunRequest):
                 config.model_base_url = request.model_base_url
             if request.model_api_key:
                 config.model_api_key = request.model_api_key
+            if request.enable_thinking is not None:
+                config.enable_thinking = request.enable_thinking
+            if request.thinking_budget is not None:
+                config.thinking_budget = request.thinking_budget
             if request.skills is not None:
                 config.skills.enabled = request.skills
 
@@ -392,18 +473,13 @@ async def run_agent_stream(request: RunRequest):
 
             if request.session_id is not None:
                 store = _get_session_store()
-                async for text, sid in runner.run_stream_with_session(
+                async for event, sid in runner.run_stream_with_session(
                     request.prompt, store, request.session_id
                 ):
-                    yield (
-                        f"data: {json.dumps({'type': 'text', 'content': text, 'session_id': sid})}"
-                        "\n\n"
-                    )
+                    yield f"data: {json.dumps(_serialize_stream_event(event, session_id=sid))}\n\n"
             else:
-                async for text in runner.run_stream(request.prompt):
-                    yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
-
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                async for event in runner.run_stream(request.prompt):
+                    yield f"data: {json.dumps(_serialize_stream_event(event))}\n\n"
 
         except Exception as e:
             error_payload = {
@@ -801,6 +877,8 @@ class _WSConnection:
         api_key_str = data.get("model_api_key")
         coding_plan_key_str = data.get("coding_plan_key")
         coding_plan_protocol_str = data.get("coding_plan_protocol")
+        enable_thinking = data.get("enable_thinking")
+        thinking_budget = data.get("thinking_budget")
         session_id = data.get("session_id")
 
         self._cancel_event = asyncio.Event()
@@ -817,6 +895,10 @@ class _WSConnection:
                 config.coding_plan_key = coding_plan_key_str
             if coding_plan_protocol_str:
                 config.coding_plan_protocol = coding_plan_protocol_str
+            if enable_thinking is not None:
+                config.enable_thinking = enable_thinking
+            if thinking_budget is not None:
+                config.thinking_budget = thinking_budget
 
             workdir = Path(workdir_str) if workdir_str else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
@@ -825,28 +907,25 @@ class _WSConnection:
 
             if session_id is not None:
                 store = _get_session_store()
-                chunks: list[str] = []
-                async for text, sid in runner.run_stream_with_session(
+                async for event, sid in runner.run_stream_with_session(
                     prompt, store, session_id
                 ):
                     if self._cancel_event.is_set():
                         await self.send_event("cancelled")
                         return
-                    chunks.append(text)
-                    await self.send_event("text", {"content": text, "session_id": sid})
-                await self.send_event("done", {
-                    "output": "".join(chunks),
-                    "session_id": sid,
-                })
+                    payload = _serialize_stream_event(event, session_id=sid)
+                    await self.send_event(
+                        payload.pop("type"), payload
+                    )
             else:
-                chunks = []
-                async for text in runner.run_stream(prompt):
+                async for event in runner.run_stream(prompt):
                     if self._cancel_event.is_set():
                         await self.send_event("cancelled")
                         return
-                    chunks.append(text)
-                    await self.send_event("text", {"content": text})
-                await self.send_event("done", {"output": "".join(chunks)})
+                    payload = _serialize_stream_event(event)
+                    await self.send_event(
+                        payload.pop("type"), payload
+                    )
 
         except Exception as e:
             await self.send_event("error", {

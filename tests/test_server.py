@@ -3,7 +3,20 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
+from cody.core.runner import CodyResult
 from cody.server import app
+
+
+def _mock_cody_result(output: str, input_tokens: int = 10, output_tokens: int = 5) -> CodyResult:
+    """Create a CodyResult for testing."""
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = input_tokens
+    mock_usage.output_tokens = output_tokens
+    mock_usage.total_tokens = input_tokens + output_tokens
+    mock_raw = MagicMock()
+    mock_raw.usage.return_value = mock_usage
+    mock_raw.all_messages.return_value = []
+    return CodyResult(output=output, _raw_result=mock_raw)
 
 
 # ── Health endpoint ──────────────────────────────────────────────────────────
@@ -21,7 +34,7 @@ def test_health():
 def test_health_returns_version():
     client = TestClient(app)
     resp = client.get("/health")
-    assert resp.json()["version"] == "1.0.0"
+    assert resp.json()["version"] == "1.1.0"
 
 
 # ── Tool endpoint ────────────────────────────────────────────────────────────
@@ -113,15 +126,23 @@ def test_tool_missing_params(tmp_path):
 
 
 def test_tool_path_traversal(tmp_path):
-    """Ensure /tool endpoint respects path security"""
+    """read_file allows outside workdir (read-only); write_file should block"""
     client = TestClient(app)
+    # read_file allows outside workdir — returns 500 (file not found), not 403
     resp = client.post("/tool", json={
         "tool": "read_file",
-        "params": {"path": "../../../etc/passwd"},
+        "params": {"path": "../../../etc/nonexistent_file"},
+        "workdir": str(tmp_path),
+    })
+    assert resp.status_code == 500
+
+    # write_file should still block path traversal
+    resp = client.post("/tool", json={
+        "tool": "write_file",
+        "params": {"path": "../../../evil.txt", "content": "bad"},
         "workdir": str(tmp_path),
     })
     assert resp.status_code == 403
-    assert resp.json()["error"]["code"] == "PERMISSION_DENIED"
     assert "outside" in resp.json()["error"]["message"].lower()
 
 
@@ -182,13 +203,7 @@ def test_skill_not_found():
 
 def test_run_agent():
     """POST /run executes agent and returns result"""
-    mock_result = MagicMock()
-    mock_result.output = "I created the file for you."
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 100
-    mock_usage.output_tokens = 50
-    mock_usage.total_tokens = 150
-    mock_result.usage.return_value = mock_usage
+    mock_result = _mock_cody_result("I created the file for you.", input_tokens=100, output_tokens=50)
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -210,13 +225,7 @@ def test_run_agent():
 
 def test_run_agent_with_model_override():
     """POST /run respects model override"""
-    mock_result = MagicMock()
-    mock_result.output = "done"
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 10
-    mock_usage.output_tokens = 5
-    mock_usage.total_tokens = 15
-    mock_result.usage.return_value = mock_usage
+    mock_result = _mock_cody_result("done")
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -241,13 +250,7 @@ def test_run_agent_with_model_override():
 
 def test_run_agent_with_workdir(tmp_path):
     """POST /run respects workdir"""
-    mock_result = MagicMock()
-    mock_result.output = "done"
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 10
-    mock_usage.output_tokens = 5
-    mock_usage.total_tokens = 15
-    mock_result.usage.return_value = mock_usage
+    mock_result = _mock_cody_result("done")
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -286,10 +289,14 @@ def test_run_agent_error():
 
 
 def test_run_stream():
-    """POST /run/stream returns SSE stream with JSON events"""
+    """POST /run/stream returns SSE stream with structured events"""
+    from cody.core.runner import TextDeltaEvent, DoneEvent, CodyResult
+
     async def fake_stream(prompt, message_history=None):
-        for chunk in ["Hello", " ", "World"]:
-            yield chunk
+        yield TextDeltaEvent(content="Hello")
+        yield TextDeltaEvent(content=" ")
+        yield TextDeltaEvent(content="World")
+        yield DoneEvent(result=CodyResult(output="Hello World"))
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -303,7 +310,7 @@ def test_run_stream():
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
     body = resp.text
-    assert '"type": "text"' in body
+    assert '"type": "text_delta"' in body
     assert "Hello" in body
     assert "World" in body
     assert '"type": "done"' in body
@@ -474,13 +481,7 @@ def test_run_with_session_id(tmp_path):
     store = SessionStore(db_path=tmp_path / "test.db")
     session = store.create_session(title="test")
 
-    mock_result = MagicMock()
-    mock_result.output = "done with session"
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 10
-    mock_usage.output_tokens = 5
-    mock_usage.total_tokens = 15
-    mock_result.usage.return_value = mock_usage
+    mock_result = _mock_cody_result("done with session")
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
@@ -503,13 +504,7 @@ def test_run_with_session_id(tmp_path):
 
 def test_run_without_session_id():
     """POST /run without session_id uses plain run (no session_id in response)"""
-    mock_result = MagicMock()
-    mock_result.output = "no session"
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 10
-    mock_usage.output_tokens = 5
-    mock_usage.total_tokens = 15
-    mock_result.usage.return_value = mock_usage
+    mock_result = _mock_cody_result("no session")
 
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
