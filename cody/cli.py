@@ -3,6 +3,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from typing import Optional
 
 import click
 from rich.console import Console
@@ -18,47 +19,41 @@ from .core.runner import (
 console = Console()
 
 
-def _display_result(result: CodyResult, verbose: bool = False) -> None:
-    """Display a CodyResult with thinking, tool traces, and output.
+async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResult]":
+    """Consume a StreamEvent async generator and render to console.
 
-    Core provides all data; this shell decides rendering.
+    Shared by both `run` and `chat` commands.
+    Returns the CodyResult from the DoneEvent, or None.
     """
-    # 1. Thinking process (collapsed style)
-    if result.thinking:
-        # Truncate long thinking for display, show full in verbose
-        thinking_text = result.thinking
-        if not verbose and len(thinking_text) > 500:
-            thinking_text = thinking_text[:500] + "\n... (use -v to see full thinking)"
-        console.print(
-            Panel(
-                thinking_text,
-                title="[bold dim]Thinking[/bold dim]",
-                border_style="dim",
-                expand=False,
-            )
-        )
-
-    # 2. Tool execution traces
-    if result.tool_traces:
-        for trace in result.tool_traces:
-            args_str = ", ".join(f"{k}={v!r}" for k, v in trace.args.items())
-            # Truncate long results
-            trace_result = trace.result
-            if not verbose and len(trace_result) > 200:
-                trace_result = trace_result[:200] + "..."
-            console.print(f"  [dim]→ {trace.tool_name}({args_str})[/dim]")
-            if verbose and trace_result:
-                console.print(f"    [dim]{trace_result}[/dim]")
-        console.print()
-
-    # 3. Final output
-    console.print(Panel(result.output, title="[bold green]Cody", border_style="green"))
-
-    # 4. Usage stats
-    if verbose:
-        usage = result.usage()
-        if usage:
-            console.print(f"\n[dim]Tokens: {usage.total_tokens}[/dim]")
+    in_thinking = False
+    result = None
+    async for event in stream:
+        if isinstance(event, ThinkingEvent):
+            if not in_thinking:
+                console.print("[dim]", end="")
+                in_thinking = True
+            console.print(event.content, end="")
+        elif isinstance(event, ToolCallEvent):
+            if in_thinking:
+                console.print("[/dim]")
+                in_thinking = False
+            args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+            console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
+        elif isinstance(event, ToolResultEvent):
+            if verbose:
+                preview = event.result[:200]
+                console.print(f"    [dim]{preview}[/dim]")
+        elif isinstance(event, TextDeltaEvent):
+            if in_thinking:
+                console.print("[/dim]")
+                in_thinking = False
+            console.print(event.content, end="")
+        elif isinstance(event, DoneEvent):
+            if in_thinking:
+                console.print("[/dim]")
+            result = event.result
+    console.print()
+    return result
 
 
 @click.group()
@@ -99,21 +94,15 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         console.print("Example: cody run 'create a hello.py file'")
         return
 
-    config = Config.load()
-    if model:
-        config.model = model
-    if model_base_url:
-        config.model_base_url = model_base_url
-    if model_api_key:
-        config.model_api_key = model_api_key
-    if coding_plan_key:
-        config.coding_plan_key = coding_plan_key
-    if coding_plan_protocol:
-        config.coding_plan_protocol = coding_plan_protocol
-    if thinking is not None:
-        config.enable_thinking = thinking
-    if thinking_budget is not None:
-        config.thinking_budget = thinking_budget
+    config = Config.load().apply_overrides(
+        model=model,
+        model_base_url=model_base_url,
+        model_api_key=model_api_key,
+        coding_plan_key=coding_plan_key,
+        coding_plan_protocol=coding_plan_protocol,
+        enable_thinking=thinking,
+        thinking_budget=thinking_budget,
+    )
 
     runner = AgentRunner(config=config, workdir=workdir)
 
@@ -125,38 +114,16 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
     async def _run_stream():
-        in_thinking = False
-        result = None
-        async for event in runner.run_stream(prompt):
-            if isinstance(event, ThinkingEvent):
-                if not in_thinking:
-                    console.print("[dim]", end="")
-                    in_thinking = True
-                console.print(event.content, end="")
-            elif isinstance(event, ToolCallEvent):
-                if in_thinking:
-                    console.print("[/dim]")
-                    in_thinking = False
-                args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
-                console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
-            elif isinstance(event, ToolResultEvent):
-                if verbose:
-                    preview = event.result[:200]
-                    console.print(f"    [dim]{preview}[/dim]")
-            elif isinstance(event, TextDeltaEvent):
-                if in_thinking:
-                    console.print("[/dim]")
-                    in_thinking = False
-                console.print(event.content, end="")
-            elif isinstance(event, DoneEvent):
-                if in_thinking:
-                    console.print("[/dim]")
-                console.print()
-                result = event.result
-        if verbose and result:
-            usage = result.usage()
-            if usage:
-                console.print(f"\n[dim]Tokens: {usage.total_tokens}[/dim]")
+        await runner.start_mcp()
+        try:
+            result = await _render_stream(runner.run_stream(prompt), verbose=verbose)
+            if verbose and result:
+                usage = result.usage()
+                if usage:
+                    console.print(f"[dim]Tokens: {usage.total_tokens}[/dim]")
+        finally:
+            await runner.stop_mcp()
+            await runner.stop_lsp()
 
     asyncio.run(_run_stream())
 
@@ -188,21 +155,15 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         cody chat --continue
         cody chat --session abc123
     """
-    config = Config.load()
-    if model:
-        config.model = model
-    if model_base_url:
-        config.model_base_url = model_base_url
-    if model_api_key:
-        config.model_api_key = model_api_key
-    if coding_plan_key:
-        config.coding_plan_key = coding_plan_key
-    if coding_plan_protocol:
-        config.coding_plan_protocol = coding_plan_protocol
-    if thinking is not None:
-        config.enable_thinking = thinking
-    if thinking_budget is not None:
-        config.thinking_budget = thinking_budget
+    config = Config.load().apply_overrides(
+        model=model,
+        model_base_url=model_base_url,
+        model_api_key=model_api_key,
+        coding_plan_key=coding_plan_key,
+        coding_plan_protocol=coding_plan_protocol,
+        enable_thinking=thinking,
+        thinking_budget=thinking_budget,
+    )
 
     workdir_path = Path(workdir) if workdir else Path.cwd()
     store = SessionStore()
@@ -248,6 +209,9 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
     # Build message history from session
     message_history = _build_history_from_session(session)
 
+    # Start MCP servers before REPL
+    asyncio.run(runner.start_mcp())
+
     # REPL loop
     try:
         while True:
@@ -282,35 +246,11 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
             # Run agent with streaming
             try:
                 async def _stream_chat():
-                    in_thinking = False
-                    result = None
-                    async for event in runner.run_stream(user_input, message_history=message_history):
-                        if isinstance(event, ThinkingEvent):
-                            if not in_thinking:
-                                console.print("\n[dim]", end="")
-                                in_thinking = True
-                            console.print(event.content, end="")
-                        elif isinstance(event, ToolCallEvent):
-                            if in_thinking:
-                                console.print("[/dim]")
-                                in_thinking = False
-                            args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
-                            console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
-                        elif isinstance(event, ToolResultEvent):
-                            pass  # keep chat clean
-                        elif isinstance(event, TextDeltaEvent):
-                            if in_thinking:
-                                console.print("[/dim]")
-                                in_thinking = False
-                            console.print(event.content, end="")
-                        elif isinstance(event, DoneEvent):
-                            if in_thinking:
-                                console.print("[/dim]")
-                            result = event.result
-                    return result
+                    return await _render_stream(
+                        runner.run_stream(user_input, message_history=message_history),
+                    )
 
                 result = asyncio.run(_stream_chat())
-                console.print("\n")
 
                 # Update history for next turn
                 if result:
@@ -323,6 +263,9 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
     except Exception as e:
         console.print(f"[red]Fatal error: {e}[/red]")
         sys.exit(1)
+    finally:
+        asyncio.run(runner.stop_mcp())
+        asyncio.run(runner.stop_lsp())
 
 
 def _get_input() -> str:

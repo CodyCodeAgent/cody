@@ -179,6 +179,20 @@ def _get_session_store() -> SessionStore:
     return SessionStore()
 
 
+def _config_from_request(request: RunRequest) -> Config:
+    """Load config and apply request-level overrides."""
+    return Config.load().apply_overrides(
+        model=request.model,
+        model_base_url=request.model_base_url,
+        model_api_key=request.model_api_key,
+        coding_plan_key=request.coding_plan_key,
+        coding_plan_protocol=request.coding_plan_protocol,
+        enable_thinking=request.enable_thinking,
+        thinking_budget=request.thinking_budget,
+        skills=request.skills,
+    )
+
+
 # ── Middleware: Auth ─────────────────────────────────────────────────────────
 
 # Endpoints that do not require authentication
@@ -330,24 +344,7 @@ async def health():
 async def run_agent(request: RunRequest):
     """Run agent with prompt, optionally within a session."""
     try:
-        config = Config.load()
-        if request.model:
-            config.model = request.model
-        if request.model_base_url:
-            config.model_base_url = request.model_base_url
-        if request.model_api_key:
-            config.model_api_key = request.model_api_key
-        if request.coding_plan_key:
-            config.coding_plan_key = request.coding_plan_key
-        if request.coding_plan_protocol:
-            config.coding_plan_protocol = request.coding_plan_protocol
-        if request.enable_thinking is not None:
-            config.enable_thinking = request.enable_thinking
-        if request.thinking_budget is not None:
-            config.thinking_budget = request.thinking_budget
-        if request.skills is not None:
-            config.skills.enabled = request.skills
-
+        config = _config_from_request(request)
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
         runner = AgentRunner(config=config, workdir=workdir)
 
@@ -454,20 +451,7 @@ async def run_agent_stream(request: RunRequest):
 
     async def generate() -> AsyncIterator[str]:
         try:
-            config = Config.load()
-            if request.model:
-                config.model = request.model
-            if request.model_base_url:
-                config.model_base_url = request.model_base_url
-            if request.model_api_key:
-                config.model_api_key = request.model_api_key
-            if request.enable_thinking is not None:
-                config.enable_thinking = request.enable_thinking
-            if request.thinking_budget is not None:
-                config.thinking_budget = request.thinking_budget
-            if request.skills is not None:
-                config.skills.enabled = request.skills
-
+            config = _config_from_request(request)
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
 
@@ -871,36 +855,22 @@ class _WSConnection:
             })
             return
 
-        workdir_str = data.get("workdir")
-        model_str = data.get("model")
-        base_url_str = data.get("model_base_url")
-        api_key_str = data.get("model_api_key")
-        coding_plan_key_str = data.get("coding_plan_key")
-        coding_plan_protocol_str = data.get("coding_plan_protocol")
-        enable_thinking = data.get("enable_thinking")
-        thinking_budget = data.get("thinking_budget")
         session_id = data.get("session_id")
 
         self._cancel_event = asyncio.Event()
 
         try:
-            config = Config.load()
-            if model_str:
-                config.model = model_str
-            if base_url_str:
-                config.model_base_url = base_url_str
-            if api_key_str:
-                config.model_api_key = api_key_str
-            if coding_plan_key_str:
-                config.coding_plan_key = coding_plan_key_str
-            if coding_plan_protocol_str:
-                config.coding_plan_protocol = coding_plan_protocol_str
-            if enable_thinking is not None:
-                config.enable_thinking = enable_thinking
-            if thinking_budget is not None:
-                config.thinking_budget = thinking_budget
+            config = Config.load().apply_overrides(
+                model=data.get("model"),
+                model_base_url=data.get("model_base_url"),
+                model_api_key=data.get("model_api_key"),
+                coding_plan_key=data.get("coding_plan_key"),
+                coding_plan_protocol=data.get("coding_plan_protocol"),
+                enable_thinking=data.get("enable_thinking"),
+                thinking_budget=data.get("thinking_budget"),
+            )
 
-            workdir = Path(workdir_str) if workdir_str else Path.cwd()
+            workdir = Path(data["workdir"]) if data.get("workdir") else Path.cwd()
             runner = AgentRunner(config=config, workdir=workdir)
 
             await self.send_event("start", {"session_id": session_id})

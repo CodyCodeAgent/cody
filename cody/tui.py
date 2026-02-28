@@ -148,21 +148,15 @@ class CodyTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._config = Config.load()
-        if self._model_override:
-            self._config.model = self._model_override
-        if self._model_base_url_override:
-            self._config.model_base_url = self._model_base_url_override
-        if self._model_api_key_override:
-            self._config.model_api_key = self._model_api_key_override
-        if self._coding_plan_key_override:
-            self._config.coding_plan_key = self._coding_plan_key_override
-        if self._coding_plan_protocol_override:
-            self._config.coding_plan_protocol = self._coding_plan_protocol_override
-        if self._thinking_override is not None:
-            self._config.enable_thinking = self._thinking_override
-        if self._thinking_budget_override is not None:
-            self._config.thinking_budget = self._thinking_budget_override
+        self._config = Config.load().apply_overrides(
+            model=self._model_override,
+            model_base_url=self._model_base_url_override,
+            model_api_key=self._model_api_key_override,
+            coding_plan_key=self._coding_plan_key_override,
+            coding_plan_protocol=self._coding_plan_protocol_override,
+            enable_thinking=self._thinking_override,
+            thinking_budget=self._thinking_budget_override,
+        )
 
         self._runner = AgentRunner(config=self._config, workdir=self._workdir)
         self._store = SessionStore()
@@ -190,6 +184,27 @@ class CodyTUI(App):
         self._message_history = AgentRunner.messages_to_history(session.messages)
         self._update_status()
         self.query_one("#prompt-input", Input).focus()
+
+        # Start MCP servers if configured
+        self._start_services()
+
+    @work(thread=False)
+    async def _start_services(self) -> None:
+        """Start MCP servers in the background."""
+        if self._runner:
+            try:
+                await self._runner.start_mcp()
+            except Exception:
+                pass
+
+    async def _stop_services(self) -> None:
+        """Stop MCP and LSP servers."""
+        if self._runner:
+            try:
+                await self._runner.stop_mcp()
+                await self._runner.stop_lsp()
+            except Exception:
+                pass
 
     # ── UI helpers ───────────────────────────────────────────────────────────
 
@@ -281,7 +296,8 @@ class CodyTUI(App):
                     break
 
                 if isinstance(event, ThinkingEvent):
-                    pass  # TUI: skip thinking display for now
+                    bubble.append(f"[dim]{event.content}[/dim]")
+                    scroll.scroll_end(animate=False)
                 elif isinstance(event, ToolCallEvent):
                     args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
                     bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
@@ -395,6 +411,10 @@ class CodyTUI(App):
 
     def action_quit_app(self) -> None:
         self.exit()
+
+    async def on_unmount(self) -> None:
+        """Clean up MCP/LSP servers on app exit."""
+        await self._stop_services()
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────

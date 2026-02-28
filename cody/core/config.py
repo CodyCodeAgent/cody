@@ -124,6 +124,42 @@ class Config(BaseModel):
             config.thinking_budget = int(env_thinking_budget)
         return config
 
+    def apply_overrides(
+        self,
+        model: Optional[str] = None,
+        model_base_url: Optional[str] = None,
+        model_api_key: Optional[str] = None,
+        coding_plan_key: Optional[str] = None,
+        coding_plan_protocol: Optional[str] = None,
+        enable_thinking: Optional[bool] = None,
+        thinking_budget: Optional[int] = None,
+        claude_oauth_token: Optional[str] = None,
+        skills: Optional[list[str]] = None,
+    ) -> "Config":
+        """Apply runtime overrides from CLI flags or request parameters.
+
+        Only non-None values are applied. Returns self for chaining.
+        """
+        if model is not None:
+            self.model = model
+        if model_base_url is not None:
+            self.model_base_url = model_base_url
+        if model_api_key is not None:
+            self.model_api_key = model_api_key
+        if coding_plan_key is not None:
+            self.coding_plan_key = coding_plan_key
+        if coding_plan_protocol is not None:
+            self.coding_plan_protocol = coding_plan_protocol
+        if enable_thinking is not None:
+            self.enable_thinking = enable_thinking
+        if thinking_budget is not None:
+            self.thinking_budget = thinking_budget
+        if claude_oauth_token is not None:
+            self.claude_oauth_token = claude_oauth_token
+        if skills is not None:
+            self.skills.enabled = skills
+        return self
+
     def save(self, path: Union[Path, str]):
         """Save configuration to file.
 
