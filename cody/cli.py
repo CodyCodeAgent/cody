@@ -27,16 +27,16 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
     Returns the CodyResult from the DoneEvent, or None.
     """
     in_thinking = False
+    thinking_buf = []
     result = None
     async for event in stream:
         if isinstance(event, ThinkingEvent):
-            if not in_thinking:
-                console.print("[dim]", end="")
-                in_thinking = True
-            console.print(event.content, end="")
+            in_thinking = True
+            thinking_buf.append(event.content)
         elif isinstance(event, ToolCallEvent):
             if in_thinking:
-                console.print("[/dim]")
+                console.print(rich_escape("".join(thinking_buf)), style="dim")
+                thinking_buf.clear()
                 in_thinking = False
             args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
             console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
@@ -46,12 +46,14 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
                 console.print(f"    [dim]{rich_escape(preview)}[/dim]")
         elif isinstance(event, TextDeltaEvent):
             if in_thinking:
-                console.print("[/dim]")
+                console.print(rich_escape("".join(thinking_buf)), style="dim")
+                thinking_buf.clear()
                 in_thinking = False
             console.print(event.content, end="")
         elif isinstance(event, DoneEvent):
             if in_thinking:
-                console.print("[/dim]")
+                console.print(rich_escape("".join(thinking_buf)), style="dim")
+                thinking_buf.clear()
             result = event.result
     console.print()
     return result
