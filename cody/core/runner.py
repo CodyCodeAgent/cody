@@ -185,12 +185,47 @@ StreamEvent = Union[
 ]
 
 
+def _build_allowed_roots(workdir: Path, config_roots: list[str], extra_roots: list[Path]) -> list[Path]:
+    """Merge config-level and runtime allowed roots into resolved absolute Paths.
+
+    *workdir* is always the implicit allowed root, so it is excluded from the
+    returned list (tools already check it separately).  Duplicates are dropped
+    while preserving order.  *config_roots* must contain absolute paths only;
+    a ValueError is raised otherwise.
+    """
+    workdir_resolved = workdir.resolve()
+    seen: set[Path] = {workdir_resolved}
+    result: list[Path] = []
+
+    for s in config_roots:
+        p = Path(s)
+        if not p.is_absolute():
+            raise ValueError(
+                f"security.allowed_roots entries must be absolute paths, got: {s!r}"
+            )
+        rp = p.resolve()
+        if rp not in seen:
+            result.append(rp)
+            seen.add(rp)
+
+    for r in extra_roots:
+        rp = r.resolve()
+        if rp not in seen:
+            result.append(rp)
+            seen.add(rp)
+
+    return result
+
+
 class AgentRunner:
     """Run Cody Agent with full context"""
 
-    def __init__(self, config: Config, workdir: Path):
+    def __init__(self, config: Config, workdir: Path, extra_roots: list[Path] | None = None):
         self.workdir = workdir
         self.config = config
+        self.allowed_roots: list[Path] = _build_allowed_roots(
+            workdir, config.security.allowed_roots, extra_roots or []
+        )
         self.skill_manager = SkillManager(self.config, workdir=self.workdir)
 
         # MCP client (created lazily on start)
@@ -327,6 +362,7 @@ class AgentRunner:
             config=self.config,
             workdir=self.workdir,
             skill_manager=self.skill_manager,
+            allowed_roots=self.allowed_roots,
             mcp_client=self._mcp_client,
             sub_agent_manager=self._sub_agent_manager,
             lsp_client=self._lsp_client,

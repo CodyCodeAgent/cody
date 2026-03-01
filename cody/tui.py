@@ -120,6 +120,7 @@ class CodyTUI(App):
         thinking: Optional[bool] = None,
         thinking_budget: Optional[int] = None,
         workdir: Optional[Path] = None,
+        extra_roots: Optional[list[str]] = None,
         session_id: Optional[str] = None,
         continue_last: bool = False,
     ) -> None:
@@ -132,6 +133,7 @@ class CodyTUI(App):
         self._thinking_override = thinking
         self._thinking_budget_override = thinking_budget
         self._workdir = (workdir or Path.cwd()).resolve()
+        self._extra_roots: list[str] = extra_roots or []
         self._session_id_arg = session_id
         self._continue_last = continue_last
 
@@ -158,9 +160,14 @@ class CodyTUI(App):
             coding_plan_protocol=self._coding_plan_protocol_override,
             enable_thinking=self._thinking_override,
             thinking_budget=self._thinking_budget_override,
+            extra_roots=self._extra_roots or None,
         )
 
-        self._runner = AgentRunner(config=self._config, workdir=self._workdir)
+        self._runner = AgentRunner(
+            config=self._config,
+            workdir=self._workdir,
+            extra_roots=[Path(r) for r in self._extra_roots],
+        )
         self._store = SessionStore()
 
         # Resolve or create session
@@ -500,6 +507,7 @@ def run_tui(
     thinking: Optional[bool] = None,
     thinking_budget: Optional[int] = None,
     workdir: Optional[str] = None,
+    extra_roots: Optional[list[str]] = None,
     session_id: Optional[str] = None,
     continue_last: bool = False,
 ) -> None:
@@ -514,6 +522,7 @@ def run_tui(
         thinking=thinking,
         thinking_budget=thinking_budget,
         workdir=workdir_path,
+        extra_roots=extra_roots,
         session_id=session_id,
         continue_last=continue_last,
     )

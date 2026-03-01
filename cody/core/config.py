@@ -53,6 +53,7 @@ class SecurityConfig(BaseModel):
     """Security configuration"""
     allowed_commands: Optional[list[str]] = None
     restricted_paths: list[str] = Field(default_factory=list)
+    allowed_roots: list[str] = Field(default_factory=list)
     require_confirmation: bool = True
 
 
@@ -146,10 +147,13 @@ class Config(BaseModel):
         thinking_budget: Optional[int] = None,
         claude_oauth_token: Optional[str] = None,
         skills: Optional[list[str]] = None,
+        extra_roots: Optional[list[str]] = None,
     ) -> "Config":
         """Apply runtime overrides from CLI flags or request parameters.
 
         Only non-None values are applied. Returns self for chaining.
+        *extra_roots* is additive — entries not already in security.allowed_roots
+        are appended; duplicates are silently ignored.
         """
         if model is not None:
             self.model = model
@@ -169,6 +173,12 @@ class Config(BaseModel):
             self.claude_oauth_token = claude_oauth_token
         if skills is not None:
             self.skills.enabled = skills
+        if extra_roots:
+            existing = set(self.security.allowed_roots)
+            for r in extra_roots:
+                if r not in existing:
+                    self.security.allowed_roots.append(r)
+                    existing.add(r)
         return self
 
     def save(self, path: Union[Path, str]):

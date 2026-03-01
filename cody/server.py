@@ -48,6 +48,7 @@ from .core.permissions import PermissionLevel, PermissionManager
 class RunRequest(BaseModel):
     prompt: str
     workdir: Optional[str] = None
+    allowed_roots: Optional[list[str]] = None
     model: Optional[str] = None
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
@@ -257,6 +258,7 @@ def _config_from_request(request: RunRequest) -> Config:
         enable_thinking=request.enable_thinking,
         thinking_budget=request.thinking_budget,
         skills=request.skills,
+        extra_roots=request.allowed_roots,
     )
 
 
@@ -413,7 +415,8 @@ async def run_agent(request: RunRequest):
     try:
         config = _config_from_request(request)
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
-        runner = AgentRunner(config=config, workdir=workdir)
+        extra_roots = [Path(r) for r in (request.allowed_roots or [])]
+        runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
 
         if request.session_id is not None:
             # Session-aware run
@@ -528,7 +531,8 @@ async def run_agent_stream(request: RunRequest):
         try:
             config = _config_from_request(request)
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
-            runner = AgentRunner(config=config, workdir=workdir)
+            extra_roots = [Path(r) for r in (request.allowed_roots or [])]
+            runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
 
             if request.session_id is not None:
                 store = _get_session_store()
@@ -943,8 +947,10 @@ class _WSConnection:
                 coding_plan_protocol=data.get("coding_plan_protocol"),
                 enable_thinking=data.get("enable_thinking"),
                 thinking_budget=data.get("thinking_budget"),
+                extra_roots=data.get("allowed_roots"),
             )
-            runner = AgentRunner(config=config, workdir=workdir)
+            extra_roots = [Path(r) for r in (data.get("allowed_roots") or [])]
+            runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
 
             await self.send_event("start", {"session_id": session_id})
 

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from cody.core.config import Config
-from cody.core.runner import AgentRunner
+from cody.core.runner import AgentRunner, _build_allowed_roots
 from cody.core.session import Message, SessionStore
 
 
@@ -454,3 +454,50 @@ def test_resolve_model_coding_plan_takes_priority():
     assert not isinstance(result, str)
     from pydantic_ai.models.openai import OpenAIChatModel
     assert isinstance(result, OpenAIChatModel)
+
+
+# ── _build_allowed_roots ──────────────────────────────────────────────────────
+
+
+def test_build_allowed_roots_empty(tmp_path):
+    """No config roots and no extra roots → empty list."""
+    result = _build_allowed_roots(tmp_path, [], [])
+    assert result == []
+
+
+def test_build_allowed_roots_absolute_path(tmp_path):
+    """Absolute string in config → resolved Path returned."""
+    other = tmp_path / "other"
+    other.mkdir()
+    result = _build_allowed_roots(tmp_path, [str(other)], [])
+    assert len(result) == 1
+    assert result[0] == other.resolve()
+
+
+def test_build_allowed_roots_extra_roots(tmp_path):
+    """Extra runtime roots are merged in."""
+    other = tmp_path / "other"
+    other.mkdir()
+    result = _build_allowed_roots(tmp_path, [], [other])
+    assert len(result) == 1
+    assert result[0] == other.resolve()
+
+
+def test_build_allowed_roots_deduplicates(tmp_path):
+    """Same path in config and extra_roots is deduplicated."""
+    other = tmp_path / "other"
+    other.mkdir()
+    result = _build_allowed_roots(tmp_path, [str(other)], [other])
+    assert len(result) == 1
+
+
+def test_build_allowed_roots_skips_workdir_itself(tmp_path):
+    """workdir in config roots is silently dropped."""
+    result = _build_allowed_roots(tmp_path, [str(tmp_path)], [])
+    assert result == []
+
+
+def test_build_allowed_roots_rejects_relative_config_path(tmp_path):
+    """Relative paths in config roots raise ValueError."""
+    with pytest.raises(ValueError, match="absolute paths"):
+        _build_allowed_roots(tmp_path, ["../relative"], [])

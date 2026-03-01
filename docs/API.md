@@ -23,6 +23,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 {
   "prompt": "创建一个 FastAPI 项目",
   "workdir": "/path/to/project",
+  "allowed_roots": [],
   "model": "anthropic:claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
@@ -36,7 +37,8 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | prompt | string | ✅ | 任务描述 |
-| workdir | string | ❌ | 工作目录，默认当前目录 |
+| workdir | string | ❌ | 工作目录（执行锚点），默认当前目录 |
+| allowed_roots | string[] | ❌ | 额外允许工具访问的目录（访问边界扩展），追加到配置文件设置之上 |
 | model | string | ❌ | 模型名称，默认配置中的模型 |
 | model_base_url | string | ❌ | 自定义 OpenAI 兼容 API 地址 |
 | model_api_key | string | ❌ | 自定义模型提供商的 API Key |

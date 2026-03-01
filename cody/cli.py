@@ -129,8 +129,10 @@ def main():
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
+              help='Additional directory to allow file access (repeatable)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, verbose):
+def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, verbose):
     """Run a single task with Cody
 
     Examples:
@@ -138,13 +140,15 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         cody run "refactor main.py to use async"
         cody run "写个单元测试" --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
         cody run "写个排序算法" --model qwen3.5 --coding-plan-key sk-sp-xxx
+        cody run --workdir /proj/frontend --allow-root /proj/backend "sync configs"
     """
     if not prompt:
         console.print("[yellow]Please provide a prompt[/yellow]")
         console.print("Example: cody run 'create a hello.py file'")
         return
 
-    config = Config.load(workdir=workdir).apply_overrides(
+    workdir_path = Path(workdir) if workdir else Path.cwd()
+    config = Config.load(workdir=workdir_path).apply_overrides(
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
@@ -152,9 +156,10 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         coding_plan_protocol=coding_plan_protocol,
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
+        extra_roots=list(extra_roots) or None,
     )
 
-    runner = AgentRunner(config=config, workdir=workdir)
+    runner = AgentRunner(config=config, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
 
     if verbose:
         console.print(f"[dim]Model: {config.model}[/dim]")
@@ -190,9 +195,11 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
+              help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, session_id, continue_last):
+def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -204,6 +211,7 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         cody chat --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody chat --continue
         cody chat --session abc123
+        cody chat --workdir /proj/frontend --allow-root /proj/backend
     """
     workdir_path = Path(workdir) if workdir else Path.cwd()
 
@@ -215,6 +223,7 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         coding_plan_protocol=coding_plan_protocol,
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
+        extra_roots=list(extra_roots) or None,
     )
     store = SessionStore()
 
@@ -242,7 +251,7 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
             workdir=str(workdir_path),
         )
 
-    runner = AgentRunner(config=config, workdir=workdir_path)
+    runner = AgentRunner(config=config, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
 
     # Print header
     console.print(
@@ -612,9 +621,11 @@ def config_show():
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
+              help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, session_id, continue_last):
+def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -625,6 +636,7 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
         cody tui --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
         cody tui --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody tui --continue
+        cody tui --workdir /proj/frontend --allow-root /proj/backend
     """
     from .tui import run_tui
     run_tui(
@@ -636,6 +648,7 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
         thinking=thinking,
         thinking_budget=thinking_budget,
         workdir=workdir,
+        extra_roots=list(extra_roots) or None,
         session_id=session_id,
         continue_last=continue_last,
     )

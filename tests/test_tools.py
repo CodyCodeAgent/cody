@@ -15,13 +15,14 @@ from cody.core.errors import ToolPathDenied, ToolInvalidParams
 
 class MockContext:
     """Mock RunContext for testing"""
-    def __init__(self, workdir):
+    def __init__(self, workdir, allowed_roots=None):
         workdir = Path(workdir)
         config = Config()
         self.deps = CodyDeps(
             config=config,
             workdir=workdir,
             skill_manager=SkillManager(config, workdir=workdir),
+            allowed_roots=allowed_roots or [],
         )
 
 
@@ -92,7 +93,7 @@ async def test_read_file_outside_workdir_allowed(tmp_path):
 async def test_security_check_write_outside(tmp_path):
     ctx = MockContext(tmp_path)
 
-    with pytest.raises(ToolPathDenied, match="outside working directory"):
+    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
         await write_file(ctx, "../../evil.txt", "bad content")
 
 
@@ -105,7 +106,7 @@ async def test_security_check_symlink_write_escape(tmp_path):
     link = tmp_path / "escape"
     link.symlink_to("/tmp")
 
-    with pytest.raises(ToolPathDenied, match="outside working directory"):
+    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
         await write_file(ctx, "escape/evil.txt", "bad content")
 
 
@@ -623,3 +624,57 @@ def test_iter_files_respects_gitignore(tmp_path):
     assert "app.py" in names
     assert "debug.log" not in names
     assert "app.log" not in names
+
+
+# ── allowed_roots tests ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_write_file_to_allowed_root(tmp_path):
+    """write_file succeeds when target is in allowed_roots."""
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+
+    ctx = MockContext(workdir, allowed_roots=[shared])
+    result = await write_file(ctx, str(shared / "output.txt"), "content")
+    assert "Written" in result
+    assert (shared / "output.txt").read_text() == "content"
+
+
+@pytest.mark.asyncio
+async def test_write_file_outside_all_roots_denied(tmp_path):
+    """write_file blocked when target is outside workdir AND allowed_roots."""
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+
+    ctx = MockContext(workdir, allowed_roots=[shared])
+    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+        await write_file(ctx, str(other / "bad.txt"), "evil")
+
+
+@pytest.mark.asyncio
+async def test_read_file_from_allowed_root(tmp_path):
+    """read_file can read from allowed_roots."""
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "data.txt").write_text("shared data")
+
+    ctx = MockContext(workdir, allowed_roots=[shared])
+    content = await read_file(ctx, str(shared / "data.txt"))
+    assert content == "shared data"
+
+
+@pytest.mark.asyncio
+async def test_empty_allowed_roots_same_as_before(tmp_path):
+    """Empty allowed_roots = old behavior (workdir only)."""
+    ctx = MockContext(tmp_path, allowed_roots=[])
+    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+        await write_file(ctx, "../../outside.txt", "bad")

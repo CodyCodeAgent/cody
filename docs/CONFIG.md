@@ -49,6 +49,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "security": {
     "allowed_commands": null,
     "restricted_paths": [],
+    "allowed_roots": [],
     "require_confirmation": true
   },
   "rate_limit": {
@@ -394,8 +395,8 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `security.restricted_paths`
 
-**类型:** `string[]`  
-**默认:** `[]`  
+**类型:** `string[]`
+**默认:** `[]`
 **说明:** 限制访问的路径列表
 
 ```json
@@ -405,6 +406,31 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   }
 }
 ```
+
+---
+
+#### `security.allowed_roots`
+
+**类型:** `string[]`
+**默认:** `[]`
+**说明:** 允许工具读写的额外目录列表（访问边界）。
+
+`workdir` 始终隐式允许，无需重复添加。列表为空时，工具只能访问 `workdir`。
+**仅支持绝对路径**，相对路径会在启动时抛出错误。
+
+```json
+{
+  "security": {
+    "allowed_roots": ["/data/shared", "/shared/libs"]
+  }
+}
+```
+
+**典型用例：**
+- Monorepo：`workdir` 为某子包，但需要访问根目录的共享库
+- AI 需要读写特定数据目录但不应访问整个系统
+
+也可通过 CLI 的 `--allow-root` 或 Server 请求的 `allowed_roots` 字段在运行时追加（不覆盖此配置）。
 
 ---
 

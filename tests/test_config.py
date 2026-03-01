@@ -29,6 +29,7 @@ def test_default_config():
     assert config.mcp.servers == []
     assert config.security.allowed_commands is None
     assert config.security.restricted_paths == []
+    assert config.security.allowed_roots == []
     assert config.security.require_confirmation is True
 
 
@@ -424,3 +425,49 @@ def test_config_load_workdir_no_project_config_falls_to_global(tmp_path, monkeyp
 
     config = Config.load(workdir=project_dir)
     assert config.model == "global-model"
+
+
+# ── SecurityConfig.allowed_roots ─────────────────────────────────────────────
+
+
+def test_security_config_allowed_roots_default():
+    sec = SecurityConfig()
+    assert sec.allowed_roots == []
+
+
+def test_security_config_allowed_roots_from_json(tmp_path):
+    data = {"security": {"allowed_roots": ["/tmp/shared", "/data/models"]}}
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(data))
+    config = Config.load(config_path)
+    assert config.security.allowed_roots == ["/tmp/shared", "/data/models"]
+
+
+def test_apply_overrides_extra_roots_additive():
+    config = Config()
+    config.security.allowed_roots = ["/existing/root"]
+    config.apply_overrides(extra_roots=["/new/root"])
+    assert "/existing/root" in config.security.allowed_roots
+    assert "/new/root" in config.security.allowed_roots
+    assert len(config.security.allowed_roots) == 2
+
+
+def test_apply_overrides_extra_roots_no_duplicates():
+    config = Config()
+    config.security.allowed_roots = ["/some/root"]
+    config.apply_overrides(extra_roots=["/some/root"])
+    assert config.security.allowed_roots.count("/some/root") == 1
+
+
+def test_apply_overrides_extra_roots_none_is_noop():
+    config = Config()
+    config.security.allowed_roots = ["/a"]
+    config.apply_overrides(extra_roots=None)
+    assert config.security.allowed_roots == ["/a"]
+
+
+def test_apply_overrides_extra_roots_empty_is_noop():
+    config = Config()
+    config.security.allowed_roots = ["/a"]
+    config.apply_overrides(extra_roots=[])
+    assert config.security.allowed_roots == ["/a"]

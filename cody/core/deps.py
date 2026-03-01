@@ -1,6 +1,6 @@
 """Cody agent dependencies - extracted to break circular imports."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -20,6 +20,7 @@ class CodyDeps:
     config: Config
     workdir: Path
     skill_manager: SkillManager
+    allowed_roots: list[Path] = field(default_factory=list)
     mcp_client: Optional[MCPClient] = None
     sub_agent_manager: Optional[SubAgentManager] = None
     lsp_client: Optional[LSPClient] = None

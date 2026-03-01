@@ -93,7 +93,8 @@ cody run "任务描述" \
 | `--coding-plan-protocol` | Coding Plan 协议类型 | `openai` |
 | `--thinking` | 启用思考模式（显示推理过程） | 配置文件中设置 |
 | `--thinking-budget` | 思考模式最大 token 数 | - |
-| `--workdir` | 工作目录 | 当前目录 |
+| `--workdir` | 工作目录（执行锚点，用于 config 加载和命令执行） | 当前目录 |
+| `--allow-root` | 额外允许访问的目录（可重复，扩展访问边界） | - |
 | `--verbose`, `-v` | 详细输出（显示工具调用结果） | `false` |
 
 ### 使用示例
@@ -119,6 +120,19 @@ cody run "修复测试失败" --workdir /path/to/project
 
 # 使用绝对路径
 cody run "添加日志功能" --workdir ~/projects/myapp
+```
+
+#### 多目录访问（Monorepo 场景）
+
+```bash
+# 同时访问 frontend 和 backend 目录
+cody run --workdir /proj/frontend --allow-root /proj/backend "同步两个项目的类型定义"
+
+# 允许访问共享库目录
+cody run --workdir /proj/api --allow-root /shared/libs "修复引用"
+
+# 多个额外目录
+cody run --workdir /proj --allow-root /data/train --allow-root /data/test "运行评估"
 ```
 
 #### 使用不同模型
@@ -222,7 +236,8 @@ cody chat \
 | `--coding-plan-protocol` | Coding Plan 协议类型 |
 | `--thinking` | 启用思考模式 |
 | `--thinking-budget` | 思考 token 预算 |
-| `--workdir` | 工作目录 |
+| `--workdir` | 工作目录（执行锚点） |
+| `--allow-root` | 额外允许访问的目录（可重复） |
 | `--session` | 恢复指定会话 |
 | `--continue` | 继续上次会话 |
 
