@@ -8,6 +8,7 @@ from typing import Optional
 import click
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from .core import Config, AgentRunner, SessionStore
@@ -38,11 +39,11 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
                 console.print("[/dim]")
                 in_thinking = False
             args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
-            console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
+            console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
         elif isinstance(event, ToolResultEvent):
             if verbose:
                 preview = event.result[:200]
-                console.print(f"    [dim]{preview}[/dim]")
+                console.print(f"    [dim]{rich_escape(preview)}[/dim]")
         elif isinstance(event, TextDeltaEvent):
             if in_thinking:
                 console.print("[/dim]")
@@ -258,10 +259,10 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
                     store.add_message(session.id, "assistant", result.output)
 
             except Exception as e:
-                console.print(f"\n[red]Error: {e}[/red]\n")
+                console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
 
     except Exception as e:
-        console.print(f"[red]Fatal error: {e}[/red]")
+        console.print(f"[red]Fatal error: {rich_escape(str(e))}[/red]")
         sys.exit(1)
     finally:
         asyncio.run(runner.stop_mcp())
