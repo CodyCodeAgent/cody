@@ -11,6 +11,7 @@ from .mcp_client import MCPClient
 from .permissions import PermissionDeniedError, PermissionLevel, PermissionManager
 from .rate_limiter import RateLimitResult, RateLimiter
 from .deps import CodyDeps
+from .model_resolver import resolve_model
 from .project_instructions import (
     CODY_MD_FILENAME, CODY_MD_TEMPLATE, generate_project_instructions, load_project_instructions,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "RateLimiter",
     "RateLimitResult",
     "CodyDeps",
+    "resolve_model",
     "CODY_MD_FILENAME",
     "CODY_MD_TEMPLATE",
     "generate_project_instructions",

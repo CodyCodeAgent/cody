@@ -197,7 +197,7 @@ async def generate_project_instructions(workdir: Path, config: "Config") -> str:
     here to avoid a circular dependency (same pattern as sub_agent.py).
     """
     # Lazy import to break circular dependency: runner → project_instructions
-    from .runner import AgentRunner  # noqa: PLC0415
+    from .runner import AgentRunner  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     runner = AgentRunner(config=config, workdir=workdir)
     result = await runner.run(_GENERATE_PROMPT)
