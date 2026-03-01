@@ -6,14 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [Unreleased]
+## [1.3.0] - 2026-03-01
 
 ### Added
 - **CODY.md project instructions** — Cody now reads `CODY.md` at the start of every session and injects its content into the system prompt, similar to Claude Code's `CLAUDE.md`.
   - Two-layer loading: `~/.cody/CODY.md` (global user-level) + `<workdir>/CODY.md` (project-level); both are optional and additive
   - Global instructions come first, project instructions appended after a `---` separator
-  - `cody init` now generates a `CODY.md` template in the project root
-  - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
+  - `cody init` uses AI (AgentRunner) to analyze the project and generate a filled-in `CODY.md`; fails loudly on error (no silent fallback)
+  - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `generate_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
 
 ---
 
