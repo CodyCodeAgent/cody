@@ -11,7 +11,7 @@ from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.css.query import NoMatches
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Header, Input, Static
 
 from .core import AgentRunner, Config, SessionStore
 
@@ -60,6 +60,14 @@ class StatusLine(Static):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(" Loading...", *args, **kwargs)
 
+    def on_mount(self) -> None:
+        self.styles.dock = "bottom"
+        self.styles.height = 1
+        self.styles.width = "100%"
+        self.styles.background = "#003366"
+        self.styles.color = "#ffffff"
+        self.styles.padding = (0, 2)
+
 
 # ── Main App ─────────────────────────────────────────────────────────────────
 
@@ -91,15 +99,6 @@ class CodyTUI(App):
     #prompt-input {
         dock: bottom;
         margin: 0 2;
-    }
-
-    StatusLine {
-        dock: bottom;
-        height: 1;
-        width: 100%;
-        background: #003366;
-        color: #ffffff;
-        padding: 0 2;
     }
     """
 
