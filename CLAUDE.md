@@ -97,6 +97,30 @@ cody-server --port 8000
 cody tui
 ```
 
+## 文档更新
+
+**开发完新功能后，必须同步更新项目中的所有相关 `.md` 文档**，保持文档与代码同步。
+
+### 需要检查的文档目录
+
+| 目录 | 说明 |
+|------|------|
+| `./` | 根目录文档（README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等） |
+| `docs/` | 所有项目文档（CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等） |
+
+### 检查清单
+
+提交前确认所有相关的 `.md` 文档已更新：
+
+- [ ] 根目录文档 — README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等
+- [ ] docs/ 目录文档 — CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等
+
+> **原则**：文档是代码的一部分，不是事后补充。代码合并前，文档必须先更新。
+> 
+> **提示**：使用 `find . -name "*.md"` 列出所有 Markdown 文档，逐一检查是否需要更新。
+
+---
+
 ## 版本管理
 
 版本号在 **5 个位置**，必须同步更新：
