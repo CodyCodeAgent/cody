@@ -50,12 +50,20 @@ def test_init_creates_directory(runner, tmp_path, monkeypatch):
         assert 'AI-generated' in (Path.cwd() / 'CODY.md').read_text()
 
 
-def test_init_already_exists(runner, tmp_path):
+def test_init_already_exists(runner, tmp_path, monkeypatch):
+    async def _fake_generate(workdir, config):
+        return "# CODY.md\n\nAI content."
+
+    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+
     with runner.isolated_filesystem(temp_dir=tmp_path):
         (Path.cwd() / '.cody').mkdir()
         result = runner.invoke(main, ['init'])
-        assert result.exit_code == 0
-        assert 'already exists' in result.output
+        assert result.exit_code == 0, result.output
+        # .cody already existed → skip scaffold message
+        assert 'skipping scaffold' in result.output
+        # CODY.md didn't exist yet → still generated
+        assert (Path.cwd() / 'CODY.md').exists()
 
 
 def test_config_show(runner):
