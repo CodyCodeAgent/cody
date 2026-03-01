@@ -97,8 +97,8 @@ class CodyTUI(App):
         dock: bottom;
         height: 1;
         width: 100%;
-        background: #262640;
-        color: #aaaadd;
+        background: #003366;
+        color: #ffffff;
         padding: 0 2;
     }
     """
