@@ -56,7 +56,9 @@ class StreamBubble(Static):
 
 class StatusLine(Static):
     """Bottom status line showing session/model info."""
-    pass
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(" Loading...", *args, **kwargs)
 
 
 # ── Main App ─────────────────────────────────────────────────────────────────
@@ -88,14 +90,15 @@ class CodyTUI(App):
 
     #prompt-input {
         dock: bottom;
-        margin: 0 2 1 2;
+        margin: 0 2;
     }
 
-    #status-line {
+    StatusLine {
         dock: bottom;
         height: 1;
-        background: #303030;
-        color: #b0b0b0;
+        width: 100%;
+        background: #262640;
+        color: #aaaadd;
         padding: 0 2;
     }
     """
@@ -144,9 +147,9 @@ class CodyTUI(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield VerticalScroll(id="chat-scroll")
+        yield Footer()
         yield StatusLine(id="status-line")
         yield Input(placeholder="Type a message... (Enter to send)", id="prompt-input")
-        yield Footer()
 
     def on_mount(self) -> None:
         self._config = Config.load(workdir=self._workdir).apply_overrides(
