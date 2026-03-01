@@ -147,7 +147,6 @@ class CodyTUI(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield VerticalScroll(id="chat-scroll")
-        yield Footer()
         yield StatusLine(id="status-line")
         yield Input(placeholder="Type a message... (Enter to send)", id="prompt-input")
 
