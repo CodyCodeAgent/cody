@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cody-ai"
-version = "1.2.0"
+version = "1.3.0"
 description = "AI coding assistant with RPC support, dynamic skills, and MCP integration"
 authors = [{name = "GouChao"}]
 readme = "README.md"

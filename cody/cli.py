@@ -13,6 +13,7 @@ from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from .core import Config, AgentRunner, SessionStore
+from .core.project_instructions import CODY_MD_FILENAME, generate_project_instructions
 from .core.runner import (
     CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
@@ -113,7 +114,6 @@ def main():
 
     A powerful AI assistant with RPC support, dynamic skills, and MCP integration.
     """
-    pass
 
 
 # ── Run command ──────────────────────────────────────────────────────────────
@@ -129,8 +129,10 @@ def main():
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
+              help='Additional directory to allow file access (repeatable)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, verbose):
+def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, verbose):
     """Run a single task with Cody
 
     Examples:
@@ -138,13 +140,15 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         cody run "refactor main.py to use async"
         cody run "写个单元测试" --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
         cody run "写个排序算法" --model qwen3.5 --coding-plan-key sk-sp-xxx
+        cody run --workdir /proj/frontend --allow-root /proj/backend "sync configs"
     """
     if not prompt:
         console.print("[yellow]Please provide a prompt[/yellow]")
         console.print("Example: cody run 'create a hello.py file'")
         return
 
-    config = Config.load(workdir=workdir).apply_overrides(
+    workdir_path = Path(workdir) if workdir else Path.cwd()
+    config = Config.load(workdir=workdir_path).apply_overrides(
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
@@ -152,9 +156,10 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         coding_plan_protocol=coding_plan_protocol,
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
+        extra_roots=list(extra_roots) or None,
     )
 
-    runner = AgentRunner(config=config, workdir=workdir)
+    runner = AgentRunner(config=config, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
 
     if verbose:
         console.print(f"[dim]Model: {config.model}[/dim]")
@@ -190,9 +195,11 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
+              help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, session_id, continue_last):
+def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -204,6 +211,7 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         cody chat --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody chat --continue
         cody chat --session abc123
+        cody chat --workdir /proj/frontend --allow-root /proj/backend
     """
     workdir_path = Path(workdir) if workdir else Path.cwd()
 
@@ -215,6 +223,7 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
         coding_plan_protocol=coding_plan_protocol,
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
+        extra_roots=list(extra_roots) or None,
     )
     store = SessionStore()
 
@@ -242,7 +251,7 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
             workdir=str(workdir_path),
         )
 
-    runner = AgentRunner(config=config, workdir=workdir_path)
+    runner = AgentRunner(config=config, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
 
     # Print header
     console.print(
@@ -351,7 +360,7 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
         console.print("[dim]Bye![/dim]")
         return False
 
-    elif cmd == "/sessions":
+    if cmd == "/sessions":
         sessions = store.list_sessions(limit=10)
         if not sessions:
             console.print("[yellow]No sessions found[/yellow]")
@@ -367,12 +376,12 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
         console.print()
         return True
 
-    elif cmd == "/clear":
+    if cmd == "/clear":
         console.clear()
         console.print("[dim]Screen cleared. Session continues.[/dim]\n")
         return True
 
-    elif cmd == "/help":
+    if cmd == "/help":
         console.print(
             Panel(
                 "/quit     - Exit chat\n"
@@ -386,10 +395,9 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
         console.print()
         return True
 
-    else:
-        console.print(f"[yellow]Unknown command: {cmd}[/yellow]")
-        console.print("[dim]Type /help for available commands[/dim]\n")
-        return True
+    console.print(f"[yellow]Unknown command: {cmd}[/yellow]")
+    console.print("[dim]Type /help for available commands[/dim]\n")
+    return True
 
 
 # ── Session management commands ──────────────────────────────────────────────
@@ -398,7 +406,6 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
 @main.group()
 def sessions():
     """Manage chat sessions"""
-    pass
 
 
 @sessions.command('list')
@@ -470,24 +477,36 @@ def sessions_delete(session_id):
 @main.command()
 def init():
     """Initialize Cody in current directory"""
-    cody_dir = Path.cwd() / ".cody"
+    workdir = Path.cwd()
+    cody_dir = workdir / ".cody"
     skills_dir = cody_dir / "skills"
     config_file = cody_dir / "config.json"
+    cody_md_file = workdir / CODY_MD_FILENAME
 
+    created: list[str] = []
+
+    # Create .cody/ scaffold only when it doesn't already exist.
     if cody_dir.exists():
-        console.print("[yellow].cody directory already exists[/yellow]")
-        return
+        console.print("[yellow].cody directory already exists — skipping scaffold[/yellow]")
+    else:
+        cody_dir.mkdir()
+        skills_dir.mkdir()
+        config = Config.load(workdir=workdir)
+        config.save(config_file)
+        created += [".cody/", ".cody/skills/", ".cody/config.json"]
 
-    cody_dir.mkdir()
-    skills_dir.mkdir()
-
-    config = Config()
-    config.save(config_file)
+    # Always (re-)generate CODY.md via AI analysis.
+    config = Config.load(workdir=workdir)
+    verb = "Updated" if cody_md_file.exists() else "Created"
+    with console.status("[cyan]Analyzing project to generate CODY.md…[/cyan]"):
+        cody_md_content = asyncio.run(generate_project_instructions(workdir, config))
+    cody_md_file.write_text(cody_md_content, encoding="utf-8")
+    created.append(f"{CODY_MD_FILENAME} [dim](AI-generated)[/dim]")
 
     console.print("[green]Initialized Cody in current directory[/green]")
-    console.print("  Created .cody/")
-    console.print("  Created .cody/skills/")
-    console.print("  Created .cody/config.json")
+    for item in created[:-1]:
+        console.print(f"  Created {item}")
+    console.print(f"  {verb} {created[-1]}")
 
 
 # ── Skills commands ──────────────────────────────────────────────────────────
@@ -496,7 +515,6 @@ def init():
 @main.group()
 def skills():
     """Manage skills"""
-    pass
 
 
 @skills.command('list')
@@ -590,7 +608,6 @@ def skills_disable(skill_name):
 @main.group()
 def config():
     """Manage configuration"""
-    pass
 
 
 @config.command('show')
@@ -612,9 +629,11 @@ def config_show():
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
+@click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
+              help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, session_id, continue_last):
+def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -625,6 +644,7 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
         cody tui --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
         cody tui --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody tui --continue
+        cody tui --workdir /proj/frontend --allow-root /proj/backend
     """
     from .tui import run_tui
     run_tui(
@@ -636,6 +656,7 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
         thinking=thinking,
         thinking_budget=thinking_budget,
         workdir=workdir,
+        extra_roots=list(extra_roots) or None,
         session_id=session_id,
         continue_last=continue_last,
     )

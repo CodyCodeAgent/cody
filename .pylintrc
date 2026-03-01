@@ -1,0 +1,113 @@
+[MAIN]
+jobs=1
+
+[MESSAGES CONTROL]
+disable=
+    # ── Cyclic imports: unavoidable with lazy imports used to break circular deps
+    #    (project_instructions → runner, sub_agent → tools → deps)
+    cyclic-import,
+
+    # ── Duplicate code: structural duplication inherent to CLI/TUI/Server design
+    #    (cli.py vs tui.py params, client.py vs server.py fields, test patterns)
+    duplicate-code,
+
+    # ── Missing docstrings: project does not require docstrings on every item
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+
+    # ── Pydantic false positives: pylint cannot resolve pydantic Field members
+    no-member,
+
+    # ── Test patterns: mock function signatures must match the real API
+    unused-argument,
+
+    # ── Test patterns: MockRunner and similar names are acceptable in tests
+    #    and server.py module-level singletons use underscore prefix by convention
+    invalid-name,
+
+    # ── Test patterns: `== []` comparisons are more explicit and readable in tests
+    use-implicit-booleaness-not-comparison,
+
+    # ── Test patterns: intentional `yield` after `raise` in async generator mocks
+    unreachable,
+
+    # ── Test/CLI patterns: wrong import order in files that mix stdlib/third-party
+    wrong-import-order,
+
+    # ── Textual/Click framework patterns: attrs defined in lifecycle callbacks,
+    #    not in __init__; global singletons in server.py startup
+    attribute-defined-outside-init,
+    global-statement,
+    global-variable-not-assigned,
+
+    # ── Known false-positive: subprocess.Process IS a valid attribute
+    no-member,
+
+    # ── Lazy imports: intentional pattern to break circular dependencies
+    import-outside-toplevel,
+
+    # ── Protected access: legitimate in tests and CLI internals
+    protected-access,
+
+    # ── Re-imports: some tests intentionally re-import inside test functions
+    reimported,
+
+    # ── Broad exception: intentional catch-all in CLI/server error handlers
+    broad-exception-caught,
+
+    # ── raise-missing-from: less critical; addressed in main source files
+    raise-missing-from,
+
+    # ── Too many lines in a single module: tools.py and server.py are large by design
+    too-many-lines,
+
+    # ── Too few public methods: data classes and mock objects don't need 2 methods
+    too-few-public-methods,
+
+    # ── False positive: pylint cannot infer subscriptability of typed dicts/attrs
+    unsubscriptable-object,
+
+    # ── False positive: Click/uvicorn entry points receive args from the framework
+    no-value-for-parameter,
+
+    # ── Line length: already enforced by ruff; pylint check is redundant
+    line-too-long,
+
+    # ── Redefining outer names: common in Click CLI decorators
+    redefined-outer-name,
+
+    # ── Subprocess: check= is handled by caller for intentional non-checked runs
+    subprocess-run-check,
+
+    # ── Encoding: tools.py uses encoding='utf-8' where it matters; binary-mode
+    #    fallbacks and /dev/null sinks are acceptable without explicit encoding
+    unspecified-encoding,
+
+    # ── Nested blocks: deeply-nested streaming/event logic is intentional
+    too-many-nested-blocks,
+
+    # ── Unused variable: acceptable in test scaffolding
+    unused-variable
+
+[DESIGN]
+# Default is 7; tools.py and runner.py legitimately exceed this
+max-args=12
+# Textual TUI class has many reactive attributes; raise to accommodate
+max-attributes=25
+# Default is 12; tools.py dispatch logic legitimately branches more
+max-branches=20
+# Default is 15; complex orchestration functions in runner.py / tools.py
+max-locals=20
+# Default is 50; some runner/tools functions are longer due to branching
+max-statements=60
+# Default is 5; positional args in tools
+max-positional-arguments=12
+
+[FORMAT]
+# Match the project's ruff / black line length
+max-line-length=100
+
+[SIMILARITIES]
+# Raise minimum similarity lines to avoid false positives on short boilerplate
+min-similarity-lines=8

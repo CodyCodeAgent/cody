@@ -39,6 +39,8 @@ from .permissions import PermissionLevel, PermissionManager
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
+from .model_resolver import resolve_model
+from .project_instructions import load_project_instructions
 from . import tools
 
 logger = logging.getLogger(__name__)
@@ -185,12 +187,47 @@ StreamEvent = Union[
 ]
 
 
+def _build_allowed_roots(workdir: Path, config_roots: list[str], extra_roots: list[Path]) -> list[Path]:
+    """Merge config-level and runtime allowed roots into resolved absolute Paths.
+
+    *workdir* is always the implicit allowed root, so it is excluded from the
+    returned list (tools already check it separately).  Duplicates are dropped
+    while preserving order.  *config_roots* must contain absolute paths only;
+    a ValueError is raised otherwise.
+    """
+    workdir_resolved = workdir.resolve()
+    seen: set[Path] = {workdir_resolved}
+    result: list[Path] = []
+
+    for s in config_roots:
+        p = Path(s)
+        if not p.is_absolute():
+            raise ValueError(
+                f"security.allowed_roots entries must be absolute paths, got: {s!r}"
+            )
+        rp = p.resolve()
+        if rp not in seen:
+            result.append(rp)
+            seen.add(rp)
+
+    for r in extra_roots:
+        rp = r.resolve()
+        if rp not in seen:
+            result.append(rp)
+            seen.add(rp)
+
+    return result
+
+
 class AgentRunner:
     """Run Cody Agent with full context"""
 
-    def __init__(self, config: Config, workdir: Path):
+    def __init__(self, config: Config, workdir: Path, extra_roots: list[Path] | None = None):
         self.workdir = workdir
         self.config = config
+        self.allowed_roots: list[Path] = _build_allowed_roots(
+            workdir, config.security.allowed_roots, extra_roots or []
+        )
         self.skill_manager = SkillManager(self.config, workdir=self.workdir)
 
         # MCP client (created lazily on start)
@@ -225,80 +262,26 @@ class AgentRunner:
         # Create agent
         self.agent = self._create_agent()
 
-    # Coding Plan Base URLs
-    CODING_PLAN_OPENAI_URL = "https://coding.dashscope.aliyuncs.com/v1"
-    CODING_PLAN_ANTHROPIC_URL = "https://coding.dashscope.aliyuncs.com/apps/anthropic"
-
     def _resolve_model(self):
         """Resolve model to a Pydantic AI model instance.
 
-        Priority:
-        1. coding_plan_key → Aliyun Bailian Coding Plan (OpenAI or Anthropic protocol)
-        2. model_base_url → OpenAIProvider (OpenAI-compatible APIs)
-        3. claude_oauth_token → AnthropicProvider with OAuth auth_token
-        4. Default → model string for Pydantic AI's built-in routing
-           (uses ANTHROPIC_API_KEY env var for Anthropic models)
+        Delegates to model_resolver.resolve_model() which is shared with
+        SubAgentManager to keep both in sync.
         """
-        if self.config.coding_plan_key:
-            protocol = self.config.coding_plan_protocol
-
-            if protocol == "anthropic":
-                from anthropic import AsyncAnthropic
-                from pydantic_ai.models.anthropic import AnthropicModel
-                from pydantic_ai.providers.anthropic import AnthropicProvider
-
-                client = AsyncAnthropic(
-                    api_key=self.config.coding_plan_key,
-                    base_url=self.CODING_PLAN_ANTHROPIC_URL,
-                )
-                provider = AnthropicProvider(anthropic_client=client)
-                model_name = self.config.model
-                if model_name.startswith("anthropic:"):
-                    model_name = model_name[len("anthropic:"):]
-                return AnthropicModel(model_name, provider=provider)
-            else:
-                from pydantic_ai.models.openai import OpenAIChatModel
-                from pydantic_ai.providers.openai import OpenAIProvider
-
-                provider = OpenAIProvider(
-                    base_url=self.CODING_PLAN_OPENAI_URL,
-                    api_key=self.config.coding_plan_key,
-                )
-                return OpenAIChatModel(self.config.model, provider=provider)
-
-        if self.config.model_base_url:
-            from pydantic_ai.models.openai import OpenAIChatModel
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            provider = OpenAIProvider(
-                base_url=self.config.model_base_url,
-                api_key=self.config.model_api_key or "not-set",
-            )
-            return OpenAIChatModel(self.config.model, provider=provider)
-
-        if self.config.claude_oauth_token:
-            from anthropic import AsyncAnthropic
-            from pydantic_ai.models.anthropic import AnthropicModel
-            from pydantic_ai.providers.anthropic import AnthropicProvider
-
-            client = AsyncAnthropic(auth_token=self.config.claude_oauth_token)
-            provider = AnthropicProvider(anthropic_client=client)
-            # Strip "anthropic:" prefix if present for AnthropicModel
-            model_name = self.config.model
-            if model_name.startswith("anthropic:"):
-                model_name = model_name[len("anthropic:"):]
-            return AnthropicModel(model_name, provider=provider)
-
-        return self.config.model
+        return resolve_model(self.config)
 
     def _create_agent(self) -> Agent:
         """Create Pydantic AI Agent with tools.
 
         Tools are registered declaratively via tools.register_tools() —
         see tools.py CORE_TOOLS / MCP_TOOLS for the full list.
+
+        System prompt order:
+          1. Base persona
+          2. CODY.md project instructions (global ~/.cody/CODY.md + project CODY.md)
+          3. Available skills XML (Agent Skills standard)
         """
-        # Build system prompt with available skills (Agent Skills standard)
-        skills_xml = self.skill_manager.to_prompt_xml()
+        # 1. Base persona
         system_parts = [
             "You are Cody, an AI coding assistant. "
             "You have access to file operations, shell commands, skills, web search, "
@@ -308,6 +291,16 @@ class AgentRunner:
             "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
             "Always execute commands and file operations as needed to complete tasks.",
         ]
+
+        # 2. CODY.md project instructions (global + project, merged)
+        project_instructions = load_project_instructions(self.workdir)
+        if project_instructions:
+            system_parts.append(
+                "## Project Instructions (from CODY.md)\n\n" + project_instructions
+            )
+
+        # 3. Available skills
+        skills_xml = self.skill_manager.to_prompt_xml()
         if skills_xml:
             system_parts.append(skills_xml)
 
@@ -327,6 +320,7 @@ class AgentRunner:
             config=self.config,
             workdir=self.workdir,
             skill_manager=self.skill_manager,
+            allowed_roots=self.allowed_roots,
             mcp_client=self._mcp_client,
             sub_agent_manager=self._sub_agent_manager,
             lsp_client=self._lsp_client,

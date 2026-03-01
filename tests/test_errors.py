@@ -73,12 +73,8 @@ def test_skill_not_found_structured():
     assert data["error"]["code"] == "SKILL_NOT_FOUND"
 
 
-def test_session_not_found_structured(tmp_path):
-    from cody.core.session import SessionStore
-    store = SessionStore(db_path=tmp_path / "test.db")
-    with patch("cody.server._get_session_store", return_value=store):
-        client = TestClient(app)
-        resp = client.get("/sessions/nonexistent_id")
+def test_session_not_found_structured(isolated_store, test_client):
+    resp = test_client.get("/sessions/nonexistent_id")
     assert resp.status_code == 404
     data = resp.json()
     assert data["error"]["code"] == "SESSION_NOT_FOUND"
@@ -109,7 +105,7 @@ def test_run_error_structured():
     assert "model down" in data["error"]["message"]
 
 
-def test_stream_error_structured():
+def test_stream_error_structured(test_client):
     async def failing_stream(prompt, message_history=None):
         raise RuntimeError("stream broke")
         yield  # make it a generator
@@ -117,8 +113,7 @@ def test_stream_error_structured():
     with patch("cody.server.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = failing_stream
-        client = TestClient(app)
-        resp = client.post("/run/stream", json={"prompt": "test"})
+        resp = test_client.post("/run/stream", json={"prompt": "test"})
 
     # SSE streams still return 200 but error in body
     assert resp.status_code == 200

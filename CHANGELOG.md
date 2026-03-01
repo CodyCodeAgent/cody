@@ -6,14 +6,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.3.0] - 2026-03-01
+
+### Added
+- **CODY.md project instructions** — Cody now reads `CODY.md` at the start of every session and injects its content into the system prompt, similar to Claude Code's `CLAUDE.md`.
+  - Two-layer loading: `~/.cody/CODY.md` (global user-level) + `<workdir>/CODY.md` (project-level); both are optional and additive
+  - Global instructions come first, project instructions appended after a `---` separator
+  - `cody init` always (re-)generates `CODY.md` via AI analysis — shows "Created" on first run, "Updated" on subsequent runs; if `.cody/` already exists, scaffold is skipped but `CODY.md` is still regenerated; fails loudly on error (no silent fallback)
+  - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `generate_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
+- **`read_file` encoding safety** — tool now reads with `encoding="utf-8", errors="replace"` instead of platform default, preventing `UnicodeDecodeError` on binary or non-UTF-8 files
+
+---
+
 ## [1.2.0] - 2026-03-01
 
 ### Added
+- **Multi-workdir support (`allowed_roots`)** — File tools can now access directories beyond the primary `workdir`. Two distinct concepts:
+  - `workdir` — execution anchor (config discovery, subprocess cwd, session tag, LSP root)
+  - `allowed_roots` — access boundary (directories tools can read/write)
+  - Configurable via `security.allowed_roots` in `.cody/config.json`, `--allow-root` CLI flag (run/chat/tui), and `allowed_roots` field in Server requests
+  - Additive merging: config + CLI/request roots are combined; `workdir` is always implicitly allowed
+  - Config entries must be absolute paths (relative paths raise `ValueError` at startup)
 - **Tool execution spinner** — CLI and TUI now show animated progress indicator with elapsed time during tool execution, replacing the previous "stuck" behavior
 - **Context compression notification** — New `CompactEvent` in stream events; CLI prints a yellow notification line, TUI shows a system bubble when context auto-compaction occurs
 - **TUI slash command hints** — Status line shows matching commands with descriptions as user types `/` in the input field
 
 ### Changed
+- `_resolve_and_check()` in `tools.py` now accepts `allowed_roots` parameter; error message updated to "outside all permitted directories"
+- `AgentRunner.__init__` accepts optional `extra_roots: list[Path]` parameter
+- `CodyDeps` gains `allowed_roots: list[Path]` field (defaults to `[]`, backward compatible)
+- `SecurityConfig` gains `allowed_roots: list[str]` field (defaults to `[]`)
+- `Config.apply_overrides()` gains `extra_roots` parameter (additive semantics)
 - `_compact_history_if_needed` now returns `(history, CompactResult)` tuple instead of just history
 - `StreamEvent` union type now includes `CompactEvent`
 

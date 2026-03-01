@@ -32,22 +32,55 @@ def test_run_no_prompt(runner):
     assert 'Please provide a prompt' in result.output
 
 
-def test_init_creates_directory(runner, tmp_path):
+def test_init_creates_directory(runner, tmp_path, monkeypatch):
+    # Mock AI generation so the test doesn't need a real API key.
+    async def _fake_generate(workdir, config):
+        return "# CODY.md\n\nAI-generated content."
+
+    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(main, ['init'])
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
         assert 'Initialized' in result.output
         assert (Path.cwd() / '.cody').exists()
         assert (Path.cwd() / '.cody' / 'skills').exists()
         assert (Path.cwd() / '.cody' / 'config.json').exists()
+        assert (Path.cwd() / 'CODY.md').exists()
+        assert 'AI-generated' in (Path.cwd() / 'CODY.md').read_text()
 
 
-def test_init_already_exists(runner, tmp_path):
+def test_init_already_exists(runner, tmp_path, monkeypatch):
+    async def _fake_generate(workdir, config):
+        return "# CODY.md\n\nAI content."
+
+    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+
     with runner.isolated_filesystem(temp_dir=tmp_path):
         (Path.cwd() / '.cody').mkdir()
         result = runner.invoke(main, ['init'])
-        assert result.exit_code == 0
-        assert 'already exists' in result.output
+        assert result.exit_code == 0, result.output
+        # .cody already existed → skip scaffold message
+        assert 'skipping scaffold' in result.output
+        # CODY.md always (re-)generated
+        assert (Path.cwd() / 'CODY.md').exists()
+        assert 'AI-generated' in result.output
+
+
+def test_init_updates_existing_cody_md(runner, tmp_path, monkeypatch):
+    async def _fake_generate(workdir, config):
+        return "# CODY.md\n\nNew AI content."
+
+    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        (Path.cwd() / '.cody').mkdir()
+        (Path.cwd() / 'CODY.md').write_text("old content")
+        result = runner.invoke(main, ['init'])
+        assert result.exit_code == 0, result.output
+        # File updated, not just created
+        assert 'Updated' in result.output
+        assert (Path.cwd() / 'CODY.md').read_text() == "# CODY.md\n\nNew AI content."
 
 
 def test_config_show(runner):
@@ -99,12 +132,13 @@ def test_sessions_show_nonexistent(runner):
 
 def test_handle_quit(store):
     from rich.console import Console
-    console = Console(file=open('/dev/null', 'w'))
-    session = store.create_session(title="test")
+    with open('/dev/null', 'w', encoding='utf-8') as devnull:
+        console = Console(file=devnull)
+        session = store.create_session(title="test")
 
-    assert _handle_command("/quit", session, store, console) is False
-    assert _handle_command("/exit", session, store, console) is False
-    assert _handle_command("/q", session, store, console) is False
+        assert _handle_command("/quit", session, store, console) is False
+        assert _handle_command("/exit", session, store, console) is False
+        assert _handle_command("/q", session, store, console) is False
 
 
 def test_handle_help(store):

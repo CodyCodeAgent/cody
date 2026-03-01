@@ -95,17 +95,14 @@ class CodyError(Exception):
 
 class CodyConnectionError(CodyError):
     """Server is unreachable."""
-    pass
 
 
 class CodyNotFoundError(CodyError):
     """Resource not found (404)."""
-    pass
 
 
 class CodyTimeoutError(CodyError):
     """Request timed out."""
-    pass
 
 
 # ── Retry helpers ────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ from typing import Optional
 from pydantic_ai import Agent
 
 from .config import Config
+from .model_resolver import resolve_model
 
 
 class AgentType(str, Enum):
@@ -239,30 +240,8 @@ class SubAgentManager:
                 self._tasks.pop(agent_id, None)
 
     def _resolve_model(self):
-        """Resolve model, reusing the same logic as AgentRunner."""
-        if self.config.model_base_url:
-            from pydantic_ai.models.openai import OpenAIChatModel
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            provider = OpenAIProvider(
-                base_url=self.config.model_base_url,
-                api_key=self.config.model_api_key or "not-set",
-            )
-            return OpenAIChatModel(self.config.model, provider=provider)
-
-        if self.config.claude_oauth_token:
-            from anthropic import AsyncAnthropic
-            from pydantic_ai.models.anthropic import AnthropicModel
-            from pydantic_ai.providers.anthropic import AnthropicProvider
-
-            client = AsyncAnthropic(auth_token=self.config.claude_oauth_token)
-            provider = AnthropicProvider(anthropic_client=client)
-            model_name = self.config.model
-            if model_name.startswith("anthropic:"):
-                model_name = model_name[len("anthropic:"):]
-            return AnthropicModel(model_name, provider=provider)
-
-        return self.config.model
+        """Resolve model — delegates to shared model_resolver.resolve_model()."""
+        return resolve_model(self.config)
 
     async def _execute(
         self,

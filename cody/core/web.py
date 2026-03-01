@@ -58,9 +58,9 @@ class _HTMLToMarkdown(HTMLParser):
         elif tag == "a":
             self._link_href = attrs_dict.get("href")
             self._result.append("[")
-        elif tag == "strong" or tag == "b":
+        elif tag in ("strong", "b"):
             self._result.append("**")
-        elif tag == "em" or tag == "i":
+        elif tag in ("em", "i"):
             self._result.append("*")
         elif tag == "blockquote":
             self._result.append("\n> ")
@@ -84,9 +84,9 @@ class _HTMLToMarkdown(HTMLParser):
             else:
                 self._result.append("]")
             self._link_href = None
-        elif tag == "strong" or tag == "b":
+        elif tag in ("strong", "b"):
             self._result.append("**")
-        elif tag == "em" or tag == "i":
+        elif tag in ("em", "i"):
             self._result.append("*")
         elif tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             self._result.append("\n")
@@ -147,16 +147,15 @@ async def webfetch(url: str, timeout: float = 15.0) -> str:
         if "text/html" in content_type or "application/xhtml" in content_type:
             html = resp.text[:MAX_CONTENT_LENGTH]
             return html_to_markdown(html)
-        elif "text/plain" in content_type or "text/markdown" in content_type:
+        if "text/plain" in content_type or "text/markdown" in content_type:
             return resp.text[:MAX_CONTENT_LENGTH]
-        elif "application/json" in content_type:
+        if "application/json" in content_type:
             try:
                 data = resp.json()
                 return json.dumps(data, indent=2, ensure_ascii=False)[:MAX_CONTENT_LENGTH]
             except Exception:
                 return resp.text[:MAX_CONTENT_LENGTH]
-        else:
-            return f"[Unsupported content type: {content_type}]"
+        return f"[Unsupported content type: {content_type}]"
 
 
 # ── Web search ───────────────────────────────────────────────────────────────

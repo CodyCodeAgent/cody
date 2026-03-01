@@ -35,7 +35,7 @@ def test_health():
 def test_health_returns_version():
     client = TestClient(app)
     resp = client.get("/health")
-    assert resp.json()["version"] == "1.2.0"
+    assert resp.json()["version"] == "1.3.0"
 
 
 # ── Tool endpoint ────────────────────────────────────────────────────────────
@@ -430,31 +430,19 @@ def test_get_session_detail(tmp_path):
     assert data["messages"][1]["role"] == "assistant"
 
 
-def test_get_session_not_found(tmp_path):
+def test_get_session_not_found(isolated_store, test_client):
     """GET /sessions/:id returns 404 for nonexistent session"""
-    from cody.core.session import SessionStore
-    store = SessionStore(db_path=tmp_path / "test.db")
-
-    with patch("cody.server._get_session_store", return_value=store):
-        client = TestClient(app)
-        resp = client.get("/sessions/nonexistent_id")
-
+    resp = test_client.get("/sessions/nonexistent_id")
     assert resp.status_code == 404
 
 
-def test_delete_session(tmp_path):
+def test_delete_session(isolated_store, test_client):
     """DELETE /sessions/:id deletes session"""
-    from cody.core.session import SessionStore
-    store = SessionStore(db_path=tmp_path / "test.db")
-    session = store.create_session(title="to delete")
-
-    with patch("cody.server._get_session_store", return_value=store):
-        client = TestClient(app)
-        resp = client.delete(f"/sessions/{session.id}")
-
+    session = isolated_store.create_session(title="to delete")
+    resp = test_client.delete(f"/sessions/{session.id}")
     assert resp.status_code == 200
     assert resp.json()["status"] == "deleted"
-    assert store.get_session(session.id) is None
+    assert isolated_store.get_session(session.id) is None
 
 
 def test_delete_session_not_found(tmp_path):

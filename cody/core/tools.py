@@ -33,30 +33,43 @@ def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
         ctx.deps.permission_manager.check(tool_name)
 
 
-def _resolve_and_check(workdir: Path, path: str, *, allow_read_outside: bool = False) -> Path:
-    """Resolve path and verify it's inside workdir. Returns resolved Path.
+def _resolve_and_check(
+    workdir: Path,
+    path: str,
+    *,
+    allow_read_outside: bool = False,
+    allowed_roots: list[Path] | None = None,
+) -> Path:
+    """Resolve path and verify it's inside an allowed directory. Returns resolved Path.
 
-    If *allow_read_outside* is True, absolute paths outside workdir are
-    permitted (used for read-only operations).  The caller is responsible
+    *workdir* is always an implicit allowed root.  Additional roots can be
+    supplied via *allowed_roots* (the access boundary).
+
+    If *allow_read_outside* is True, paths that fall outside every allowed root
+    are still permitted for read-only operations.  The caller is responsible
     for passing this flag only when appropriate.
     """
-    # Absolute paths are resolved directly
     if Path(path).is_absolute():
         full_path = Path(path).resolve()
     else:
         full_path = (workdir / path).resolve()
 
-    workdir_resolved = workdir.resolve()
-    if not full_path.is_relative_to(workdir_resolved):
-        if allow_read_outside:
-            # Allow but warn — the AI sees this message
+    roots: list[Path] = [workdir.resolve()]
+    if allowed_roots:
+        roots.extend(r.resolve() for r in allowed_roots)
+
+    for root in roots:
+        if full_path.is_relative_to(root):
             return full_path
-        raise ToolPathDenied(
-            f"Access denied: {path} is outside working directory ({workdir_resolved}). "
-            f"Tip: use the 'question' tool to ask the user if they want to allow access, "
-            f"or ask the user to re-run with --workdir pointing to the correct directory."
-        )
-    return full_path
+
+    if allow_read_outside:
+        return full_path
+    raise ToolPathDenied(
+        f"Access denied: {path} is outside all permitted directories "
+        f"({', '.join(str(r) for r in roots)}). "
+        f"Tip: add paths to security.allowed_roots in .cody/config.json, "
+        f"or use --allow-root at the command line."
+    )
 
 
 # ── File filtering (binary detection, gitignore, default ignores) ────────────
@@ -211,12 +224,14 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
     Args:
         path: Path to the file to read (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
+    full_path = _resolve_and_check(
+        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+    )
 
     if not full_path.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
-    return full_path.read_text()
+    return full_path.read_text(encoding="utf-8", errors="replace")
 
 
 async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> str:
@@ -227,7 +242,7 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
         content: Content to write
     """
     _check_permission(ctx, "write_file")
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     # Record old content for undo
     old_content = ""
@@ -268,7 +283,7 @@ async def edit_file(
         new_text: New text
     """
     _check_permission(ctx, "edit_file")
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():
         raise FileNotFoundError(f"File not found: {path}")
@@ -304,7 +319,9 @@ async def list_directory(ctx: RunContext['CodyDeps'], path: str = ".") -> str:
     Args:
         path: Directory path (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
+    full_path = _resolve_and_check(
+        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+    )
 
     if not full_path.exists():
         raise FileNotFoundError(f"Directory not found: {path}")
@@ -336,7 +353,9 @@ async def grep(
         path: Directory or file to search in (relative or absolute)
         include: Optional glob to filter filenames (e.g. "*.py")
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
+    full_path = _resolve_and_check(
+        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+    )
 
     if not full_path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
@@ -394,7 +413,9 @@ async def glob(
         pattern: Glob pattern (e.g. "**/*.py", "*.txt", "src/**/*.ts")
         path: Base directory to search from (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
+    full_path = _resolve_and_check(
+        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+    )
 
     if not full_path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
@@ -406,14 +427,19 @@ async def glob(
     gitignore_patterns = _parse_gitignore(workdir_resolved)
     results: list[str] = []
     max_results = 500
+    all_roots = [workdir_resolved] + [r.resolve() for r in (ctx.deps.allowed_roots or [])]
 
     for match in sorted(full_path.glob(pattern)):
-        # Security: skip anything outside workdir
+        # Security: skip anything outside all permitted roots
         resolved_match = match.resolve()
-        if not resolved_match.is_relative_to(workdir_resolved):
+        if not any(resolved_match.is_relative_to(root) for root in all_roots):
             continue
 
-        rel = match.relative_to(workdir_resolved)
+        try:
+            rel = match.relative_to(workdir_resolved)
+        except ValueError:
+            # File is in an allowed_root outside workdir — show absolute path
+            rel = match
         rel_posix = str(rel).replace('\\', '/')
         is_dir = match.is_dir()
 
@@ -460,7 +486,7 @@ async def patch(
         diff: Unified diff content (lines starting with +/- and context lines)
     """
     _check_permission(ctx, "patch")
-    full_path = _resolve_and_check(ctx.deps.workdir, path)
+    full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():
         raise FileNotFoundError(f"File not found: {path}")
@@ -554,7 +580,9 @@ async def search_files(
         query: Search query to match against file names
         path: Directory to search in (relative or absolute)
     """
-    full_path = _resolve_and_check(ctx.deps.workdir, path, allow_read_outside=True)
+    full_path = _resolve_and_check(
+        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+    )
 
     if not full_path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
