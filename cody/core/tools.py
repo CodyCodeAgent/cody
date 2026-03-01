@@ -231,7 +231,7 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
     if not full_path.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
-    return full_path.read_text()
+    return full_path.read_text(encoding="utf-8", errors="replace")
 
 
 async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> str:
