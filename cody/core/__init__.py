@@ -11,6 +11,7 @@ from .mcp_client import MCPClient
 from .permissions import PermissionDeniedError, PermissionLevel, PermissionManager
 from .rate_limiter import RateLimitResult, RateLimiter
 from .deps import CodyDeps
+from .project_instructions import CODY_MD_FILENAME, CODY_MD_TEMPLATE, load_project_instructions
 from .runner import (
     AgentRunner, CodyResult, ToolTrace,
     StreamEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
@@ -50,6 +51,9 @@ __all__ = [
     "RateLimiter",
     "RateLimitResult",
     "CodyDeps",
+    "CODY_MD_FILENAME",
+    "CODY_MD_TEMPLATE",
+    "load_project_instructions",
     "CodyResult",
     "ToolTrace",
     "StreamEvent",

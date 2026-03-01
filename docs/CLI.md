@@ -36,7 +36,7 @@ export CODY_CODING_PLAN_KEY='sk-sp-...'
 ### 初始化项目
 
 ```bash
-# 在当前目录创建 .cody/ 配置目录
+# 在当前目录创建 .cody/ 配置目录，并生成 CODY.md 项目说明模板
 cody init
 ```
 
@@ -630,7 +630,7 @@ Set model = anthropic:claude-sonnet-4-0
 
 ## 7. init — 初始化项目
 
-在当前目录创建 Cody 配置。
+在当前目录创建 Cody 配置，并生成 `CODY.md` 项目说明模板。
 
 ```bash
 cody init
@@ -638,6 +638,7 @@ cody init
 
 **创建的文件:**
 ```
+CODY.md            # 项目说明文件（每次 session 自动读取）
 .cody/
 ├── config.json    # 项目配置文件
 └── skills/        # 项目自定义技能目录
@@ -649,7 +650,12 @@ Initialized Cody in current directory
   Created .cody/
   Created .cody/skills/
   Created .cody/config.json
+  Created CODY.md (project instructions — edit to add context)
 ```
+
+> **CODY.md** 是 Cody 的项目说明文件，每次启动 session 时自动注入到系统提示中。
+> 编辑此文件可以告诉 Cody 项目的架构、约定和重要背景信息。
+> 详见 [CODY.md 说明](#codymd-项目说明文件)。
 
 ---
 
@@ -862,6 +868,78 @@ cody config set model "glm-4"
 
 在 `.cody/skills/` 目录下创建技能目录和 `SKILL.md` 文件。
 
+### Q: CODY.md 和 Skills 有什么区别？
+
+| | CODY.md | Skills |
+|---|---------|--------|
+| **用途** | 描述项目上下文、约定 | 提供特定任务的操作步骤 |
+| **格式** | 自由 Markdown | 标准化 SKILL.md |
+| **触发** | 每次 session 自动加载 | 按需 `read_skill()` 调用 |
+| **范围** | 项目级 + 用户级 | 全局 + 项目级 |
+
 ---
 
-**最后更新:** 2026-02-28
+## CODY.md 项目说明文件
+
+`CODY.md` 是 Cody 的项目说明文件，类似于 Claude Code 的 `CLAUDE.md`，
+每次启动 session 时自动读取并注入到 AI 的系统提示中。
+
+### 文件位置与加载顺序
+
+两个位置的 CODY.md 都会被加载并合并（均可选）：
+
+| 文件路径 | 说明 |
+|----------|------|
+| `~/.cody/CODY.md` | **全局**用户级说明（对所有项目生效） |
+| `<workdir>/CODY.md` | **项目**级说明（仅对当前项目生效） |
+
+两个文件都存在时，全局说明在前，项目说明在后，以 `---` 分隔。
+
+### 生成模板
+
+```bash
+cody init
+# 自动创建 CODY.md 模板
+```
+
+### 示例内容
+
+```markdown
+# CODY.md — Project Instructions
+
+## Project Overview
+
+这是一个 Python FastAPI 项目，提供 REST API 服务。
+
+## Architecture
+
+- `api/` — FastAPI 路由和端点
+- `core/` — 业务逻辑
+- `tests/` — pytest 测试
+
+## Conventions
+
+- 使用 ruff 做 lint，行宽 120
+- 提交信息格式：`type(scope): description`
+- 分支命名：`feature/xxx`、`fix/xxx`
+
+## Development Commands
+
+```bash
+pip install -e ".[dev]"
+pytest tests/ -v
+ruff check .
+uvicorn api.main:app --reload
+```
+```
+
+### 最佳实践
+
+- **保持简短** — Cody 每次都会读取，内容越精简越好
+- **重点突出** — 记录架构、约定、注意事项，而不是完整文档
+- **定期更新** — 项目演进时同步更新 CODY.md
+- **全局 vs 项目** — 通用偏好放全局，项目专属放项目根目录
+
+---
+
+**最后更新:** 2026-03-01

@@ -39,6 +39,7 @@ from .permissions import PermissionLevel, PermissionManager
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
+from .project_instructions import load_project_instructions
 from . import tools
 
 logger = logging.getLogger(__name__)
@@ -331,9 +332,13 @@ class AgentRunner:
 
         Tools are registered declaratively via tools.register_tools() —
         see tools.py CORE_TOOLS / MCP_TOOLS for the full list.
+
+        System prompt order:
+          1. Base persona
+          2. CODY.md project instructions (global ~/.cody/CODY.md + project CODY.md)
+          3. Available skills XML (Agent Skills standard)
         """
-        # Build system prompt with available skills (Agent Skills standard)
-        skills_xml = self.skill_manager.to_prompt_xml()
+        # 1. Base persona
         system_parts = [
             "You are Cody, an AI coding assistant. "
             "You have access to file operations, shell commands, skills, web search, "
@@ -343,6 +348,16 @@ class AgentRunner:
             "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
             "Always execute commands and file operations as needed to complete tasks.",
         ]
+
+        # 2. CODY.md project instructions (global + project, merged)
+        project_instructions = load_project_instructions(self.workdir)
+        if project_instructions:
+            system_parts.append(
+                "## Project Instructions (from CODY.md)\n\n" + project_instructions
+            )
+
+        # 3. Available skills
+        skills_xml = self.skill_manager.to_prompt_xml()
         if skills_xml:
             system_parts.append(skills_xml)
 

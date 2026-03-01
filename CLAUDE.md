@@ -35,6 +35,7 @@ cli.py / tui.py / server.py  →  core/runner.py  →  core/tools.py
 | `core/errors.py` | 错误码 + ToolError 异常层级（server 按类型映射 HTTP 状态码） |
 | `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON |
 | `core/deps.py` | CodyDeps 数据类，工具的依赖注入容器 |
+| `core/project_instructions.py` | CODY.md 加载逻辑 — 全局 + 项目级合并，注入系统提示 |
 | `server.py` | FastAPI 壳子，顶部 docstring 有缓存策略说明 |
 | `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
 | `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |

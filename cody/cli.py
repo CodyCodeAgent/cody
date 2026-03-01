@@ -13,6 +13,7 @@ from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from .core import Config, AgentRunner, SessionStore
+from .core.project_instructions import CODY_MD_FILENAME, CODY_MD_TEMPLATE
 from .core.runner import (
     CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
@@ -482,6 +483,7 @@ def init():
     cody_dir = Path.cwd() / ".cody"
     skills_dir = cody_dir / "skills"
     config_file = cody_dir / "config.json"
+    cody_md_file = Path.cwd() / CODY_MD_FILENAME
 
     if cody_dir.exists():
         console.print("[yellow].cody directory already exists[/yellow]")
@@ -493,10 +495,13 @@ def init():
     config = Config()
     config.save(config_file)
 
+    cody_md_file.write_text(CODY_MD_TEMPLATE, encoding="utf-8")
+
     console.print("[green]Initialized Cody in current directory[/green]")
     console.print("  Created .cody/")
     console.print("  Created .cody/skills/")
     console.print("  Created .cody/config.json")
+    console.print(f"  Created {CODY_MD_FILENAME} (project instructions — edit to add context)")
 
 
 # ── Skills commands ──────────────────────────────────────────────────────────
