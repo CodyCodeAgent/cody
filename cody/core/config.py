@@ -92,21 +92,21 @@ class Config(BaseModel):
                 raise TypeError("Config.load() requires workdir when path is not given")
             project_config = Path(workdir) / ".cody" / "config.json"
             global_config = Path.home() / ".cody" / "config.json"
-            
+
             if project_config.exists():
                 path = project_config
             elif global_config.exists():
                 path = global_config
             else:
                 return cls._apply_env_overrides(cls())
-        
+
         path = Path(path)
         if not path.exists():
             return cls._apply_env_overrides(cls())
 
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         return cls._apply_env_overrides(cls(**data))
-    
+
     @staticmethod
     def _apply_env_overrides(config: "Config") -> "Config":
         """Apply environment variable overrides. Env vars take priority."""
@@ -193,4 +193,4 @@ class Config(BaseModel):
         data.pop("model_api_key", None)
         data.pop("claude_oauth_token", None)
         data.pop("coding_plan_key", None)
-        path.write_text(json.dumps(data, indent=2, default=str))
+        path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")

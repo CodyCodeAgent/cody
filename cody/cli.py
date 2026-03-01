@@ -114,7 +114,6 @@ def main():
 
     A powerful AI assistant with RPC support, dynamic skills, and MCP integration.
     """
-    pass
 
 
 # ── Run command ──────────────────────────────────────────────────────────────
@@ -361,7 +360,7 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
         console.print("[dim]Bye![/dim]")
         return False
 
-    elif cmd == "/sessions":
+    if cmd == "/sessions":
         sessions = store.list_sessions(limit=10)
         if not sessions:
             console.print("[yellow]No sessions found[/yellow]")
@@ -377,12 +376,12 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
         console.print()
         return True
 
-    elif cmd == "/clear":
+    if cmd == "/clear":
         console.clear()
         console.print("[dim]Screen cleared. Session continues.[/dim]\n")
         return True
 
-    elif cmd == "/help":
+    if cmd == "/help":
         console.print(
             Panel(
                 "/quit     - Exit chat\n"
@@ -396,10 +395,9 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
         console.print()
         return True
 
-    else:
-        console.print(f"[yellow]Unknown command: {cmd}[/yellow]")
-        console.print("[dim]Type /help for available commands[/dim]\n")
-        return True
+    console.print(f"[yellow]Unknown command: {cmd}[/yellow]")
+    console.print("[dim]Type /help for available commands[/dim]\n")
+    return True
 
 
 # ── Session management commands ──────────────────────────────────────────────
@@ -408,7 +406,6 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
 @main.group()
 def sessions():
     """Manage chat sessions"""
-    pass
 
 
 @sessions.command('list')
@@ -518,7 +515,6 @@ def init():
 @main.group()
 def skills():
     """Manage skills"""
-    pass
 
 
 @skills.command('list')
@@ -612,7 +608,6 @@ def skills_disable(skill_name):
 @main.group()
 def config():
     """Manage configuration"""
-    pass
 
 
 @config.command('show')

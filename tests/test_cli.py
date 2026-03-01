@@ -132,12 +132,13 @@ def test_sessions_show_nonexistent(runner):
 
 def test_handle_quit(store):
     from rich.console import Console
-    console = Console(file=open('/dev/null', 'w'))
-    session = store.create_session(title="test")
+    with open('/dev/null', 'w', encoding='utf-8') as devnull:
+        console = Console(file=devnull)
+        session = store.create_session(title="test")
 
-    assert _handle_command("/quit", session, store, console) is False
-    assert _handle_command("/exit", session, store, console) is False
-    assert _handle_command("/q", session, store, console) is False
+        assert _handle_command("/quit", session, store, console) is False
+        assert _handle_command("/exit", session, store, console) is False
+        assert _handle_command("/q", session, store, console) is False
 
 
 def test_handle_help(store):

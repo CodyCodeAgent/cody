@@ -32,15 +32,15 @@ def resolve_model(config: Config):
             provider = AnthropicProvider(anthropic_client=client)
             model_name = config.model.removeprefix("anthropic:")
             return AnthropicModel(model_name, provider=provider)
-        else:
-            from pydantic_ai.models.openai import OpenAIChatModel  # pylint: disable=import-outside-toplevel
-            from pydantic_ai.providers.openai import OpenAIProvider  # pylint: disable=import-outside-toplevel
 
-            provider = OpenAIProvider(
-                base_url=_CODING_PLAN_OPENAI_URL,
-                api_key=config.coding_plan_key,
-            )
-            return OpenAIChatModel(config.model, provider=provider)
+        from pydantic_ai.models.openai import OpenAIChatModel  # pylint: disable=import-outside-toplevel
+        from pydantic_ai.providers.openai import OpenAIProvider  # pylint: disable=import-outside-toplevel
+
+        provider = OpenAIProvider(
+            base_url=_CODING_PLAN_OPENAI_URL,
+            api_key=config.coding_plan_key,
+        )
+        return OpenAIChatModel(config.model, provider=provider)
 
     if config.model_base_url:
         from pydantic_ai.models.openai import OpenAIChatModel  # pylint: disable=import-outside-toplevel

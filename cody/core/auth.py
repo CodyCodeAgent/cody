@@ -104,8 +104,8 @@ class AuthManager:
 
         try:
             payload_json = base64.urlsafe_b64decode(encoded_payload).decode()
-        except Exception:
-            raise AuthError("Invalid token encoding")
+        except Exception as exc:
+            raise AuthError("Invalid token encoding") from exc
 
         expected_sig = self._sign(payload_json)
         if not hmac.compare_digest(signature, expected_sig):
@@ -113,8 +113,8 @@ class AuthManager:
 
         try:
             payload = json.loads(payload_json)
-        except json.JSONDecodeError:
-            raise AuthError("Invalid token payload")
+        except json.JSONDecodeError as exc:
+            raise AuthError("Invalid token payload") from exc
 
         # Check expiration
         exp = payload.get("exp")
@@ -150,8 +150,7 @@ class AuthManager:
                     scopes=["*"],
                 )
             raise AuthError("Invalid API key")
-        else:
-            return self.validate_token(credential)
+        return self.validate_token(credential)
 
     def refresh(self, refresh_token_str: str, expires_in: int = 3600) -> str:
         """Refresh a token using a refresh token.

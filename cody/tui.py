@@ -31,10 +31,9 @@ class MessageBubble(Static):
     def _format_message(role: str, content: str) -> str:
         if role == "user":
             return f"[bold dodger_blue1]You[/bold dodger_blue1]\n{content}"
-        elif role == "assistant":
+        if role == "assistant":
             return f"[bold green]Cody[/bold green]\n{content}"
-        else:
-            return f"[bold yellow]{role}[/bold yellow]\n{content}"
+        return f"[bold yellow]{role}[/bold yellow]\n{content}"
 
 
 class StreamBubble(Static):
