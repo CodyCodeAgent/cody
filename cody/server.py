@@ -87,7 +87,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.1.1"
+    version: str = "1.2.0"
 
 
 class ErrorResponse(BaseModel):
@@ -114,7 +114,7 @@ class SessionDetailResponse(SessionResponse):
 app = FastAPI(
     title="Cody RPC Server",
     description="AI Coding Assistant RPC API",
-    version="1.1.1",
+    version="1.2.0",
 )
 
 

@@ -2,9 +2,9 @@
 
 **AI 编码引擎** — 支持 RPC Server、动态技能、MCP 集成和 LSP 代码智能。
 
-[![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-493%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-497%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **核心理念：引擎做厚，壳子做薄。** CLI、TUI 和 Server 都是基于核心引擎的薄壳。Server + SDK 交付模式是我们的差异化优势 — 让其他人能够将 AI 编码能力嵌入到自己的系统中。
@@ -427,4 +427,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-02-28 | **版本:** 1.1.1
+**最后更新:** 2026-03-01 | **版本:** 1.2.0

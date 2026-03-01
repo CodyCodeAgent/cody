@@ -11,7 +11,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)
 - **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端
 
-当前版本：**v1.1.1**
+当前版本：**v1.2.0**
 
 ## 架构要点
 
