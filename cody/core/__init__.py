@@ -13,7 +13,7 @@ from .rate_limiter import RateLimitResult, RateLimiter
 from .deps import CodyDeps
 from .runner import (
     AgentRunner, CodyResult, ToolTrace,
-    StreamEvent, ThinkingEvent, TextDeltaEvent,
+    StreamEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
 )
 from .session import SessionStore
@@ -53,6 +53,7 @@ __all__ = [
     "CodyResult",
     "ToolTrace",
     "StreamEvent",
+    "CompactEvent",
     "ThinkingEvent",
     "TextDeltaEvent",
     "ToolCallEvent",

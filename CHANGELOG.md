@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.2.0] - 2026-03-01
+
+### Added
+- **Tool execution spinner** — CLI and TUI now show animated progress indicator with elapsed time during tool execution, replacing the previous "stuck" behavior
+- **Context compression notification** — New `CompactEvent` in stream events; CLI prints a yellow notification line, TUI shows a system bubble when context auto-compaction occurs
+- **TUI slash command hints** — Status line shows matching commands with descriptions as user types `/` in the input field
+
+### Changed
+- `_compact_history_if_needed` now returns `(history, CompactResult)` tuple instead of just history
+- `StreamEvent` union type now includes `CompactEvent`
+
+---
+
 ## [1.1.1] - 2026-02-28
 
 ### Changed

@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from pydantic_ai.messages import ModelRequest, ModelResponse
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from cody.core.config import Config
 from cody.core.runner import AgentRunner
@@ -58,6 +58,56 @@ def test_messages_to_history_skips_unknown_roles():
     ]
     result = AgentRunner.messages_to_history(msgs)
     assert len(result) == 2
+
+
+# ── _compact_history_if_needed ───────────────────────────────────────────────
+
+
+def test_compact_history_returns_tuple_no_compaction():
+    """_compact_history_if_needed returns (history, None) when no compaction needed."""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="hello")]),
+        ModelResponse(parts=[TextPart(content="hi")]),
+    ]
+    result_history, compact_result = runner._compact_history_if_needed(history)
+    assert result_history is history
+    assert compact_result is None
+
+
+def test_compact_history_returns_tuple_none_input():
+    """_compact_history_if_needed returns (None, None) for None input."""
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+
+    result_history, compact_result = runner._compact_history_if_needed(None)
+    assert result_history is None
+    assert compact_result is None
+
+
+def test_compact_history_returns_compact_result():
+    """_compact_history_if_needed returns CompactResult when compaction happens."""
+    from pydantic_ai.messages import TextPart, UserPromptPart
+    from cody.core.context import CompactResult
+
+    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
+        runner = AgentRunner.__new__(AgentRunner)
+
+    # Create enough messages to trigger compaction
+    history = []
+    for i in range(20):
+        history.append(ModelRequest(parts=[UserPromptPart(content=f"msg {i} " * 200)]))
+        history.append(ModelResponse(parts=[TextPart(content=f"reply {i} " * 200)]))
+
+    result_history, compact_result = runner._compact_history_if_needed(history, max_tokens=100)
+    assert compact_result is not None
+    assert isinstance(compact_result, CompactResult)
+    assert compact_result.original_messages == 40
+    assert compact_result.compacted_messages == 5
+    assert compact_result.estimated_tokens_saved > 0
+    assert len(result_history) == 5
 
 
 # ── prepare_session ──────────────────────────────────────────────────────────

@@ -87,7 +87,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.1.1"
+    version: str = "1.2.0"
 
 
 class ErrorResponse(BaseModel):
@@ -114,7 +114,7 @@ class SessionDetailResponse(SessionResponse):
 app = FastAPI(
     title="Cody RPC Server",
     description="AI Coding Assistant RPC API",
-    version="1.1.1",
+    version="1.2.0",
 )
 
 
@@ -475,7 +475,7 @@ async def run_agent(request: RunRequest):
 def _serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
     """Convert a StreamEvent to a JSON-serializable dict for SSE/WebSocket."""
     from .core.runner import (
-        ThinkingEvent, TextDeltaEvent, ToolCallEvent,
+        CompactEvent, ThinkingEvent, TextDeltaEvent, ToolCallEvent,
         ToolResultEvent, DoneEvent,
     )
 
@@ -483,7 +483,11 @@ def _serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
     if session_id:
         base["session_id"] = session_id
 
-    if isinstance(event, ThinkingEvent):
+    if isinstance(event, CompactEvent):
+        base["original_messages"] = event.original_messages
+        base["compacted_messages"] = event.compacted_messages
+        base["estimated_tokens_saved"] = event.estimated_tokens_saved
+    elif isinstance(event, ThinkingEvent):
         base["content"] = event.content
     elif isinstance(event, TextDeltaEvent):
         base["content"] = event.content

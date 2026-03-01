@@ -1,6 +1,7 @@
 """Terminal UI for Cody — interactive AI coding assistant"""
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +11,7 @@ from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.css.query import NoMatches
 from textual.reactive import reactive
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Header, Input, Static
 
 from .core import AgentRunner, Config, SessionStore
 
@@ -55,7 +56,17 @@ class StreamBubble(Static):
 
 class StatusLine(Static):
     """Bottom status line showing session/model info."""
-    pass
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(" Loading...", *args, **kwargs)
+
+    def on_mount(self) -> None:
+        self.styles.dock = "bottom"
+        self.styles.height = 1
+        self.styles.width = "100%"
+        self.styles.background = "#003366"
+        self.styles.color = "#ffffff"
+        self.styles.padding = (0, 2)
 
 
 # ── Main App ─────────────────────────────────────────────────────────────────
@@ -87,15 +98,7 @@ class CodyTUI(App):
 
     #prompt-input {
         dock: bottom;
-        margin: 0 2 1 2;
-    }
-
-    #status-line {
-        dock: bottom;
-        height: 1;
-        background: $primary-background;
-        color: $text-muted;
-        padding: 0 2;
+        margin: 0 2;
     }
     """
 
@@ -145,7 +148,6 @@ class CodyTUI(App):
         yield VerticalScroll(id="chat-scroll")
         yield StatusLine(id="status-line")
         yield Input(placeholder="Type a message... (Enter to send)", id="prompt-input")
-        yield Footer()
 
     def on_mount(self) -> None:
         self._config = Config.load(workdir=self._workdir).apply_overrides(
@@ -241,6 +243,37 @@ class CodyTUI(App):
         if enabled:
             inp.focus()
 
+    # ── Slash command hints ────────────────────────────────────────────────
+
+    _COMMANDS = {
+        "/new": "Start a new session",
+        "/sessions": "List recent sessions",
+        "/clear": "Clear screen",
+        "/help": "Show help",
+        "/quit": "Exit",
+    }
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Show command hints in status line when input starts with /."""
+        text = event.value
+        if text.startswith("/"):
+            prefix = text.strip().lower()
+            matches = [
+                f"{cmd} [dim]{desc}[/dim]"
+                for cmd, desc in self._COMMANDS.items()
+                if cmd.startswith(prefix)
+            ]
+            if matches:
+                self.query_one("#status-line", StatusLine).update(
+                    " " + "  |  ".join(matches)
+                )
+            else:
+                self.query_one("#status-line", StatusLine).update(
+                    f" [yellow]Unknown command: {text}[/yellow]"
+                )
+        else:
+            self._update_status()
+
     # ── Input handling ───────────────────────────────────────────────────────
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -272,17 +305,43 @@ class CodyTUI(App):
         # Run agent
         self._run_agent(text)
 
+    _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def _start_tool_spinner(self, tool_name: str) -> None:
+        """Start a spinner on the status line during tool execution."""
+        self._tool_executing = tool_name
+        self._tool_start = time.monotonic()
+        self._tool_spinner_idx = 0
+        self._tool_timer = self.set_interval(0.1, self._tick_tool_spinner)
+
+    def _tick_tool_spinner(self) -> None:
+        """Update the status line with spinner animation."""
+        elapsed = time.monotonic() - self._tool_start
+        frame = self._SPINNER_FRAMES[self._tool_spinner_idx % len(self._SPINNER_FRAMES)]
+        self.query_one("#status-line", StatusLine).update(
+            f" {frame} {self._tool_executing} running... ({elapsed:.0f}s)"
+        )
+        self._tool_spinner_idx += 1
+
+    def _stop_tool_spinner(self) -> None:
+        """Stop the tool spinner and restore the status line."""
+        if hasattr(self, '_tool_timer') and self._tool_timer is not None:
+            self._tool_timer.stop()
+            self._tool_timer = None
+            self._update_status()
+
     @work(thread=False)
     async def _run_agent(self, prompt: str) -> None:
         """Stream agent response with structured events."""
         from cody.core.runner import (
-            ThinkingEvent, TextDeltaEvent, ToolCallEvent,
+            CompactEvent, ThinkingEvent, TextDeltaEvent, ToolCallEvent,
             ToolResultEvent, DoneEvent,
         )
 
         self.is_running = True
         self._set_input_enabled(False)
         self._cancel_event = asyncio.Event()
+        self._tool_timer = None
 
         bubble = self._add_stream_bubble()
         scroll = self.query_one("#chat-scroll", VerticalScroll)
@@ -295,19 +354,30 @@ class CodyTUI(App):
                     bubble.append("\n\n[dim italic](cancelled)[/dim italic]")
                     break
 
-                if isinstance(event, ThinkingEvent):
+                if isinstance(event, CompactEvent):
+                    self._add_bubble(
+                        "system",
+                        f"[yellow]⚡ 上下文已压缩："
+                        f"{event.original_messages} → {event.compacted_messages} 条消息，"
+                        f"节省约 ~{event.estimated_tokens_saved} tokens[/yellow]",
+                    )
+                elif isinstance(event, ThinkingEvent):
                     bubble.append(f"[dim]{event.content}[/dim]")
                     scroll.scroll_end(animate=False)
                 elif isinstance(event, ToolCallEvent):
+                    self._stop_tool_spinner()
                     args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
                     bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
                     scroll.scroll_end(animate=False)
+                    self._start_tool_spinner(event.tool_name)
                 elif isinstance(event, ToolResultEvent):
-                    pass  # keep UI clean
+                    self._stop_tool_spinner()
                 elif isinstance(event, TextDeltaEvent):
+                    self._stop_tool_spinner()
                     bubble.append(event.content)
                     scroll.scroll_end(animate=False)
                 elif isinstance(event, DoneEvent):
+                    self._stop_tool_spinner()
                     # Use real message history from pydantic-ai (includes tool calls)
                     self._message_history = event.result.all_messages()
                     # Save assistant message
@@ -320,6 +390,7 @@ class CodyTUI(App):
             bubble.append(f"\n\n[bold red]Error: {e}[/bold red]")
 
         finally:
+            self._stop_tool_spinner()
             # Replace StreamBubble with static MessageBubble
             try:
                 stream = self.query_one("#active-stream", StreamBubble)

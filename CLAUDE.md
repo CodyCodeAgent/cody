@@ -11,7 +11,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)
 - **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端
 
-当前版本：**v1.1.1**
+当前版本：**v1.2.0**
 
 ## 架构要点
 
@@ -96,6 +96,30 @@ cody-server --port 8000
 # 启动 TUI
 cody tui
 ```
+
+## 文档更新
+
+**开发完新功能后，必须同步更新项目中的所有相关 `.md` 文档**，保持文档与代码同步。
+
+### 需要检查的文档目录
+
+| 目录 | 说明 |
+|------|------|
+| `./` | 根目录文档（README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等） |
+| `docs/` | 所有项目文档（CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等） |
+
+### 检查清单
+
+提交前确认所有相关的 `.md` 文档已更新：
+
+- [ ] 根目录文档 — README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等
+- [ ] docs/ 目录文档 — CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等
+
+> **原则**：文档是代码的一部分，不是事后补充。代码合并前，文档必须先更新。
+> 
+> **提示**：使用 `find . -name "*.md"` 列出所有 Markdown 文档，逐一检查是否需要更新。
+
+---
 
 ## 版本管理
 

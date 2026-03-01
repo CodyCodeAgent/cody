@@ -2,21 +2,44 @@
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
 import click
 from rich.console import Console
 from rich.markdown import Markdown
+from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from .core import Config, AgentRunner, SessionStore
 from .core.runner import (
-    CodyResult, ThinkingEvent, TextDeltaEvent,
+    CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
 )
 
 console = Console()
+
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+async def _tool_spinner(tool_name: str, start: float) -> None:
+    """Show an animated spinner while a tool is executing."""
+    i = 0
+    try:
+        while True:
+            elapsed = time.monotonic() - start
+            frame = _SPINNER_FRAMES[i % len(_SPINNER_FRAMES)]
+            sys.stdout.write(
+                f"\r    {frame} {tool_name} running... ({elapsed:.0f}s)"
+            )
+            sys.stdout.flush()
+            i += 1
+            await asyncio.sleep(0.1)
+    except asyncio.CancelledError:
+        elapsed = time.monotonic() - start
+        sys.stdout.write(f"\r    ✓ {tool_name} done ({elapsed:.1f}s)\n")
+        sys.stdout.flush()
 
 
 async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResult]":
@@ -26,31 +49,58 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
     Returns the CodyResult from the DoneEvent, or None.
     """
     in_thinking = False
+    thinking_buf = []
     result = None
+    spinner_task: Optional[asyncio.Task] = None
+
+    async def _stop_spinner():
+        nonlocal spinner_task
+        if spinner_task and not spinner_task.done():
+            spinner_task.cancel()
+            try:
+                await spinner_task
+            except asyncio.CancelledError:
+                pass
+        spinner_task = None
+
     async for event in stream:
-        if isinstance(event, ThinkingEvent):
-            if not in_thinking:
-                console.print("[dim]", end="")
-                in_thinking = True
-            console.print(event.content, end="")
+        if isinstance(event, CompactEvent):
+            console.print(
+                f"  [yellow]⚡ 上下文已压缩：{event.original_messages} → "
+                f"{event.compacted_messages} 条消息，"
+                f"节省约 ~{event.estimated_tokens_saved} tokens[/yellow]"
+            )
+        elif isinstance(event, ThinkingEvent):
+            in_thinking = True
+            thinking_buf.append(event.content)
         elif isinstance(event, ToolCallEvent):
+            await _stop_spinner()
             if in_thinking:
-                console.print("[/dim]")
+                console.print(rich_escape("".join(thinking_buf)), style="dim")
+                thinking_buf.clear()
                 in_thinking = False
             args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
-            console.print(f"  [dim]→ {event.tool_name}({args_str})[/dim]")
+            console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
+            spinner_task = asyncio.create_task(
+                _tool_spinner(event.tool_name, time.monotonic())
+            )
         elif isinstance(event, ToolResultEvent):
+            await _stop_spinner()
             if verbose:
                 preview = event.result[:200]
-                console.print(f"    [dim]{preview}[/dim]")
+                console.print(f"    [dim]{rich_escape(preview)}[/dim]")
         elif isinstance(event, TextDeltaEvent):
+            await _stop_spinner()
             if in_thinking:
-                console.print("[/dim]")
+                console.print(rich_escape("".join(thinking_buf)), style="dim")
+                thinking_buf.clear()
                 in_thinking = False
             console.print(event.content, end="")
         elif isinstance(event, DoneEvent):
+            await _stop_spinner()
             if in_thinking:
-                console.print("[/dim]")
+                console.print(rich_escape("".join(thinking_buf)), style="dim")
+                thinking_buf.clear()
             result = event.result
     console.print()
     return result
@@ -258,10 +308,10 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
                     store.add_message(session.id, "assistant", result.output)
 
             except Exception as e:
-                console.print(f"\n[red]Error: {e}[/red]\n")
+                console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
 
     except Exception as e:
-        console.print(f"[red]Fatal error: {e}[/red]")
+        console.print(f"[red]Fatal error: {rich_escape(str(e))}[/red]")
         sys.exit(1)
     finally:
         asyncio.run(runner.stop_mcp())

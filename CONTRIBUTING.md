@@ -200,8 +200,9 @@ python3 -m pytest tests/ -v
 2. **先在 core/ 实现** — 功能逻辑放在 `core/`
 3. **Server 端点** — 在 `server.py` 暴露 API
 4. **CLI 命令** — 在 `cli.py` 提供界面（如果需要）
-5. **运行测试** — 全部通过
-6. **运行 lint** — 零告警
+5. **更新文档** — 同步更新所有相关的 `.md` 文档（见下方"文档更新规范"）
+6. **运行测试** — 全部通过
+7. **运行 lint** — 零告警
 
 ### 示例：添加新工具
 
@@ -210,10 +211,35 @@ python3 -m pytest tests/ -v
 2. 把函数追加到对应的 *_TOOLS 列表（如 FILE_TOOLS、SEARCH_TOOLS）
 3. 如果子 Agent 也要用，加到 SUB_AGENT_TOOLSETS 对应的 type 列表
 4. 在 tests/test_tools.py 写 3+ 个测试
-5. pytest + ruff 通过
+5. 更新 docs/CLI.md 和 docs/API.md 的工具列表
+6. pytest + ruff 通过
 ```
 
 > 不需要改 runner.py 或 server.py — `register_tools()` 会自动注册列表里的所有工具。
+
+---
+
+## 文档更新规范
+
+**开发完新功能后，必须同步更新项目中的所有相关 `.md` 文档**，保持文档与代码同步。
+
+### 需要检查的文档目录
+
+| 目录 | 说明 |
+|------|------|
+| `./` | 根目录文档（README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等） |
+| `docs/` | 所有项目文档（CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等） |
+
+### 提交前检查清单
+
+确认所有相关的 `.md` 文档已更新：
+
+- [ ] 根目录文档 — README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等
+- [ ] docs/ 目录文档 — CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等
+
+> **原则**：文档是代码的一部分，不是事后补充。代码合并前，文档必须先更新。
+> 
+> **提示**：使用 `find . -name "*.md"` 列出所有 Markdown 文档，逐一检查是否需要更新。
 
 ---
 
@@ -246,7 +272,7 @@ python3 -m pytest tests/ -v
 
 **总计：493 个测试，ruff 零告警**
 
-**当前版本：v1.1.1（见 CHANGELOG.md）**
+**当前版本：v1.2.0（见 CHANGELOG.md）**
 
 ---
 
