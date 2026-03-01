@@ -94,8 +94,8 @@ class CodyTUI(App):
     #status-line {
         dock: bottom;
         height: 1;
-        background: $primary-background;
-        color: $text-muted;
+        background: $panel;
+        color: $text;
         padding: 0 2;
     }
     """
