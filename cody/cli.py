@@ -498,22 +498,18 @@ def init():
         config.save(config_file)
         created += [".cody/", ".cody/skills/", ".cody/config.json"]
 
-    # Generate CODY.md independently — always create it if missing.
-    if cody_md_file.exists():
-        console.print(f"[yellow]{CODY_MD_FILENAME} already exists — skipping[/yellow]")
-    else:
-        config = Config.load(workdir=workdir)
-        with console.status("[cyan]Analyzing project to generate CODY.md…[/cyan]"):
-            cody_md_content = asyncio.run(generate_project_instructions(workdir, config))
-        cody_md_file.write_text(cody_md_content, encoding="utf-8")
-        created.append(f"{CODY_MD_FILENAME} [dim](AI-generated)[/dim]")
-
-    if not created:
-        return
+    # Always (re-)generate CODY.md via AI analysis.
+    config = Config.load(workdir=workdir)
+    verb = "Updated" if cody_md_file.exists() else "Created"
+    with console.status("[cyan]Analyzing project to generate CODY.md…[/cyan]"):
+        cody_md_content = asyncio.run(generate_project_instructions(workdir, config))
+    cody_md_file.write_text(cody_md_content, encoding="utf-8")
+    created.append(f"{CODY_MD_FILENAME} [dim](AI-generated)[/dim]")
 
     console.print("[green]Initialized Cody in current directory[/green]")
-    for item in created:
+    for item in created[:-1]:
         console.print(f"  Created {item}")
+    console.print(f"  {verb} {created[-1]}")
 
 
 # ── Skills commands ──────────────────────────────────────────────────────────

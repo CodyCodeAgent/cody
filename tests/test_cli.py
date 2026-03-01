@@ -62,8 +62,25 @@ def test_init_already_exists(runner, tmp_path, monkeypatch):
         assert result.exit_code == 0, result.output
         # .cody already existed → skip scaffold message
         assert 'skipping scaffold' in result.output
-        # CODY.md didn't exist yet → still generated
+        # CODY.md always (re-)generated
         assert (Path.cwd() / 'CODY.md').exists()
+        assert 'AI-generated' in result.output
+
+
+def test_init_updates_existing_cody_md(runner, tmp_path, monkeypatch):
+    async def _fake_generate(workdir, config):
+        return "# CODY.md\n\nNew AI content."
+
+    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        (Path.cwd() / '.cody').mkdir()
+        (Path.cwd() / 'CODY.md').write_text("old content")
+        result = runner.invoke(main, ['init'])
+        assert result.exit_code == 0, result.output
+        # File updated, not just created
+        assert 'Updated' in result.output
+        assert (Path.cwd() / 'CODY.md').read_text() == "# CODY.md\n\nNew AI content."
 
 
 def test_config_show(runner):
