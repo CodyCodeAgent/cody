@@ -12,8 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **CODY.md project instructions** — Cody now reads `CODY.md` at the start of every session and injects its content into the system prompt, similar to Claude Code's `CLAUDE.md`.
   - Two-layer loading: `~/.cody/CODY.md` (global user-level) + `<workdir>/CODY.md` (project-level); both are optional and additive
   - Global instructions come first, project instructions appended after a `---` separator
-  - `cody init` uses AI (AgentRunner) to analyze the project and generate a filled-in `CODY.md`; fails loudly on error (no silent fallback)
+  - `cody init` always (re-)generates `CODY.md` via AI analysis — shows "Created" on first run, "Updated" on subsequent runs; if `.cody/` already exists, scaffold is skipped but `CODY.md` is still regenerated; fails loudly on error (no silent fallback)
   - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `generate_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
+- **`read_file` encoding safety** — tool now reads with `encoding="utf-8", errors="replace"` instead of platform default, preventing `UnicodeDecodeError` on binary or non-UTF-8 files
 
 ---
 

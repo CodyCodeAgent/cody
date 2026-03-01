@@ -630,31 +630,40 @@ Set model = anthropic:claude-sonnet-4-0
 
 ## 7. init — 初始化项目
 
-在当前目录创建 Cody 配置，并生成 `CODY.md` 项目说明模板。
+在当前目录创建 Cody 配置，并用 AI 分析项目后生成或更新 `CODY.md`。
 
 ```bash
 cody init
 ```
 
-**创建的文件:**
+可重复运行：`.cody/` 已存在时跳过 scaffold，`CODY.md` **始终**重新生成。
+
+**创建/更新的文件:**
 ```
-CODY.md            # 项目说明文件（每次 session 自动读取）
-.cody/
+CODY.md            # 项目说明文件（AI 生成，每次 session 自动读取）
+.cody/             # 首次运行时创建
 ├── config.json    # 项目配置文件
 └── skills/        # 项目自定义技能目录
 ```
 
-**输出:**
+**首次运行输出:**
 ```
 Initialized Cody in current directory
   Created .cody/
   Created .cody/skills/
   Created .cody/config.json
-  Created CODY.md (project instructions — edit to add context)
+  Created CODY.md (AI-generated)
+```
+
+**重复运行输出（`.cody/` 已存在）:**
+```
+.cody directory already exists — skipping scaffold
+Initialized Cody in current directory
+  Updated CODY.md (AI-generated)
 ```
 
 > **CODY.md** 是 Cody 的项目说明文件，每次启动 session 时自动注入到系统提示中。
-> 编辑此文件可以告诉 Cody 项目的架构、约定和重要背景信息。
+> 项目演进后重新运行 `cody init` 即可更新。
 > 详见 [CODY.md 说明](#codymd-项目说明文件)。
 
 ---
