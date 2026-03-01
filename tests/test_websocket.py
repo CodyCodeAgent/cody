@@ -5,13 +5,27 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from cody.core.runner import (
-    CodyResult, ThinkingEvent, TextDeltaEvent,
+    CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent, ToolTrace,
 )
 from cody.server import _serialize_stream_event, app
 
 
 # ── _serialize_stream_event unit tests ─────────────────────────────────────
+
+
+def test_serialize_compact_event():
+    """CompactEvent serialises with compaction details."""
+    event = CompactEvent(
+        original_messages=42,
+        compacted_messages=5,
+        estimated_tokens_saved=85000,
+    )
+    result = _serialize_stream_event(event)
+    assert result["type"] == "compact"
+    assert result["original_messages"] == 42
+    assert result["compacted_messages"] == 5
+    assert result["estimated_tokens_saved"] == 85000
 
 
 def test_serialize_thinking_event():

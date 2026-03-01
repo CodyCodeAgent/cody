@@ -30,7 +30,7 @@ from pydantic_ai.messages import (
 
 from .audit import AuditLogger
 from .config import Config
-from .context import compact_messages
+from .context import CompactResult, compact_messages
 from .deps import CodyDeps
 from .file_history import FileHistory
 from .lsp_client import LSPClient
@@ -164,13 +164,25 @@ class ToolResultEvent:
 
 
 @dataclass
+class CompactEvent:
+    """Context was auto-compacted before this run."""
+    original_messages: int
+    compacted_messages: int
+    estimated_tokens_saved: int
+    event_type: Literal["compact"] = "compact"
+
+
+@dataclass
 class DoneEvent:
     """Stream complete. Contains the full CodyResult."""
     result: CodyResult
     event_type: Literal["done"] = "done"
 
 
-StreamEvent = Union[ThinkingEvent, TextDeltaEvent, ToolCallEvent, ToolResultEvent, DoneEvent]
+StreamEvent = Union[
+    CompactEvent, ThinkingEvent, TextDeltaEvent,
+    ToolCallEvent, ToolResultEvent, DoneEvent,
+]
 
 
 class AgentRunner:
@@ -387,14 +399,14 @@ class AgentRunner:
         self,
         history: Optional[list[ModelMessage]],
         max_tokens: int = 100_000,
-    ) -> Optional[list[ModelMessage]]:
+    ) -> tuple[Optional[list[ModelMessage]], Optional[CompactResult]]:
         """Auto-compact message history when approaching token limits.
 
         Converts ModelMessage history to dict format, runs compaction,
-        then converts back. Returns original history if no compaction needed.
+        then converts back. Returns (history, compact_result_or_none).
         """
         if not history:
-            return history
+            return history, None
 
         # Convert ModelMessage list → dict list for compaction
         msgs: list[dict] = []
@@ -411,7 +423,7 @@ class AgentRunner:
         compacted, result = compact_messages(msgs, max_tokens=max_tokens)
 
         if result is None:
-            return history  # no compaction needed
+            return history, None  # no compaction needed
 
         logger.info(
             "Context compacted: %d → %d messages, ~%d tokens saved",
@@ -435,7 +447,7 @@ class AgentRunner:
             elif role == "assistant":
                 new_history.append(ModelResponse(parts=[TextPart(content=content)]))
 
-        return new_history
+        return new_history, result
 
     # ── Model settings ────────────────────────────────────────────────────────
 
@@ -462,7 +474,7 @@ class AgentRunner:
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history"""
         deps = self._create_deps()
-        message_history = self._compact_history_if_needed(message_history)
+        message_history, _compact = self._compact_history_if_needed(message_history)
         result = await self.agent.run(
             prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
@@ -477,6 +489,7 @@ class AgentRunner:
         """Run agent with streaming, yielding structured StreamEvent objects.
 
         Events:
+          - CompactEvent: context was auto-compacted (first event if applicable)
           - ThinkingEvent: incremental thinking content
           - TextDeltaEvent: incremental text output
           - ToolCallEvent: tool call initiated
@@ -492,7 +505,14 @@ class AgentRunner:
         from pydantic_ai.run import AgentRunResultEvent
 
         deps = self._create_deps()
-        message_history = self._compact_history_if_needed(message_history)
+        message_history, compact_result = self._compact_history_if_needed(message_history)
+
+        if compact_result is not None:
+            yield CompactEvent(
+                original_messages=compact_result.original_messages,
+                compacted_messages=compact_result.compacted_messages,
+                estimated_tokens_saved=compact_result.estimated_tokens_saved,
+            )
 
         async for event in self.agent.run_stream_events(
             prompt, deps=deps, message_history=message_history,
