@@ -32,14 +32,22 @@ def test_run_no_prompt(runner):
     assert 'Please provide a prompt' in result.output
 
 
-def test_init_creates_directory(runner, tmp_path):
+def test_init_creates_directory(runner, tmp_path, monkeypatch):
+    # Mock AI generation so the test doesn't need a real API key.
+    async def _fake_generate(workdir, config):
+        return "# CODY.md\n\nAI-generated content."
+
+    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(main, ['init'])
-        assert result.exit_code == 0
+        assert result.exit_code == 0, result.output
         assert 'Initialized' in result.output
         assert (Path.cwd() / '.cody').exists()
         assert (Path.cwd() / '.cody' / 'skills').exists()
         assert (Path.cwd() / '.cody' / 'config.json').exists()
+        assert (Path.cwd() / 'CODY.md').exists()
+        assert 'AI-generated' in (Path.cwd() / 'CODY.md').read_text()
 
 
 def test_init_already_exists(runner, tmp_path):

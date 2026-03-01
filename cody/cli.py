@@ -1,7 +1,6 @@
 """CLI interface for Cody"""
 
 import asyncio
-import logging
 import sys
 import time
 from pathlib import Path
@@ -14,13 +13,12 @@ from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from .core import Config, AgentRunner, SessionStore
-from .core.project_instructions import CODY_MD_FILENAME, CODY_MD_TEMPLATE, generate_project_instructions
+from .core.project_instructions import CODY_MD_FILENAME, generate_project_instructions
 from .core.runner import (
     CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
 )
 
-logger = logging.getLogger(__name__)
 console = Console()
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -498,26 +496,16 @@ def init():
     config = Config.load(workdir=workdir)
     config.save(config_file)
 
-    # Try AI-powered generation; fall back to static template on any error.
-    cody_md_content = _generate_cody_md(workdir, config)
+    # AI-powered generation — raises on failure (no API key, network error, etc.)
+    with console.status("[cyan]Analyzing project to generate CODY.md…[/cyan]"):
+        cody_md_content = asyncio.run(generate_project_instructions(workdir, config))
     cody_md_file.write_text(cody_md_content, encoding="utf-8")
 
     console.print("[green]Initialized Cody in current directory[/green]")
     console.print("  Created .cody/")
     console.print("  Created .cody/skills/")
     console.print("  Created .cody/config.json")
-    ai_tag = "" if cody_md_content == CODY_MD_TEMPLATE else " [dim](AI-generated)[/dim]"
-    console.print(f"  Created {CODY_MD_FILENAME}{ai_tag}")
-
-
-def _generate_cody_md(workdir: Path, config: Config) -> str:
-    """Run AI project analysis; return generated content or fall back to template."""
-    try:
-        with console.status("[cyan]Analyzing project to generate CODY.md…[/cyan]"):
-            return asyncio.run(generate_project_instructions(workdir, config))
-    except Exception as exc:
-        logger.debug("CODY.md AI generation failed, using template: %s", exc)
-        return CODY_MD_TEMPLATE
+    console.print(f"  Created {CODY_MD_FILENAME} [dim](AI-generated)[/dim]")
 
 
 # ── Skills commands ──────────────────────────────────────────────────────────
