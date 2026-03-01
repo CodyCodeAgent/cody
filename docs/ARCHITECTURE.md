@@ -5,13 +5,14 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Users / Callers                       │
-│         (CLI / TUI / Clawdbot / CI-CD / Other Agents)       │
-└──────┬──────────────┬──────────────┬────────────────────────┘
-       │              │              │
-  CLI (Click)    TUI (Textual)   RPC Server (FastAPI)
-  cody/cli.py    cody/tui.py    cody/server.py
-       │              │              │
-       └──────────────┴──────────────┘
+│    (CLI / TUI / Web / Clawdbot / CI-CD / Other Agents)      │
+└──┬──────────────┬──────────────┬──────────────┬─────────────┘
+   │              │              │              │
+  CLI          TUI          Web (React)    RPC Server
+  (Click)      (Textual)    web/src/       (FastAPI)
+  cody/cli.py  cody/tui.py  ↕ fetch/ws     cody/server.py
+   │              │              │              │
+   └──────────────┴──────────────┴──────────────┘
                       │
          ┌────────────▼────────────┐
          │    Python SDK           │

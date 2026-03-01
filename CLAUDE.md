@@ -7,6 +7,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Core Engine** (`cody/core/`) — 所有功能逻辑，不依赖任何 CLI / Server 框架
 - **CLI** (`cody/cli.py`) — Click 命令行
 - **TUI** (`cody/tui.py`) — Textual 全屏终端
+- **Web** (`web/`) — React + TypeScript SPA（项目向导 + 实时对话）
 - **RPC Server** (`cody/server.py`) — FastAPI HTTP/WebSocket
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)
 - **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端
@@ -16,7 +17,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 ## 架构要点
 
 ```
-cli.py / tui.py / server.py  →  core/runner.py  →  core/tools.py
+cli.py / tui.py / web/ / server.py  →  core/runner.py  →  core/tools.py
                                       ↓
                               pydantic-ai, sqlite3, httpx
 ```

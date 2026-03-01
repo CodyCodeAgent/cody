@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-497%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**核心理念：引擎做厚，壳子做薄。** CLI、TUI 和 Server 都是基于核心引擎的薄壳。Server + SDK 交付模式是我们的差异化优势 — 让其他人能够将 AI 编码能力嵌入到自己的系统中。
+**核心理念：引擎做厚，壳子做薄。** CLI、TUI、Web 和 Server 都是基于核心引擎的薄壳。Server + SDK 交付模式是我们的差异化优势 — 让其他人能够将 AI 编码能力嵌入到自己的系统中。
 
 ---
 
@@ -18,6 +18,7 @@
 | [🚀 快速入门](docs/QUICKSTART.md) | 从零开始，15 分钟上手 |
 | [💻 CLI 使用指南](docs/CLI.md) | 命令行界面详细用法 |
 | [🖥️ TUI 使用指南](docs/TUI.md) | 全屏终端界面用法 |
+| [🌐 Web 前端](web/) | React Web 界面 |
 | [🔌 SDK 使用指南](docs/SDK.md) | Python 和 Go SDK 用法 |
 | [🛠️ 技能开发指南](docs/SKILLS.md) | 创建自定义技能 |
 | [⚙️ 配置文件详解](docs/CONFIG.md) | 所有配置项说明 |
@@ -40,6 +41,7 @@
 - **CI/CD 模板** — 开箱即用的 GitHub Actions，支持 AI 代码审查、自动修复、测试生成
 
 ### 🔌 扩展集成
+- **Web 前端** — React + TypeScript SPA，项目向导 + 实时对话，开发/生产一体化
 - **RPC Server + SDK** — FastAPI HTTP/WebSocket 服务，Python SDK（同步 + 异步），Go SDK，可嵌入任何系统
 - **MCP 集成** — 通过 stdio JSON-RPC 连接外部 MCP 服务器（GitHub、数据库等）
 - **LSP 代码智能** — Python (pyright)、TypeScript (tsserver)、Go (gopls) — 诊断、跳转定义、查找引用、悬停信息

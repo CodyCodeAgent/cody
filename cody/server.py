@@ -23,8 +23,10 @@ import time
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
@@ -109,6 +111,25 @@ class SessionDetailResponse(SessionResponse):
     messages: list[dict]
 
 
+class DirectoryEntry(BaseModel):
+    name: str
+    is_dir: bool
+
+
+class DirectoryListResponse(BaseModel):
+    path: str
+    entries: list[DirectoryEntry]
+
+
+class ProjectInitRequest(BaseModel):
+    workdir: str
+
+
+class ProjectInitResponse(BaseModel):
+    status: str = "success"
+    workdir: str
+
+
 # ── App ──────────────────────────────────────────────────────────────────────
 
 
@@ -117,6 +138,33 @@ app = FastAPI(
     description="AI Coding Assistant RPC API",
     version="1.3.0",
 )
+
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:3000",   # alternative dev port
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── Static files (web frontend) ─────────────────────────────────────────────
+# Only the /assets mount goes here (safe prefix, won't shadow API routes).
+# The SPA catch-all is registered at the bottom of this file so it has the
+# lowest priority and never shadows API endpoints.
+
+_WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+if _WEB_DIST.is_dir() and (_WEB_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=_WEB_DIST / "assets"), name="web-assets")
 
 
 # ── Server-level singletons ─────────────────────────────────────────────────
@@ -667,6 +715,57 @@ async def get_skill(skill_name: str, workdir: Optional[str] = None):
         )
 
 
+# ── Web API: directory browsing & project init ──────────────────────────────
+
+
+@app.get("/api/directories", response_model=DirectoryListResponse)
+async def list_directories(path: Optional[str] = Query(default=None)):
+    """List directories and files under the given path."""
+    target = Path(path) if path else Path.home()
+    if not target.is_dir():
+        _raise_structured(
+            ErrorCode.INVALID_PARAMS,
+            f"Directory not found: {target}",
+            status_code=404,
+        )
+
+    entries: list[DirectoryEntry] = []
+    try:
+        for item in sorted(target.iterdir()):
+            if item.name.startswith("."):
+                continue
+            entries.append(DirectoryEntry(name=item.name, is_dir=item.is_dir()))
+    except PermissionError:
+        _raise_structured(
+            ErrorCode.PERMISSION_DENIED,
+            f"Permission denied: {target}",
+            status_code=403,
+        )
+
+    return DirectoryListResponse(path=str(target), entries=entries)
+
+
+@app.post("/api/projects/init", response_model=ProjectInitResponse)
+async def init_project(request: ProjectInitRequest):
+    """Initialize a .cody/ directory in the given workdir."""
+    workdir = Path(request.workdir)
+    if not workdir.is_dir():
+        _raise_structured(
+            ErrorCode.INVALID_PARAMS,
+            f"Directory not found: {workdir}",
+            status_code=404,
+        )
+
+    cody_dir = workdir / ".cody"
+    cody_dir.mkdir(exist_ok=True)
+
+    config_path = cody_dir / "config.json"
+    if not config_path.exists():
+        config_path.write_text("{}\n")
+
+    return ProjectInitResponse(workdir=str(workdir))
+
+
 # ── Sessions ─────────────────────────────────────────────────────────────────
 
 
@@ -994,6 +1093,24 @@ async def websocket_endpoint(ws: WebSocket):
     conn = _WSConnection(ws)
     await conn.accept()
     await conn.handle()
+
+
+# ── SPA fallback (must be last) ──────────────────────────────────────────────
+# Registered after all API routes so it has the lowest matching priority.
+
+if _WEB_DIST.is_dir():
+    @app.get("/", include_in_schema=False)
+    async def serve_index():
+        from fastapi.responses import FileResponse
+        return FileResponse(_WEB_DIST / "index.html")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def serve_spa_fallback(path: str):
+        from fastapi.responses import FileResponse
+        file_path = _WEB_DIST / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(_WEB_DIST / "index.html")
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────

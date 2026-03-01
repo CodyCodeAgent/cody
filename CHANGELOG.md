@@ -9,6 +9,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [1.3.0] - 2026-03-01
 
 ### Added
+- **Web frontend** — React + TypeScript + Vite single-page application (`web/`)
+  - Project wizard with directory browser for selecting workdir
+  - Real-time chat via WebSocket with streaming message display
+  - Session sidebar with create/delete/navigate
+  - Dark theme UI
+  - 31 frontend tests (Vitest + Testing Library)
+- **Web API endpoints** — `GET /api/directories` (directory browsing) and `POST /api/projects/init` (project initialization)
+- **CORS middleware** — Allows dev server (localhost:5173) cross-origin requests
+- **Static file serving** — Production builds served directly from FastAPI (`web/dist/`)
 - **CODY.md project instructions** — Cody now reads `CODY.md` at the start of every session and injects its content into the system prompt, similar to Claude Code's `CLAUDE.md`.
   - Two-layer loading: `~/.cody/CODY.md` (global user-level) + `<workdir>/CODY.md` (project-level); both are optional and additive
   - Global instructions come first, project instructions appended after a `---` separator

@@ -6,7 +6,7 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 
 ## 核心定位
 
-> **Cody 的核心是 AI 编程引擎（core），CLI 和 Server 都只是引擎的壳子。**
+> **Cody 的核心是 AI 编程引擎（core），CLI、Web 和 Server 都只是引擎的壳子。**
 > 引擎做厚，壳子做薄。Server/SDK 是我们的差异化交付方式——让别人把 AI 编程能力嵌入到自己的系统中。
 
 **目标用户：**
@@ -16,7 +16,7 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 
 **核心价值：**
 - 高质量的 AI 编程引擎（工具准确、Agent 可靠）
-- 多种接入方式（Server/SDK/CLI/TUI 共享同一引擎）
+- 多种接入方式（Server/SDK/CLI/TUI/Web 共享同一引擎）
 - 可扩展的 Skill 系统
 - 子 Agent 编排（任务分解、并行执行）
 
@@ -227,6 +227,27 @@ cody-tui
 - 斜杠命令（/help, /new, /sessions, /clear, /quit）
 - 键盘快捷键（Ctrl+N 新会话, Ctrl+C 取消/退出, Ctrl+Q 退出）
 - 状态栏显示 Session、Model、目录、消息数
+
+#### Web 前端
+
+React + TypeScript 单页应用（`web/`），通过 HTTP/WebSocket 连接 RPC Server。
+
+**功能：**
+- 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
+- 实时对话 — WebSocket 流式消息显示
+- 会话管理 — 侧边栏创建/切换/删除会话
+- 深色主题 UI
+
+**开发：**
+```bash
+cd web && npm install && npm run dev
+```
+
+**生产构建：**
+```bash
+cd web && npm run build
+# dist/ 由 FastAPI 自动托管
+```
 
 #### RPC Server 模式
 

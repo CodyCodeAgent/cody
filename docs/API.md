@@ -230,7 +230,60 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 
 ---
 
-### 5. 会话管理
+### 5. Web API
+
+#### GET /api/directories
+
+浏览目录结构，返回子目录和文件列表。
+
+**查询参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| path | string | ❌ | 目录路径，默认用户 home 目录 |
+
+**响应：**
+```json
+{
+  "path": "/home/user",
+  "entries": [
+    {"name": "projects", "is_dir": true},
+    {"name": "file.txt", "is_dir": false}
+  ]
+}
+```
+
+**HTTP 状态码：**
+- `200` - 成功
+- `404` - 目录不存在（`INVALID_PARAMS`）
+- `403` - 权限不足（`PERMISSION_DENIED`）
+
+#### POST /api/projects/init
+
+在指定目录初始化 `.cody/` 项目目录。
+
+**请求体：**
+```json
+{
+  "workdir": "/path/to/project"
+}
+```
+
+**响应：**
+```json
+{
+  "status": "success",
+  "workdir": "/path/to/project"
+}
+```
+
+**HTTP 状态码：**
+- `200` - 成功
+- `404` - 目录不存在（`INVALID_PARAMS`）
+- `422` - 缺少 workdir 参数
+
+---
+
+### 6. 会话管理
 
 #### POST /sessions
 
