@@ -242,6 +242,37 @@ class CodyTUI(App):
         if enabled:
             inp.focus()
 
+    # ── Slash command hints ────────────────────────────────────────────────
+
+    _COMMANDS = {
+        "/new": "Start a new session",
+        "/sessions": "List recent sessions",
+        "/clear": "Clear screen",
+        "/help": "Show help",
+        "/quit": "Exit",
+    }
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Show command hints in status line when input starts with /."""
+        text = event.value
+        if text.startswith("/"):
+            prefix = text.strip().lower()
+            matches = [
+                f"{cmd} [dim]{desc}[/dim]"
+                for cmd, desc in self._COMMANDS.items()
+                if cmd.startswith(prefix)
+            ]
+            if matches:
+                self.query_one("#status-line", StatusLine).update(
+                    " " + "  |  ".join(matches)
+                )
+            else:
+                self.query_one("#status-line", StatusLine).update(
+                    f" [yellow]Unknown command: {text}[/yellow]"
+                )
+        else:
+            self._update_status()
+
     # ── Input handling ───────────────────────────────────────────────────────
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
