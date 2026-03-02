@@ -24,22 +24,38 @@ console = Console()
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-async def _tool_spinner(tool_name: str, start: float) -> None:
-    """Show an animated spinner while a tool is executing."""
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as e.g. '5s' or '1m 23s'."""
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    return f"{s // 60}m {s % 60}s"
+
+
+async def _status_spinner(label: str, start: float, *, done_label: str = "") -> None:
+    """Show an animated spinner with a label and elapsed time.
+
+    If *done_label* is set, print it on completion; otherwise just clear the line.
+    """
     i = 0
     try:
         while True:
             elapsed = time.monotonic() - start
             frame = _SPINNER_FRAMES[i % len(_SPINNER_FRAMES)]
             sys.stdout.write(
-                f"\r    {frame} {tool_name} running... ({elapsed:.0f}s)"
+                f"\r    {frame} {label} ({_format_elapsed(elapsed)})"
             )
             sys.stdout.flush()
             i += 1
             await asyncio.sleep(0.1)
     except asyncio.CancelledError:
         elapsed = time.monotonic() - start
-        sys.stdout.write(f"\r    ✓ {tool_name} done ({elapsed:.1f}s)\n")
+        if done_label:
+            sys.stdout.write(
+                f"\r    ✓ {done_label} ({_format_elapsed(elapsed)})\n"
+            )
+        else:
+            sys.stdout.write("\r" + " " * 60 + "\r")
         sys.stdout.flush()
 
 
@@ -53,6 +69,8 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
     thinking_buf = []
     result = None
     spinner_task: Optional[asyncio.Task] = None
+    stream_start = time.monotonic()
+    got_first_event = False
 
     async def _stop_spinner():
         nonlocal spinner_task
@@ -64,7 +82,17 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
                 pass
         spinner_task = None
 
+    # Show "Thinking..." spinner while waiting for first response
+    spinner_task = asyncio.create_task(
+        _status_spinner("Thinking...", stream_start)
+    )
+
     async for event in stream:
+        # Stop the initial "Thinking..." spinner on first real event
+        if not got_first_event and not isinstance(event, CompactEvent):
+            got_first_event = True
+            await _stop_spinner()
+
         if isinstance(event, CompactEvent):
             console.print(
                 f"  [yellow]⚡ 上下文已压缩：{event.original_messages} → "
@@ -83,7 +111,11 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
             args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
             console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
             spinner_task = asyncio.create_task(
-                _tool_spinner(event.tool_name, time.monotonic())
+                _status_spinner(
+                    f"{event.tool_name} running...",
+                    time.monotonic(),
+                    done_label=f"{event.tool_name} done",
+                )
             )
         elif isinstance(event, ToolResultEvent):
             await _stop_spinner()
@@ -103,7 +135,11 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
                 console.print(rich_escape("".join(thinking_buf)), style="dim")
                 thinking_buf.clear()
             result = event.result
+
+    # Print total elapsed time
+    total = time.monotonic() - stream_start
     console.print()
+    console.print(f"  [dim]Completed in {_format_elapsed(total)}[/dim]")
     return result
 
 

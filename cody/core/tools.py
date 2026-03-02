@@ -1207,7 +1207,7 @@ def _with_model_retry(func):
     async def wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
-        except ToolError as e:
+        except (ToolError, FileNotFoundError) as e:
             raise ModelRetry(str(e)) from e
 
     return wrapper

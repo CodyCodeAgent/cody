@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { Message } from "../types";
 
 /** Extract a short summary from tool args JSON for display in collapsed header. */
@@ -74,7 +75,7 @@ export default function MessageBubble({ message }: { message: Message }) {
         {isUser ? (
           message.content
         ) : (
-          <ReactMarkdown>{message.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         )}
       </div>
 

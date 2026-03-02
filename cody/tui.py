@@ -313,28 +313,38 @@ class CodyTUI(App):
 
     _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-    def _start_tool_spinner(self, tool_name: str) -> None:
-        """Start a spinner on the status line during tool execution."""
-        self._tool_executing = tool_name
-        self._tool_start = time.monotonic()
-        self._tool_spinner_idx = 0
-        self._tool_timer = self.set_interval(0.1, self._tick_tool_spinner)
+    # ── Processing status indicator ──────────────────────────────────────────
 
-    def _tick_tool_spinner(self) -> None:
-        """Update the status line with spinner animation."""
-        elapsed = time.monotonic() - self._tool_start
-        frame = self._SPINNER_FRAMES[self._tool_spinner_idx % len(self._SPINNER_FRAMES)]
+    def _start_processing(self) -> None:
+        """Start a processing indicator on the status line with elapsed time."""
+        self._processing_start = time.monotonic()
+        self._processing_state = "Thinking..."
+        self._processing_idx = 0
+        self._processing_timer = self.set_interval(0.1, self._tick_processing)
+
+    def _tick_processing(self) -> None:
+        """Update the status line spinner with current state and elapsed time."""
+        elapsed = time.monotonic() - self._processing_start
+        frame = self._SPINNER_FRAMES[self._processing_idx % len(self._SPINNER_FRAMES)]
+        self._processing_idx += 1
+        if elapsed < 60:
+            time_str = f"{int(elapsed)}s"
+        else:
+            time_str = f"{int(elapsed) // 60}m {int(elapsed) % 60}s"
         self.query_one("#status-line", StatusLine).update(
-            f" {frame} {self._tool_executing} running... ({elapsed:.0f}s)"
+            f" {frame} {self._processing_state} ({time_str})"
         )
-        self._tool_spinner_idx += 1
 
-    def _stop_tool_spinner(self) -> None:
-        """Stop the tool spinner and restore the status line."""
-        if hasattr(self, '_tool_timer') and self._tool_timer is not None:
-            self._tool_timer.stop()
-            self._tool_timer = None
-            self._update_status()
+    def _set_processing_state(self, state: str) -> None:
+        """Update the processing status text (e.g. 'Running read_file...')."""
+        self._processing_state = state
+
+    def _stop_processing(self) -> None:
+        """Stop the processing indicator and restore normal status line."""
+        if hasattr(self, '_processing_timer') and self._processing_timer is not None:
+            self._processing_timer.stop()
+            self._processing_timer = None
+        self._update_status()
 
     @work(thread=False)
     async def _run_agent(self, prompt: str) -> None:
@@ -347,10 +357,12 @@ class CodyTUI(App):
         self.is_running = True
         self._set_input_enabled(False)
         self._cancel_event = asyncio.Event()
-        self._tool_timer = None
 
         bubble = self._add_stream_bubble()
         scroll = self.query_one("#chat-scroll", VerticalScroll)
+
+        # Start processing indicator on status line
+        self._start_processing()
 
         try:
             async for event in self._runner.run_stream(
@@ -371,19 +383,17 @@ class CodyTUI(App):
                     bubble.append(f"[dim]{event.content}[/dim]")
                     scroll.scroll_end(animate=False)
                 elif isinstance(event, ToolCallEvent):
-                    self._stop_tool_spinner()
+                    self._set_processing_state(f"Running {event.tool_name}...")
                     args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
                     bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
                     scroll.scroll_end(animate=False)
-                    self._start_tool_spinner(event.tool_name)
                 elif isinstance(event, ToolResultEvent):
-                    self._stop_tool_spinner()
+                    self._set_processing_state("Generating...")
                 elif isinstance(event, TextDeltaEvent):
-                    self._stop_tool_spinner()
+                    self._set_processing_state("Generating...")
                     bubble.append(event.content)
                     scroll.scroll_end(animate=False)
                 elif isinstance(event, DoneEvent):
-                    self._stop_tool_spinner()
                     # Use real message history from pydantic-ai (includes tool calls)
                     self._message_history = event.result.all_messages()
                     # Save assistant message
@@ -396,7 +406,7 @@ class CodyTUI(App):
             bubble.append(f"\n\n[bold red]Error: {e}[/bold red]")
 
         finally:
-            self._stop_tool_spinner()
+            self._stop_processing()
             # Replace StreamBubble with static MessageBubble
             try:
                 stream = self.query_one("#active-stream", StreamBubble)

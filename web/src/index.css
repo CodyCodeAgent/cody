@@ -546,9 +546,54 @@ body {
 
 /* ── Stream placeholder ─────────────────────────── */
 
-.stream-placeholder {
+/* ── Streaming status bar ──────────────────────── */
+
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #a1a1aa;
+}
+
+.stream-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #818cf8;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.stream-status-text {
+  flex: 1;
+}
+
+.stream-status-time {
+  font-variant-numeric: tabular-nums;
   color: #71717a;
-  font-style: italic;
+}
+
+.stream-stop-btn {
+  padding: 2px 10px;
+  font-size: 12px;
+  border: 1px solid #52525b;
+  border-radius: 4px;
+  background: transparent;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.stream-stop-btn:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
 }
 
 /* ── Message usage ──────────────────────────────── */
