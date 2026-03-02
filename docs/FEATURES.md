@@ -59,8 +59,9 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 - `exec_command(command)` - 执行 Shell 命令（支持白名单和危险命令检测）
 
 **工具错误自动重试：**
-- 工具执行失败（如 `edit_file` 找不到目标文本）时，错误信息自动返回给 AI 模型
+- 工具执行失败（如 `edit_file` 找不到目标文本、`read_file` 文件不存在）时，错误信息自动返回给 AI 模型
 - AI 可以根据错误信息修正参数后重试（最多 2 次重试）
+- 捕获 `ToolError`（`ToolInvalidParams` / `ToolPathDenied` / `ToolPermissionDenied`）和 `FileNotFoundError`
 - 基于 pydantic-ai 的 `ModelRetry` 机制，不会打断整个对话流
 
 **任务管理：**
@@ -231,7 +232,7 @@ cody-tui
 - 多会话管理（新建/恢复/列出/切换）
 - 斜杠命令（/help, /new, /sessions, /clear, /quit）
 - 键盘快捷键（Ctrl+N 新会话, Ctrl+C 取消/退出, Ctrl+Q 退出）
-- 状态栏显示 Session、Model、目录、消息数
+- 状态栏处理状态指示器 — 显示 "Thinking..." → "Running {tool}..." → "Generating..." + 实时耗时
 
 #### Web 前端
 
@@ -243,6 +244,10 @@ cody-tui
 - 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
 - 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
 - 实时对话 — WebSocket 流式消息显示，通过 SDK 代理到核心服务
+- 流式状态栏 — 显示处理状态（Thinking/Running/Generating）+ 耗时 + Stop 按钮
+- WebSocket 断连恢复 — 断连时自动重置 streaming 状态并提示用户
+- 空闲超时 — 120 秒无事件自动停止，防止永久卡住
+- GFM Markdown 渲染 — 支持表格、任务列表、删除线等（`remark-gfm`）
 - 项目侧边栏 — 快速切换/删除项目
 - 深色主题 UI
 
@@ -663,4 +668,4 @@ cody "使用项目 B 的配置"
 
 ---
 
-**最后更新：** 2026-02-28
+**最后更新：** 2026-03-02

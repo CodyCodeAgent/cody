@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.4.0] - 2026-03-02
+
+### Added
+- **Streaming status indicators** — All three UIs (CLI, TUI, Web) now show real-time processing status with elapsed time during agent execution
+  - **CLI**: "Thinking..." spinner at stream start, tool-specific spinners with elapsed time, "Completed in Xs" summary at end
+  - **TUI**: Unified status line indicator cycling through "Thinking..." → "Running {tool}..." → "Generating..." with elapsed time
+  - **Web**: Streaming status bar with pulse animation, smart status text, elapsed timer, and **Stop** button to cancel generation
+- **Web Stop button** — Users can now manually stop a stuck or unwanted streaming response
+- **Web idle timeout** — Streaming auto-stops after 120 seconds of no events, showing a timeout message
+- **Web disconnect recovery** — If WebSocket disconnects during streaming, the UI resets gracefully with a "Connection lost" message instead of hanging forever
+- **GFM Markdown** — Web frontend now renders GitHub Flavored Markdown (tables, strikethrough, task lists) via `remark-gfm`
+
+### Changed
+- **CLI spinner refactored** — `_tool_spinner` replaced with generic `_status_spinner` supporting custom labels and done messages
+- **TUI tool spinner unified** — Replaced per-tool `_start_tool_spinner`/`_stop_tool_spinner` with unified `_start_processing`/`_set_processing_state`/`_stop_processing`
+
+### Fixed
+- **FileNotFoundError auto-retry** — `FileNotFoundError` now triggers `ModelRetry` (alongside `ToolError`), allowing the AI to self-correct file paths instead of crashing
+- **Web streaming stuck** — Fixed bug where WebSocket disconnection during streaming left the UI in permanent "Thinking..." state
+
+---
+
 ## [1.3.0] - 2026-03-02
 
 ### Added

@@ -75,7 +75,7 @@ cody tui --workdir /path/to/project
 
 ### 3. Status Line（状态行）
 
-显示当前会话信息：
+**空闲时** — 显示当前会话信息：
 ```
 Session: abc123 | Model: anthropic:claude-sonnet-4-0 | Dir: project | Messages: 4
 ```
@@ -86,6 +86,15 @@ Session: abc123 | Model: anthropic:claude-sonnet-4-0 | Dir: project | Messages: 
 | `Model` | 使用的 AI 模型 |
 | `Dir` | 工作目录名 |
 | `Messages` | 消息数量 |
+
+**处理中** — 显示实时处理状态和耗时：
+```
+⠋ Thinking... (3s)           # 等待 AI 初始响应
+⠹ Running read_file... (5s)  # 工具执行中
+⠸ Generating... (8s)         # 文本生成中
+```
+
+状态自动切换：发送消息 → Thinking → Running {tool} → Generating → 恢复空闲状态。
 
 ### 4. Input Box（输入框）
 
@@ -499,4 +508,4 @@ cody-web
 
 ---
 
-**最后更新:** 2026-02-28
+**最后更新:** 2026-03-02

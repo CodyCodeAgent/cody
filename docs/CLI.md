@@ -187,6 +187,11 @@ cody run -v "读取并分析 main.py"
 
 ### 输出说明
 
+**处理状态指示器：**
+- 发送请求后立即显示 `⠋ Thinking... (0s)` 动画 spinner
+- 工具执行时切换为 `⠋ read_file running... (3s)`，完成后显示 `✓ read_file done (1s)`
+- 流结束后显示总耗时：`Completed in 12s`
+
 **正常输出:**
 - 流式显示 AI 回复内容
 - 工具调用以灰色显示（如 `→ read_file(path='main.py')`）
@@ -951,4 +956,4 @@ uvicorn api.main:app --reload
 
 ---
 
-**最后更新:** 2026-03-01
+**最后更新:** 2026-03-02

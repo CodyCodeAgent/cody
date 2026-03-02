@@ -11,7 +11,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Web Backend** (`web/backend/`) — 统一 FastAPI 应用（端口 8000），提供 Web + RPC 端点，直接导入 core
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)，in-process 封装 core
 
-当前版本：**v1.3.0**
+当前版本：**v1.4.0**
 
 ## 架构要点
 
