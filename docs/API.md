@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 1.1.0
+**版本：** 1.3.0
 
 ---
 
@@ -230,7 +230,60 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 
 ---
 
-### 5. 会话管理
+### 5. Web API
+
+#### GET /api/directories
+
+浏览目录结构，返回子目录和文件列表。
+
+**查询参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| path | string | ❌ | 目录路径，默认用户 home 目录 |
+
+**响应：**
+```json
+{
+  "path": "/home/user",
+  "entries": [
+    {"name": "projects", "is_dir": true},
+    {"name": "file.txt", "is_dir": false}
+  ]
+}
+```
+
+**HTTP 状态码：**
+- `200` - 成功
+- `404` - 目录不存在（`INVALID_PARAMS`）
+- `403` - 权限不足（`PERMISSION_DENIED`）
+
+#### POST /api/projects/init
+
+在指定目录初始化 `.cody/` 项目目录。
+
+**请求体：**
+```json
+{
+  "workdir": "/path/to/project"
+}
+```
+
+**响应：**
+```json
+{
+  "status": "success",
+  "workdir": "/path/to/project"
+}
+```
+
+**HTTP 状态码：**
+- `200` - 成功
+- `404` - 目录不存在（`INVALID_PARAMS`）
+- `422` - 缺少 workdir 参数
+
+---
+
+### 6. 会话管理
 
 #### POST /sessions
 
@@ -395,7 +448,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 ```json
 {
   "status": "ok",
-  "version": "1.1.0"
+  "version": "1.3.0"
 }
 ```
 
@@ -575,10 +628,12 @@ curl -H 'Authorization: Bearer <signed-token>' http://localhost:8000/run ...
 
 ### Python SDK（推荐）
 
+SDK 是 in-process 封装，直接调用核心引擎，无需启动 Server。
+
 ```python
 from cody import AsyncCodyClient
 
-async with AsyncCodyClient("http://localhost:8000") as client:
+async with AsyncCodyClient(workdir="/path/to/project") as client:
     # 一次性调用
     result = await client.run("创建 hello.py")
     print(result.output)
@@ -596,33 +651,6 @@ async with AsyncCodyClient("http://localhost:8000") as client:
     result = await client.tool("read_file", {"path": "main.py"})
     print(result.result)
 ```
-
-### Go SDK
-
-```go
-client := cody.NewClient("http://localhost:8000")
-
-// 一次性调用
-result, _ := client.Run(ctx, "创建 hello.py")
-fmt.Println(result.Output)
-
-// 多轮会话
-session, _ := client.CreateSession(ctx)
-client.Run(ctx, "创建 Flask 项目", cody.WithSession(session.ID))
-client.Run(ctx, "添加 /health 端点", cody.WithSession(session.ID))
-
-// 流式响应
-ch, _ := client.Stream(ctx, "解释这段代码")
-for chunk := range ch {
-    fmt.Print(chunk.Content)
-}
-
-// 直接调工具
-tool, _ := client.Tool(ctx, "read_file", map[string]interface{}{"path": "main.py"})
-fmt.Println(tool.Result)
-```
-
-详细文档见 `sdk/go/README.md`。
 
 ### curl
 

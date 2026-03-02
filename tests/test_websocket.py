@@ -8,7 +8,8 @@ from cody.core.runner import (
     CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent, ToolTrace,
 )
-from cody.server import _serialize_stream_event, app
+from web.backend.helpers import serialize_stream_event as _serialize_stream_event
+from web.backend.app import app
 
 
 # ── _serialize_stream_event unit tests ─────────────────────────────────────
@@ -161,7 +162,7 @@ def test_ws_run_stream():
         yield TextDeltaEvent(content=" WS")
         yield DoneEvent(result=CodyResult(output="Hello WS"))
 
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.websocket.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = fake_stream
 
@@ -198,7 +199,7 @@ def test_ws_run_stream_with_thinking_and_tools():
         yield TextDeltaEvent(content="Result: found")
         yield DoneEvent(result=CodyResult(output="Result: found", thinking="Let me check..."))
 
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.websocket.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = rich_stream
 
@@ -246,8 +247,8 @@ def test_ws_run_with_session_id():
         yield TextDeltaEvent(content="hi"), "sess-42"
         yield DoneEvent(result=CodyResult(output="hi")), "sess-42"
 
-    with patch("cody.server.AgentRunner") as MockRunner, \
-         patch("cody.server._get_session_store"):
+    with patch("web.backend.routes.websocket.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.websocket.get_session_store"):
         instance = MockRunner.return_value
         instance.run_stream_with_session = fake_session_stream
 
@@ -282,7 +283,7 @@ def test_ws_run_error():
         raise RuntimeError("ws error")
         yield
 
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.websocket.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = failing_stream
 
@@ -310,7 +311,7 @@ def test_ws_run_error_mid_stream():
         raise RuntimeError("mid-stream boom")
         yield  # noqa: F841
 
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.websocket.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = mid_error_stream
 
@@ -361,7 +362,7 @@ def test_ws_run_then_ping():
         yield TextDeltaEvent(content="ok")
         yield DoneEvent(result=CodyResult(output="ok"))
 
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.websocket.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = quick_stream
 

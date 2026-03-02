@@ -379,50 +379,32 @@ cody run "为计算器模块编写 API 文档"
 
 ### Python SDK
 
+SDK 是 in-process 封装，直接调用核心引擎，无需启动 Server。
+
 ```python
 from cody import AsyncCodyClient
 
-async with AsyncCodyClient("http://localhost:8000") as client:
+async with AsyncCodyClient(workdir="/path/to/project") as client:
     # 单次任务
     result = await client.run("创建 hello.py")
     print(result.output)
-    
+
     # 多轮对话
     session = await client.create_session()
     await client.run("创建 Flask 应用", session_id=session.id)
     await client.run("添加 /health 端点", session_id=session.id)
-    
+
     # 流式输出
     async for chunk in client.stream("解释代码"):
         print(chunk.content, end="")
 ```
 
-### Go SDK
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    cody "github.com/SUT-GC/cody-go"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx := context.Background()
-    
-    result, _ := client.Run(ctx, "创建 hello.py")
-    fmt.Println(result.Output)
-}
-```
-
 ---
 
-## 11. 启动 RPC Server
+## 11. 启动 Server
 
 ```bash
-# 启动服务器
+# 启动统一服务器（RPC API + Web 功能）
 cody-server --port 8000
 
 # 访问 API 文档

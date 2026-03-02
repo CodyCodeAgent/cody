@@ -1,0 +1,356 @@
+/* ── Reset & base ────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  background: #0f1117;
+  color: #e4e4e7;
+  line-height: 1.6;
+}
+
+/* ── Buttons ─────────────────────────────────────── */
+
+.btn {
+  display: inline-block;
+  padding: 8px 16px;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  background: #27272a;
+  color: #e4e4e7;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn:hover {
+  background: #3f3f46;
+}
+
+.btn-primary {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #4f46e5;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-lg {
+  padding: 12px 32px;
+  font-size: 16px;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+}
+
+.btn-icon:hover {
+  color: #ef4444;
+}
+
+/* ── Home page ───────────────────────────────────── */
+
+.home-page {
+  max-width: 640px;
+  margin: 80px auto;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.home-header h1 {
+  font-size: 48px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.home-header p {
+  color: #a1a1aa;
+  margin-bottom: 40px;
+}
+
+.home-actions {
+  margin-bottom: 40px;
+}
+
+.home-sessions {
+  text-align: left;
+  margin-top: 40px;
+}
+
+.home-sessions h2 {
+  font-size: 18px;
+  color: #a1a1aa;
+  margin-bottom: 12px;
+}
+
+/* ── Session list ────────────────────────────────── */
+
+.session-list {
+  list-style: none;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #27272a;
+}
+
+.session-item.active {
+  background: #1e1e2e;
+}
+
+.session-link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: #e4e4e7;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+
+.session-link:hover {
+  background: #1e1e2e;
+}
+
+.session-title {
+  font-weight: 500;
+}
+
+.session-meta {
+  font-size: 12px;
+  color: #71717a;
+}
+
+.session-empty {
+  padding: 12px;
+  color: #71717a;
+  font-size: 14px;
+}
+
+/* ── Chat page layout ────────────────────────────── */
+
+.chat-page {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 260px;
+  background: #18181b;
+  border-right: 1px solid #27272a;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #27272a;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #71717a;
+}
+
+/* ── Chat window ─────────────────────────────────── */
+
+.chat-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.message {
+  margin-bottom: 16px;
+  max-width: 720px;
+}
+
+.message-user {
+  margin-left: auto;
+  text-align: right;
+}
+
+.message-role {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a1a1aa;
+  margin-bottom: 4px;
+}
+
+.message-content {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.message-user .message-content {
+  background: #6366f1;
+  color: #fff;
+  display: inline-block;
+}
+
+.message-assistant .message-content {
+  background: #27272a;
+}
+
+/* ── Chat input ──────────────────────────────────── */
+
+.chat-input {
+  display: flex;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid #27272a;
+  background: #18181b;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 10px 14px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #e4e4e7;
+  font-size: 14px;
+  outline: none;
+}
+
+.chat-input input:focus {
+  border-color: #6366f1;
+}
+
+.chat-input button {
+  padding: 10px 20px;
+  background: #6366f1;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.chat-input button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Project wizard ──────────────────────────────── */
+
+.wizard {
+  text-align: left;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.wizard h3 {
+  margin-bottom: 12px;
+}
+
+.wizard-path {
+  padding: 8px 12px;
+  background: #27272a;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.wizard-path code {
+  color: #a78bfa;
+}
+
+.wizard-error {
+  color: #ef4444;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.wizard-entries {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.wizard-entry {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #27272a;
+  color: #e4e4e7;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.wizard-entry:hover {
+  background: #1e1e2e;
+}
+
+.wizard-entry:last-child {
+  border-bottom: none;
+}
+
+.wizard-empty {
+  padding: 12px;
+  color: #71717a;
+  font-size: 14px;
+}
+
+.delete-btn {
+  margin-right: 8px;
+}

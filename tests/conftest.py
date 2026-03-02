@@ -5,14 +5,14 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from cody.core.session import SessionStore
-from cody.server import app
+from web.backend.app import app
 
 
 @pytest.fixture
 def isolated_store(tmp_path):
     """A SessionStore backed by a temp DB, patched into the server."""
     store = SessionStore(db_path=tmp_path / "test.db")
-    with patch("cody.server._get_session_store", return_value=store):
+    with patch("web.backend.state.get_session_store", return_value=store):
         yield store
 
 

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 
 from cody.core.errors import CodyAPIError, ErrorCode, ErrorDetail
-from cody.server import app
+from web.backend.app import app
 
 
 # ── ErrorDetail model ───────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ def test_tool_error_includes_details(tmp_path):
 
 
 def test_run_error_structured():
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run = AsyncMock(side_effect=RuntimeError("model down"))
         client = TestClient(app)
@@ -110,7 +110,7 @@ def test_stream_error_structured(test_client):
         raise RuntimeError("stream broke")
         yield  # make it a generator
 
-    with patch("cody.server.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_stream = failing_stream
         resp = test_client.post("/run/stream", json={"prompt": "test"})
