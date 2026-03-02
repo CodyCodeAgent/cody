@@ -1,0 +1,92 @@
+"""Shared helper functions for the web backend.
+
+Migrated from cody/server.py — stream event serialization, error raising,
+config loading from request.
+"""
+
+from pathlib import Path
+from typing import Any, Optional
+
+from cody.core import Config
+from cody.core.errors import CodyAPIError, ErrorCode
+
+from .state import get_config
+
+
+def raise_structured(
+    code: ErrorCode,
+    message: str,
+    status_code: int = 400,
+    details: Optional[dict[str, Any]] = None,
+):
+    """Raise a CodyAPIError with the given fields."""
+    raise CodyAPIError(
+        code=code,
+        message=message,
+        status_code=status_code,
+        details=details,
+    )
+
+
+def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
+    """Convert a StreamEvent to a JSON-serializable dict for SSE/WebSocket."""
+    from cody.core.runner import (
+        CompactEvent, ThinkingEvent, TextDeltaEvent, ToolCallEvent,
+        ToolResultEvent, DoneEvent,
+    )
+
+    base: dict[str, Any] = {"type": event.event_type}
+    if session_id:
+        base["session_id"] = session_id
+
+    if isinstance(event, CompactEvent):
+        base["original_messages"] = event.original_messages
+        base["compacted_messages"] = event.compacted_messages
+        base["estimated_tokens_saved"] = event.estimated_tokens_saved
+    elif isinstance(event, ThinkingEvent):
+        base["content"] = event.content
+    elif isinstance(event, TextDeltaEvent):
+        base["content"] = event.content
+    elif isinstance(event, ToolCallEvent):
+        base["tool_name"] = event.tool_name
+        base["args"] = event.args
+        base["tool_call_id"] = event.tool_call_id
+    elif isinstance(event, ToolResultEvent):
+        base["tool_name"] = event.tool_name
+        base["tool_call_id"] = event.tool_call_id
+        base["result"] = event.result[:500]
+    elif isinstance(event, DoneEvent):
+        base["output"] = event.result.output
+        base["thinking"] = event.result.thinking
+        if event.result.tool_traces:
+            base["tool_traces"] = [
+                {
+                    "tool_name": t.tool_name,
+                    "args": t.args,
+                    "result": t.result[:500],
+                }
+                for t in event.result.tool_traces
+            ]
+        usage = event.result.usage()
+        if usage:
+            base["usage"] = {
+                "total_tokens": usage.total_tokens,
+            }
+
+    return base
+
+
+def config_from_run_request(request) -> Config:
+    """Load config (cached) and apply request-level overrides on a copy."""
+    workdir = Path(request.workdir) if request.workdir else Path.cwd()
+    return get_config(workdir).apply_overrides(
+        model=request.model,
+        model_base_url=request.model_base_url,
+        model_api_key=request.model_api_key,
+        coding_plan_key=request.coding_plan_key,
+        coding_plan_protocol=request.coding_plan_protocol,
+        enable_thinking=request.enable_thinking,
+        thinking_budget=request.thinking_budget,
+        skills=request.skills,
+        extra_roots=request.allowed_roots,
+    )

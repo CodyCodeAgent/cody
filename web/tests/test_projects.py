@@ -39,7 +39,7 @@ def test_create_project(test_client, tmp_path):
     assert data["name"] == "My Project"
     assert data["description"] == "A test project"
     assert data["workdir"] == str(tmp_path)
-    assert data["session_id"] == "session_abc123"
+    assert data["session_id"] is not None  # Session created via SessionStore
     assert len(data["id"]) == 12
     # .cody/ directory should be initialized
     assert (tmp_path / ".cody").is_dir()

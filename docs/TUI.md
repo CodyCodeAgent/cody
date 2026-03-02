@@ -412,7 +412,7 @@ You > 帮我创建一个 FastAPI 应用，\
 
 ### 3. 后台运行（不推荐）
 
-TUI 设计为前台交互应用。如需后台运行，使用 RPC Server + SDK：
+TUI 设计为前台交互应用。如需后台运行，使用 Python SDK（in-process，无需启动 Server）：
 ```python
 from cody import AsyncCodyClient
 
@@ -485,16 +485,16 @@ cody sessions delete abc123
 
 ---
 
-## 与 RPC Server 集成
+## 与 Server 的关系
 
-TUI 可以直接调用本地或远程的 Cody RPC Server：
+TUI 直接使用核心引擎（in-process），不需要启动 Server。Server（`cody-server`）是独立的 Web + RPC 服务，供外部系统通过 HTTP/WebSocket 调用。
 
 ```bash
-# 启动 Server
-cody-server --port 8000
+# TUI — 直接使用核心引擎
+cody tui
 
-# TUI 连接到 Server（通过 SDK）
-# 目前 TUI 直接使用 core 引擎，未来版本可能支持远程连接
+# Server — 供外部系统调用（端口 8000）
+cody-server
 ```
 
 ---

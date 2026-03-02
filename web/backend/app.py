@@ -1,61 +1,48 @@
-"""Web backend — independent FastAPI application.
+"""Cody Web Backend — unified FastAPI application.
 
-Manages projects in its own SQLite database and proxies AI operations
-to the Cody core server via AsyncCodyClient.
+Serves both web-specific endpoints (projects, directories, chat) and
+core RPC endpoints (run, stream, tool, sessions, skills, agents, audit, ws).
+
+All business logic lives in core/. This is a thin shell.
 
 Run standalone:
     python -m web.backend.app
 """
 
 from pathlib import Path
-from typing import Optional
 
-from fastapi import Depends, FastAPI, WebSocket
+from fastapi import Depends, FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
+from cody.core.errors import CodyAPIError
+
 from .db import ProjectStore
-from .models import WebHealthResponse
+from .models import HealthResponse, ProjectCreate, ProjectUpdate, ProjectResponse
+from .state import get_project_store
+from .middleware import auth_middleware, rate_limit_middleware, audit_middleware
 
-# ── Singletons ───────────────────────────────────────────────────────────────
+# ── Route imports ───────────────────────────────────────────────────────────
 
-_project_store: Optional[ProjectStore] = None
-_cody_client = None  # AsyncCodyClient, lazily created
-
-
-def get_project_store() -> ProjectStore:
-    """Get or create the project store singleton."""
-    global _project_store
-    if _project_store is None:
-        _project_store = ProjectStore()
-    return _project_store
-
-
-def get_cody_client():
-    """Get or create the AsyncCodyClient singleton."""
-    global _cody_client
-    if _cody_client is None:
-        try:
-            from cody.client import AsyncCodyClient
-            _cody_client = AsyncCodyClient("http://localhost:8000")
-        except Exception:
-            return None
-    return _cody_client
-
-
-def _reset_state():
-    """Reset singletons for testing."""
-    global _project_store, _cody_client
-    _project_store = None
-    _cody_client = None
+from .routes.directories import router as directories_router
+from .routes.run import router as run_router
+from .routes.tool import router as tool_router
+from .routes.sessions import router as sessions_router
+from .routes.skills import router as skills_router
+from .routes.audit_routes import router as audit_router
+from .routes.agents import router as agents_router
+from .routes.websocket import router as ws_router
+from .routes import projects as _projects
+from .routes import chat as _chat
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Cody Web Backend",
-    description="Web frontend backend — project management and chat proxy",
+    title="Cody Server",
+    description="AI Coding Assistant — Web frontend + RPC API",
     version="1.3.0",
 )
 
@@ -73,17 +60,40 @@ app.add_middleware(
 )
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
+# ── Middleware (order matters: outermost runs first) ─────────────────────────
 
-from .routes.directories import router as directories_router  # noqa: E402
-from .routes import projects as _projects  # noqa: E402
-from .routes import chat as _chat  # noqa: E402
-from .models import ProjectCreate, ProjectUpdate, ProjectResponse  # noqa: E402
+app.middleware("http")(audit_middleware)
+app.middleware("http")(rate_limit_middleware)
+app.middleware("http")(auth_middleware)
+
+
+# ── Error handler ───────────────────────────────────────────────────────────
+
+@app.exception_handler(CodyAPIError)
+async def cody_api_error_handler(request: Request, exc: CodyAPIError):
+    """Convert CodyAPIError to structured JSON response."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_detail(),
+    )
+
+
+# ── RPC routes (migrated from server.py) ────────────────────────────────────
+
+app.include_router(run_router)
+app.include_router(tool_router)
+app.include_router(sessions_router)
+app.include_router(skills_router)
+app.include_router(audit_router)
+app.include_router(agents_router)
+app.include_router(ws_router)
+
+
+# ── Web routes ──────────────────────────────────────────────────────────────
 
 app.include_router(directories_router)
 
 
-# Projects: inject store + cody_client into all endpoints
 @app.get("/api/projects", response_model=list[ProjectResponse])
 async def list_projects_endpoint(
     store: ProjectStore = Depends(get_project_store),
@@ -95,11 +105,8 @@ async def list_projects_endpoint(
 async def create_project_endpoint(
     body: ProjectCreate,
     store: ProjectStore = Depends(get_project_store),
-    cody_client=Depends(get_cody_client),
 ):
-    return await _projects.create_project(
-        body=body, store=store, cody_client=cody_client
-    )
+    return await _projects.create_project(body=body, store=store)
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
@@ -125,44 +132,33 @@ async def update_project_endpoint(
 async def delete_project_endpoint(
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
-    cody_client=Depends(get_cody_client),
 ):
-    return await _projects.delete_project(
-        project_id=project_id, store=store, cody_client=cody_client
-    )
+    return await _projects.delete_project(project_id=project_id, store=store)
 
 
-# Chat WebSocket: inject store + cody_client
+# Chat WebSocket
 @app.websocket("/ws/chat/{project_id}")
 async def chat_websocket_endpoint(
     ws: WebSocket,
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
-    cody_client=Depends(get_cody_client),
 ):
-    await _chat.chat_websocket(
-        ws=ws, project_id=project_id, store=store, cody_client=cody_client
-    )
+    await _chat.chat_websocket(ws=ws, project_id=project_id, store=store)
 
 
-# Health
-@app.get("/api/health", response_model=WebHealthResponse)
-async def health(cody_client=Depends(get_cody_client)):
-    """Check web backend health and core server connectivity."""
-    core_status = "unavailable"
-    core_version = None
-    if cody_client is not None:
-        try:
-            data = await cody_client.health()
-            core_status = "connected"
-            core_version = data.get("version")
-        except Exception:
-            pass
+# Health (RPC endpoint)
+@app.get("/health", response_model=HealthResponse)
+async def health():
+    """Health check endpoint."""
+    return HealthResponse()
 
-    return WebHealthResponse(
-        core_server=core_status,
-        core_version=core_version,
-    )
+
+# Health (Web API endpoint)
+@app.get("/api/health")
+async def api_health():
+    """Web frontend health check — no separate core server needed."""
+    from cody import __version__
+    return {"status": "ok", "version": __version__}
 
 
 # ── Static files (production) ───────────────────────────────────────────────
@@ -191,8 +187,8 @@ if _WEB_DIST.is_dir():
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 
-def run(host: str = "0.0.0.0", port: int = 5001):
-    """Run the web backend server."""
+def run(host: str = "0.0.0.0", port: int = 8000):
+    """Run the server."""
     uvicorn.run(app, host=host, port=port)
 
 

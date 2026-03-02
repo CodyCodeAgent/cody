@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [1.3.0] - 2026-03-01
+## [1.3.0] - 2026-03-02
 
 ### Added
 - **Web frontend** — React + TypeScript + Vite single-page application (`web/`)
@@ -15,12 +15,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   - Project sidebar with create/delete/navigate
   - Dark theme UI
   - 33 frontend tests (Vitest + Testing Library)
-- **Web backend** — Independent FastAPI application (`web/backend/`, port 5001)
+- **Web backend** — Unified FastAPI application (`web/backend/`, port 8000)
+  - Serves both Web-specific (projects, chat) and RPC endpoints (run, tool, sessions, skills, agents, ws)
   - Own SQLite database (`~/.cody/web.db`) for project management (CRUD)
-  - Proxies chat to core server via `AsyncCodyClient` SDK
+  - Imports core directly (no HTTP intermediary)
   - WebSocket `/ws/chat/{project_id}` endpoint for real-time chat relay
   - Directory browsing API (`GET /api/directories`)
-  - Health endpoint with core server connectivity check
   - 20 backend tests (pytest)
   - Dependency injection via FastAPI `Depends()` for clean testing
 - **CODY.md project instructions** — Cody now reads `CODY.md` at the start of every session and injects its content into the system prompt, similar to Claude Code's `CLAUDE.md`.
@@ -30,11 +30,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `generate_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
 - **`read_file` encoding safety** — tool now reads with `encoding="utf-8", errors="replace"` instead of platform default, preventing `UnicodeDecodeError` on binary or non-UTF-8 files
 
+### Changed
+- **Architecture simplification** — eliminated `cody/server.py` (standalone RPC server)
+  - All RPC endpoints merged into `web/backend/` as a unified FastAPI app
+  - Web backend imports core directly (no HTTP SDK intermediary)
+  - Single server on port 8000 replaces two servers (8000 + 5001)
+- **Python SDK refactored** — `cody/client.py` is now an in-process wrapper around core
+  - No HTTP, no server required — imports core directly
+  - Same API surface (`AsyncCodyClient`, `CodyClient`, `RunResult`, `StreamChunk`, etc.)
+  - Removed `CodyConnectionError`, `CodyTimeoutError`, retry logic (no longer needed)
+- **Go SDK removed** — simplified project (use Python SDK or HTTP API instead)
+
 ### Architecture
-- Web follows "thick engine, thin shell" philosophy — an independent shell like CLI/TUI
-- Architecture: `React → Web Backend (port 5001, web.db) → Core Server (port 8000, sessions.db) → Core Engine`
-- Web backend uses `AsyncCodyClient` SDK to communicate with core server
-- Core `server.py` remains a pure RPC server with no web-specific code
+- All shells (CLI, TUI, Web) import core directly — "thick engine, thin shells"
+- Unified architecture: `React → Web Backend (port 8000, web.db) → Core Engine`
+- Python SDK: `CodyClient → core/* (in-process, no HTTP)`
 
 ---
 

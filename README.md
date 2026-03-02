@@ -19,7 +19,7 @@
 | [💻 CLI 使用指南](docs/CLI.md) | 命令行界面详细用法 |
 | [🖥️ TUI 使用指南](docs/TUI.md) | 全屏终端界面用法 |
 | [🌐 Web 前端](web/) | React Web 界面 |
-| [🔌 SDK 使用指南](docs/SDK.md) | Python 和 Go SDK 用法 |
+| [🔌 SDK 使用指南](docs/SDK.md) | Python SDK 用法 |
 | [🛠️ 技能开发指南](docs/SKILLS.md) | 创建自定义技能 |
 | [⚙️ 配置文件详解](docs/CONFIG.md) | 所有配置项说明 |
 | [📡 API 参考](docs/API.md) | RPC API 接口文档 |
@@ -42,7 +42,7 @@
 
 ### 🔌 扩展集成
 - **Web 前端** — React + TypeScript SPA，项目向导 + 实时对话，开发/生产一体化
-- **RPC Server + SDK** — FastAPI HTTP/WebSocket 服务，Python SDK（同步 + 异步），Go SDK，可嵌入任何系统
+- **RPC Server + SDK** — 统一 FastAPI 服务（HTTP/WebSocket，端口 8000），Python SDK（in-process 同步 + 异步），可嵌入任何系统
 - **MCP 集成** — 通过 stdio JSON-RPC 连接外部 MCP 服务器（GitHub、数据库等）
 - **LSP 代码智能** — Python (pyright)、TypeScript (tsserver)、Go (gopls) — 诊断、跳转定义、查找引用、悬停信息
 
@@ -175,12 +175,12 @@ cody-server --port 9000              # 自定义端口
 
 ### 4. SDK 编程
 
-#### Python SDK
+#### Python SDK（in-process，无需启动 Server）
 
 ```python
 from cody import AsyncCodyClient
 
-async with AsyncCodyClient("http://localhost:8000") as client:
+async with AsyncCodyClient(workdir="/path/to/project") as client:
     # 单次任务
     result = await client.run("create hello.py")
 
@@ -197,40 +197,7 @@ async with AsyncCodyClient("http://localhost:8000") as client:
     result = await client.tool("read_file", {"path": "main.py"})
 ```
 
-同步版本：`CodyClient`，内置指数退避重试。
-
-#### Go SDK
-
-```go
-package main
-
-import (
-    cody "github.com/SUT-GC/cody-go"
-    "context"
-    "fmt"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx := context.Background()
-
-    // 单次任务
-    result, _ := client.Run(ctx, "create hello.py")
-    fmt.Println(result.Output)
-
-    // 多轮会话
-    session, _ := client.CreateSession(ctx, cody.WithTitle("My task"))
-    client.Run(ctx, "create Flask app", cody.WithSession(session.ID))
-
-    // 流式输出
-    ch, _ := client.Stream(ctx, "explain this code")
-    for chunk := range ch {
-        fmt.Print(chunk.Content)
-    }
-}
-```
-
-零依赖、自动重试、上下文取消支持。
+同步版本：`CodyClient`。SDK 直接调用核心引擎，无需 HTTP 连接。
 
 详细文档：[🔌 SDK 使用指南](docs/SDK.md)
 
@@ -397,7 +364,7 @@ python3 -m ruff format cody/ tests/
 - [🖥️ TUI 使用指南](docs/TUI.md) — 全屏终端用法
 
 ### 开发
-- [🔌 SDK 使用指南](docs/SDK.md) — Python 和 Go SDK
+- [🔌 SDK 使用指南](docs/SDK.md) — Python SDK
 - [🛠️ 技能开发指南](docs/SKILLS.md) — 创建自定义技能
 - [⚙️ 配置文件详解](docs/CONFIG.md) — 所有配置项说明
 - [🤝 开发规范](CONTRIBUTING.md) — 代码规范和贡献指南
@@ -410,8 +377,6 @@ python3 -m ruff format cody/ tests/
 ### 其他
 - [CHANGELOG.md](CHANGELOG.md) — 版本历史
 - [CLAUDE.md](CLAUDE.md) — AI 助手项目指南
-- [sdk/go/README.md](sdk/go/README.md) — Go SDK 文档
-
 ---
 
 ## 📄 许可证

@@ -1,11 +1,12 @@
 """Shared fixtures for web backend tests."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from web.backend.app import app, get_project_store, get_cody_client
+from cody.core.session import SessionStore
+from web.backend.app import app, get_project_store
 from web.backend.db import ProjectStore
 
 
@@ -16,24 +17,15 @@ def project_store(tmp_path):
 
 
 @pytest.fixture
-def mock_cody_client():
-    """Mock AsyncCodyClient for testing without core server."""
-    client = AsyncMock()
-    client.health = AsyncMock(return_value={"status": "ok", "version": "1.3.0"})
-
-    mock_session = MagicMock()
-    mock_session.id = "session_abc123"
-    mock_session.title = "New session"
-    client.create_session = AsyncMock(return_value=mock_session)
-    client.delete_session = AsyncMock()
-
-    return client
+def session_store(tmp_path):
+    """A SessionStore backed by a temp database."""
+    return SessionStore(db_path=tmp_path / "test_sessions.db")
 
 
 @pytest.fixture
-def test_client(project_store, mock_cody_client):
+def test_client(project_store, session_store):
     """FastAPI TestClient with injected test dependencies."""
     app.dependency_overrides[get_project_store] = lambda: project_store
-    app.dependency_overrides[get_cody_client] = lambda: mock_cody_client
-    yield TestClient(app)
+    with patch("web.backend.routes.projects.get_session_store", return_value=session_store):
+        yield TestClient(app)
     app.dependency_overrides.clear()

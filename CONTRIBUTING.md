@@ -2,7 +2,7 @@
 
 ## 核心原则
 
-1. **Core 做厚，壳子做薄** — CLI 和 Server 都只是 core 引擎的接入层。所有功能先在 core/ 实现，然后 Server 和 CLI 都能用。Server/SDK 是差异化交付方式，CLI 保证可用。
+1. **Core 做厚，壳子做薄** — CLI、TUI 和 Web Backend 都只是 core 引擎的接入层。所有功能先在 core/ 实现，然后各 shell 都能用。
 2. **测试必须有** — 没有测试的代码不合并。不只是"能跑"，要验证行为正确。
 3. **准确度 > 性能** — 工具的结果准确性是底线。宁可慢一点也不能出错。
 4. **简单直接** — 不过度设计，不提前抽象。三行重复代码好过一个过早的抽象。
@@ -33,25 +33,27 @@ cody/
 │   ├── file_history.py # 文件 undo/redo 快照
 │   └── rate_limiter.py # 滑动窗口限流
 ├── skills/         # 内置 Skills（git, github, docker, npm, python, rust, go, java, web, cicd, testing）
-├── server.py       # RPC Server（FastAPI），调用 core
+├── client.py       # Python SDK（in-process 封装 core）
 ├── tui.py          # TUI 界面（Textual），调用 core
 └── cli.py          # CLI 界面（Click），调用 core
+
+web/backend/        # 统一 Web Backend（FastAPI:8000），直接导入 core
 ```
 
 **关键约束：**
-- `core/` 内的代码 **不允许** 导入 `cli.py` 或 `server.py`
-- `cli.py` 和 `server.py` 都通过 `core/` 提供的接口工作
-- 新功能应该加在 `core/`，然后分别在 Server 和 CLI 暴露
+- `core/` 内的代码 **不允许** 导入 `cli.py`、`tui.py` 或 `web/`
+- 所有 shell 都通过 `core/` 提供的接口工作
+- 新功能应该加在 `core/`，然后在各 shell 层暴露
 
 ### 依赖方向
 
 ```
-cli.py ──→ core/ ←── server.py
-              ↓
-          pydantic-ai, sqlite3, etc.
+cli.py ──→
+tui.py ──→  core/*
+web/backend/ ──→ core/* (直接 import)
 ```
 
-禁止反向依赖。禁止 `core/` 依赖任何 CLI（click, rich）或 Server（fastapi）的库。
+禁止反向依赖。禁止 `core/` 依赖任何 CLI（click, rich）或 Web（fastapi）的库。
 
 ---
 
@@ -62,7 +64,7 @@ cli.py ──→ core/ ←── server.py
 | 变更类型 | 测试要求 |
 |----------|----------|
 | 新工具（tools.py） | 至少 3 个测试：正常路径、边界情况、错误处理 |
-| 新 API 端点（server.py） | 至少 2 个测试：正常响应、错误响应 |
+| 新 API 端点（web/backend/） | 至少 2 个测试：正常响应、错误响应 |
 | 新 CLI 命令（cli.py） | 至少 1 个测试：基本调用 |
 | Bug 修复 | 必须附带回归测试（先写测试复现 bug，再修） |
 | 核心逻辑变更 | 覆盖所有受影响路径 |
@@ -113,11 +115,11 @@ async def test_grep_basic(tmp_path):
     assert "hello.py:1:" in result
 ```
 
-### Server 测试用法
+### Web Backend 测试用法
 
 ```python
 from fastapi.testclient import TestClient
-from cody.server import app
+from web.backend.app import app
 
 def test_health():
     client = TestClient(app)
@@ -198,7 +200,7 @@ python3 -m pytest tests/ -v
 
 1. **先写测试** — 或至少同时写测试。不接受"先实现后面再补测试"
 2. **先在 core/ 实现** — 功能逻辑放在 `core/`
-3. **Server 端点** — 在 `server.py` 暴露 API
+3. **Web Backend 端点** — 在 `web/backend/routes/` 暴露 API（如果需要）
 4. **CLI 命令** — 在 `cli.py` 提供界面（如果需要）
 5. **更新文档** — 同步更新所有相关的 `.md` 文档（见下方"文档更新规范"）
 6. **运行测试** — 全部通过
@@ -215,7 +217,7 @@ python3 -m pytest tests/ -v
 6. pytest + ruff 通过
 ```
 
-> 不需要改 runner.py 或 server.py — `register_tools()` 会自动注册列表里的所有工具。
+> 不需要改 runner.py — `register_tools()` 会自动注册列表里的所有工具。
 
 ---
 
@@ -251,15 +253,15 @@ python3 -m pytest tests/ -v
 | core/skill_manager.py | 40 | 完善 |
 | core/lsp_client.py | 34 | 完善 |
 | core/config.py | 33 | 完善 |
-| server.py | 32 | 完善 |
 | core/runner.py | 24 | 完善 |
 | core/auth.py | 23 | 完善 |
 | core/web.py | 22 | 完善 |
-| client.py | 21 | 完善 |
+| client.py | 22 | 完善 |
 | core/sub_agent.py | 21 | 完善 |
+| web/backend (WS) | 21 | 完善 |
+| web/backend (projects) | 20 | 完善 |
 | core/audit.py | 19 | 完善 |
 | core/permissions.py | 18 | 完善 |
-| client retry | 17 | 完善 |
 | core/context.py | 16 | 完善 |
 | cli.py | 16 | 基本覆盖 |
 | core/rate_limiter.py | 16 | 完善 |
@@ -268,9 +270,8 @@ python3 -m pytest tests/ -v
 | core/mcp_client.py | 14 | 完善 |
 | tui.py | 12 | 基本覆盖 |
 | core/errors.py | 11 | 完善 |
-| WebSocket | 7 | 基本覆盖 |
 
-**总计：493 个测试，ruff 零告警**
+**总计：501 个测试（481 core + 20 web），ruff 零告警**
 
 **当前版本：v1.3.0（见 CHANGELOG.md）**
 
@@ -279,7 +280,7 @@ python3 -m pytest tests/ -v
 ## 已知架构注意事项
 
 1. **循环依赖** — `sub_agent.py` 的 `_execute()` 用延迟导入打破 `runner → sub_agent → runner` 循环，不要移到模块顶部
-2. **Server 缓存策略** — Config 按 workdir 缓存（deep copy 后返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读到最新 skill 文件）
+2. **状态缓存策略** — `web/backend/state.py` 管理：Config 按 workdir 缓存（deep copy 后返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读到最新 skill 文件）
 
 ---
 
@@ -290,7 +291,7 @@ python3 -m pytest tests/ -v
 1. **跑通测试** — `pip install -e ".[dev]" && python3 -m pytest tests/ -v`
 2. **看 `core/runner.py`** — 理解引擎中枢（模块 docstring 有架构概览）
 3. **看 `core/tools.py`** — 理解工具注册模式（底部 TOOL_REGISTRY 区域）
-4. **看 `server.py`** — 理解 Server 如何调用 core（顶部 docstring 有缓存策略）
+4. **看 `web/backend/app.py`** — 理解 Web Backend 如何调用 core
 5. **看本文件** — 了解代码规范
 6. **看 `docs/API.md`** — 了解对外 API
 

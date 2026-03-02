@@ -1,29 +1,19 @@
-"""Tests for health endpoint."""
-
-from unittest.mock import AsyncMock
-
-from web.backend.app import app, get_cody_client
+"""Tests for health endpoints."""
 
 
-def test_health_with_core_connected(test_client):
-    """GET /api/health reports core connected when client works"""
+def test_api_health(test_client):
+    """GET /api/health returns status and version."""
     resp = test_client.get("/api/health")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["core_server"] == "connected"
-    assert data["core_version"] == "1.3.0"
+    assert "version" in data
 
 
-def test_health_with_core_unavailable(test_client):
-    """GET /api/health reports core unavailable when client fails"""
-    failing_client = AsyncMock()
-    failing_client.health = AsyncMock(side_effect=ConnectionError("refused"))
-    app.dependency_overrides[get_cody_client] = lambda: failing_client
-
-    resp = test_client.get("/api/health")
+def test_rpc_health(test_client):
+    """GET /health returns status and version (RPC endpoint)."""
+    resp = test_client.get("/health")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert data["core_server"] == "unavailable"
-    assert data["core_version"] is None
+    assert "version" in data

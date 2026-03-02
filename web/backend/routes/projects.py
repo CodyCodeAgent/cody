@@ -1,7 +1,7 @@
 """Project CRUD business logic.
 
-These are plain async functions called by app.py with injected dependencies.
-They are NOT decorated with @router — FastAPI registration happens in app.py.
+Uses core SessionStore directly (no HTTP SDK). These are plain async
+functions called by app.py with injected dependencies.
 """
 
 from pathlib import Path
@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from ..db import ProjectStore
 from ..models import ProjectCreate, ProjectUpdate, ProjectResponse
+from ..state import get_session_store
 
 
 def _project_response(p) -> ProjectResponse:
@@ -30,8 +31,7 @@ async def list_projects(store: ProjectStore):
     return [_project_response(p) for p in projects]
 
 
-async def create_project(body: ProjectCreate, store: ProjectStore,
-                         cody_client=None):
+async def create_project(body: ProjectCreate, store: ProjectStore):
     """Create a new project.
 
     Initializes .cody/ in workdir and creates a linked cody session.
@@ -56,17 +56,17 @@ async def create_project(body: ProjectCreate, store: ProjectStore,
         workdir=str(workdir),
     )
 
-    # Create a cody session via SDK
-    if cody_client is not None:
-        try:
-            session = await cody_client.create_session(
-                title=body.name, workdir=str(workdir)
-            )
-            store.set_session_id(project.id, session.id)
-            project = store.get_project(project.id)
-        except Exception:
-            # Core server may be unavailable; project still created
-            pass
+    # Create a cody session directly via SessionStore
+    try:
+        session_store = get_session_store()
+        session = session_store.create_session(
+            title=body.name, workdir=str(workdir)
+        )
+        store.set_session_id(project.id, session.id)
+        project = store.get_project(project.id)
+    except Exception:
+        # Session creation may fail; project still created
+        pass
 
     return _project_response(project)
 
@@ -90,17 +90,17 @@ async def update_project(project_id: str, body: ProjectUpdate,
     return _project_response(project)
 
 
-async def delete_project(project_id: str, store: ProjectStore,
-                         cody_client=None):
+async def delete_project(project_id: str, store: ProjectStore):
     """Delete a project."""
     project = store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Try to delete linked cody session
-    if cody_client is not None and project.session_id:
+    if project.session_id:
         try:
-            await cody_client.delete_session(project.session_id)
+            session_store = get_session_store()
+            session_store.delete_session(project.session_id)
         except Exception:
             pass
 

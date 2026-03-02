@@ -8,24 +8,23 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **CLI** (`cody/cli.py`) — Click 命令行
 - **TUI** (`cody/tui.py`) — Textual 全屏终端
 - **Web Frontend** (`web/src/`) — React + TypeScript SPA（项目管理 + 实时对话）
-- **Web Backend** (`web/backend/`) — 独立 FastAPI 应用（端口 5001，自有 SQLite `web.db`），通过 SDK 连接核心
-- **RPC Server** (`cody/server.py`) — FastAPI HTTP/WebSocket（纯 RPC，无 Web 特定代码）
-- **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)
-- **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端
+- **Web Backend** (`web/backend/`) — 统一 FastAPI 应用（端口 8000），提供 Web + RPC 端点，直接导入 core
+- **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)，in-process 封装 core
 
 当前版本：**v1.3.0**
 
 ## 架构要点
 
 ```
-cli.py / tui.py / server.py  →  core/runner.py  →  core/tools.py
-                                  ↓
-                          pydantic-ai, sqlite3, httpx
+cli.py / tui.py  →  core/runner.py  →  core/tools.py
+                        ↓
+                pydantic-ai, sqlite3, httpx
 
-web/src/ (React) → web/backend/ (FastAPI:5001, web.db) → cody/client.py → server.py → core/
+web/src/ (React) → web/backend/ (FastAPI:8000) → core/
+cody/client.py (Python SDK) → core/（in-process，无 HTTP）
 ```
 
-- `core/` **不允许**导入 `cli.py`、`tui.py`、`server.py` 或 `web/`
+- `core/` **不允许**导入 `cli.py`、`tui.py` 或 `web/`
 - 新功能先在 `core/` 实现，再在 shell 层暴露
 - 工具注册是声明式的：在 `tools.py` 底部的 `*_TOOLS` 列表中添加即可，不需要改 `runner.py`
 - 详细架构图见 `docs/ARCHITECTURE.md`
@@ -36,16 +35,16 @@ web/src/ (React) → web/backend/ (FastAPI:5001, web.db) → cody/client.py → 
 |------|------|
 | `core/runner.py` | 中枢引擎 — Agent 创建、工具注册、run/stream 执行 |
 | `core/tools.py` | 28 个工具函数 + 底部声明式工具注册表 |
-| `core/errors.py` | 错误码 + ToolError 异常层级（server 按类型映射 HTTP 状态码） |
+| `core/errors.py` | 错误码 + ToolError 异常层级（Web Backend 按类型映射 HTTP 状态码） |
 | `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON |
 | `core/deps.py` | CodyDeps 数据类，工具的依赖注入容器 |
 | `core/project_instructions.py` | CODY.md 加载逻辑 — 全局 + 项目级合并，注入系统提示 |
-| `server.py` | FastAPI 壳子（纯 RPC），顶部 docstring 有缓存策略说明 |
 | `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
 | `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |
-| `web/backend/app.py` | Web 后端 FastAPI 应用 — 路由注册、依赖注入、静态文件 |
-| `web/backend/db.py` | Web 项目数据库 — ProjectStore + SQLite (`web.db`) |
-| `web/backend/routes/` | Web API 路由 — projects (CRUD)、directories、chat (WS 代理) |
+| `client.py` | Python SDK — core 的 in-process 封装（CodyClient + AsyncCodyClient） |
+| `web/backend/app.py` | 统一 FastAPI 应用 — Web + RPC 路由、中间件、静态文件 |
+| `web/backend/state.py` | 单例状态管理 — Config 缓存、SessionStore、AuditLogger 等 |
+| `web/backend/routes/` | 所有 HTTP/WS 路由 — run、tool、sessions、skills、agents、ws、projects、chat |
 
 ## CLI 命令速查
 
@@ -92,7 +91,7 @@ cody init                                  # 初始化 .cody/ 目录
 # 安装
 pip install -e ".[dev]"
 
-# 核心测试（529 个，不需要真实 API Key）
+# 核心测试（481 个，不需要真实 API Key）
 python3 -m pytest tests/ -v
 
 # Web 后端测试（20 个）
@@ -102,7 +101,7 @@ PYTHONPATH=. python3 -m pytest web/tests/ -v
 cd web && npx vitest run
 
 # Lint（必须零告警）
-python3 -m ruff check cody/ tests/
+python3 -m ruff check cody/ tests/ web/
 
 # 启动 Server
 cody-server --port 8000
@@ -137,13 +136,12 @@ cody tui
 
 ## 版本管理
 
-版本号在 **5 个位置**，必须同步更新：
+版本号在 **4 个位置**，必须同步更新：
 
 1. `pyproject.toml` → `version = "x.y.z"`
 2. `cody/__init__.py` → `__version__ = "x.y.z"`
-3. `cody/server.py` → `HealthResponse.version` 和 `FastAPI(version=)`
+3. `web/backend/app.py` → `FastAPI(version=)` 和 `HealthResponse`
 4. `cody/core/mcp_client.py` → `clientInfo.version`
-5. `tests/test_server.py` → 版本断言
 
 同时更新 `CHANGELOG.md` 添加版本条目，`CONTRIBUTING.md` 中的版本号。
 
@@ -158,7 +156,7 @@ cody tui
 ## 已知注意事项
 
 1. **循环依赖** — `sub_agent.py` 的 `_execute()` 使用延迟导入，不能移到模块顶部
-2. **Server 缓存** — Config 按 workdir 缓存（deep copy 返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读最新 skill 文件）
+2. **状态缓存** — `web/backend/state.py` 管理所有单例：Config 按 workdir 缓存（deep copy 返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读最新 skill 文件）
 
 ## 文档结构
 

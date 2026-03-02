@@ -1,23 +1,27 @@
-"""WebSocket chat proxy — relays messages between frontend and core via SDK.
+"""WebSocket chat proxy — relays messages between frontend and core engine.
 
-This is a plain async function called by app.py with injected dependencies.
-It is NOT decorated with @router — FastAPI registration happens in app.py.
+Uses core AgentRunner directly (no HTTP SDK). This is a plain async function
+called by app.py with injected dependencies.
 """
 
 import json
+from pathlib import Path
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from cody.core import AgentRunner
+
 from ..db import ProjectStore
+from ..helpers import serialize_stream_event
+from ..state import get_config, get_session_store
 
 
 async def chat_websocket(
     ws: WebSocket,
     project_id: str,
     store: ProjectStore = None,
-    cody_client=None,
 ):
-    """WebSocket endpoint that proxies chat to the core server via CodyClient."""
+    """WebSocket endpoint that streams AI responses for a project."""
     await ws.accept()
 
     project = store.get_project(project_id) if store else None
@@ -40,24 +44,22 @@ async def chat_websocket(
                 if not prompt:
                     continue
 
-                if cody_client is None:
-                    await ws.send_json({
-                        "type": "error",
-                        "message": "Core server not configured",
-                    })
-                    continue
-
                 try:
-                    async for chunk in cody_client.stream(
-                        prompt,
-                        session_id=project.session_id,
-                        workdir=project.workdir,
-                    ):
-                        await ws.send_json({
-                            "type": chunk.type,
-                            "content": chunk.content,
-                            "session_id": chunk.session_id,
-                        })
+                    workdir = Path(project.workdir)
+                    config = get_config(workdir)
+                    runner = AgentRunner(config=config, workdir=workdir)
+                    session_store = get_session_store()
+
+                    if project.session_id:
+                        async for event, sid in runner.run_stream_with_session(
+                            prompt, session_store, project.session_id
+                        ):
+                            payload = serialize_stream_event(event, session_id=sid)
+                            await ws.send_json(payload)
+                    else:
+                        async for event in runner.run_stream(prompt):
+                            payload = serialize_stream_event(event)
+                            await ws.send_json(payload)
                 except Exception as e:
                     await ws.send_json({
                         "type": "error",

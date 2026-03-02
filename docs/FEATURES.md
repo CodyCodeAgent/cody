@@ -176,7 +176,7 @@ cody skills disable <name>        # 禁用 Skill
 - 并行处理多个子任务
 - 专门化处理（编码/研究/测试分离）
 
-### 6. 四模式运行 + 双 SDK
+### 6. 四模式运行 + SDK
 
 #### CLI 模式
 
@@ -232,7 +232,7 @@ cody-tui
 
 独立 Web 应用，遵循"引擎做厚，壳子做薄"理念。
 
-**架构：** `React (Vite:5173) → Web Backend (FastAPI:5001, web.db) → Core Server (8000) → Core Engine`
+**架构：** `React (Vite:5173) → Web Backend (FastAPI:8000, web.db) → Core Engine`
 
 **功能：**
 - 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
@@ -242,9 +242,9 @@ cody-tui
 - 深色主题 UI
 
 **Web Backend（`web/backend/`）：**
-- 独立 FastAPI 应用（端口 5001）
+- 统一 FastAPI 应用（端口 8000），同时提供 RPC API 和 Web 功能
 - 自有 SQLite 数据库（`~/.cody/web.db`）管理项目数据
-- 通过 `AsyncCodyClient` SDK 与核心服务通信
+- 直接调用核心引擎（in-process）
 - WebSocket `/ws/chat/{project_id}` 代理聊天
 
 **开发：**
@@ -262,7 +262,7 @@ cd web && npm run build
 # dist/ 由 Web Backend 自动托管
 ```
 
-#### RPC Server 模式
+#### Server 模式
 
 **启动服务：**
 ```bash
@@ -275,6 +275,8 @@ cody-server --port 9000
 # 指定主机
 cody-server --host 0.0.0.0
 ```
+
+Server 由 `web/backend/` 统一提供（单一 FastAPI 应用，端口 8000），同时包含 RPC API 和 Web 功能。
 
 **API 接口：**
 
@@ -416,7 +418,7 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 **核心技术栈：**
 - Python 3.9+
 - Pydantic AI
-- FastAPI（RPC Server）
+- FastAPI（Web Backend + RPC API）
 - Click（CLI）
 - Textual（TUI）
 - Rich（终端渲染）
@@ -451,16 +453,7 @@ const response = await fetch('http://localhost:8000/run', {
 });
 ```
 
-### 3. Go 集成
-```go
-client := cody.NewClient("http://localhost:8000")
-result, _ := client.Run(ctx, "创建一个 API 路由",
-    cody.WithWorkdir("/path/to/project"),
-)
-fmt.Println(result.Output)
-```
-
-### 4. CI/CD 集成
+### 3. CI/CD 集成
 ```yaml
 # .github/workflows/ai-review.yml
 - name: AI Code Review
@@ -603,13 +596,7 @@ cody "使用项目 B 的配置"
 - [x] `cicd` — CI/CD 流水线管理（GitHub Actions、GitLab CI、Cody 集成）
 - [x] `testing` — 跨语言测试策略和模式（pytest、Jest、go test、cargo test）
 
-**Go SDK**
-- [x] `sdk/go/` — 零依赖 Go 客户端，完整覆盖 RPC API
-- [x] Run / Stream / Tool / Sessions / Skills 全部方法
-- [x] 自动重试 + 指数退避、context 取消支持
-- [x] 25 个单元测试（httptest mock server）
-
-**v1.0.0 总计：418 个 Python 测试 + 25 个 Go 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板，Go SDK**
+**v1.0.0 总计：418 个 Python 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板**
 
 ### v1.0.1 — Agent Skills 开放标准 & 阿里云百炼 ✅ 已完成
 
@@ -640,7 +627,7 @@ cody "使用项目 B 的配置"
 - [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
 - [x] Claude OAuth token 认证支持
 
-**v1.0.1 总计：446 个 Python 测试 + 25 个 Go 测试，ruff 零告警**
+**v1.0.1 总计：446 个 Python 测试，ruff 零告警**
 
 ### v1.1.0 — Thinking Mode & StreamEvent ✅ 已完成
 
@@ -665,7 +652,7 @@ cody "使用项目 B 的配置"
 - [x] Server SSE/WebSocket 发送结构化事件（thinking/tool_call/tool_result/text_delta/done）
 - [x] `_serialize_stream_event()` 统一 SSE 和 WebSocket 的序列化
 
-**v1.1.0 总计：476 个 Python 测试 + 25 个 Go 测试**
+**v1.1.0 总计：476 个 Python 测试**
 
 ---
 

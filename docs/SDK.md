@@ -1,14 +1,13 @@
 # Cody - SDK 使用文档
 
-Cody 提供 Python 和 Go 两种语言的 SDK，用于与 Cody RPC Server 进行交互。
+Cody 提供 Python SDK，用于在 Python 应用中直接使用 Cody 核心引擎。SDK 是 core 的 in-process 封装，无需 HTTP 服务。
 
 ---
 
 ## 目录
 
 1. [Python SDK](#python-sdk)
-2. [Go SDK](#go-sdk)
-3. [通用最佳实践](#最佳实践)
+2. [最佳实践](#最佳实践)
 
 ---
 
@@ -29,13 +28,15 @@ pip install -e .
 ```python
 from cody import AsyncCodyClient
 
-# 异步客户端（推荐）
-async with AsyncCodyClient("http://localhost:8000") as client:
+# 异步客户端（推荐）— 无需 HTTP 服务
+async with AsyncCodyClient() as client:
     result = await client.run("创建一个 hello.py 文件")
     print(result.output)
 ```
 
 ### 客户端类型
+
+SDK 是 core 的 in-process 封装，直接导入核心模块，无需启动任何 HTTP 服务。
 
 #### AsyncCodyClient（异步，推荐）
 
@@ -43,9 +44,9 @@ async with AsyncCodyClient("http://localhost:8000") as client:
 from cody import AsyncCodyClient
 
 async with AsyncCodyClient(
-    base_url="http://localhost:8000",
-    timeout=120.0,
-    max_retries=3,
+    workdir="/path/to/project",  # 工作目录，默认 cwd
+    model="anthropic:claude-sonnet-4-0",  # 可选模型覆盖
+    db_path="/path/to/sessions.db",  # 可选会话数据库路径
 ) as client:
     # 使用客户端
     result = await client.run("任务")
@@ -56,7 +57,7 @@ async with AsyncCodyClient(
 ```python
 from cody import CodyClient
 
-with CodyClient("http://localhost:8000") as client:
+with CodyClient(workdir="/path/to/project") as client:
     result = client.run("任务")
 ```
 
@@ -115,20 +116,21 @@ for chunk in client.stream("解释这段代码"):
 **流式事件类型：**
 | 类型 | 说明 |
 |------|------|
-| `text` | 文本内容（增量） |
+| `text_delta` | 文本内容（增量） |
+| `thinking` | 思考内容（增量） |
+| `tool_call` | 工具调用 |
+| `tool_result` | 工具结果 |
 | `done` | 任务完成 |
-| `error` | 错误发生 |
+| `compact` | 上下文压缩 |
 
 **完整示例：**
 ```python
 async with AsyncCodyClient() as client:
     async for chunk in client.stream("创建 Flask 应用"):
-        if chunk.type == "text":
+        if chunk.type == "text_delta":
             print(chunk.content, end="")
         elif chunk.type == "done":
             print("\n✅ 完成")
-        elif chunk.type == "error":
-            print(f"\n❌ 错误：{chunk.content}")
 ```
 
 ---
@@ -219,32 +221,21 @@ print(f"Status: {health['status']}, Version: {health['version']}")
 ### 错误处理
 
 ```python
-from cody import (
-    CodyError,
-    CodyConnectionError,
-    CodyNotFoundError,
-    CodyTimeoutError,
-)
+from cody import CodyError, CodyNotFoundError
 
 try:
     result = await client.run("任务")
-except CodyConnectionError as e:
-    print(f"连接失败：{e.message} (尝试了 {e.status_code} 次)")
 except CodyNotFoundError as e:
     print(f"资源不存在：{e.message}")
-except CodyTimeoutError as e:
-    print(f"请求超时：{e.message}")
 except CodyError as e:
-    print(f"API 错误：{e.message} (状态码：{e.status_code})")
+    print(f"错误：{e.message}")
 ```
 
 **错误类型：**
 | 错误 | 说明 |
 |------|------|
 | `CodyError` | 基础错误类 |
-| `CodyConnectionError` | 服务器无法连接 |
-| `CodyNotFoundError` | 资源不存在 (404) |
-| `CodyTimeoutError` | 请求超时 |
+| `CodyNotFoundError` | 资源不存在（会话/工具/技能）|
 
 ---
 
@@ -257,11 +248,8 @@ import asyncio
 from cody import AsyncCodyClient
 
 async def main():
-    async with AsyncCodyClient("http://localhost:8000") as client:
-        result = await client.run(
-            "创建一个 Python 脚本，打印 Hello World",
-            workdir="/tmp/myproject",
-        )
+    async with AsyncCodyClient(workdir="/tmp/myproject") as client:
+        result = await client.run("创建一个 Python 脚本，打印 Hello World")
         print(result.output)
 
 asyncio.run(main())
@@ -306,20 +294,18 @@ asyncio.run(main())
 
 ```python
 import asyncio
-from cody import AsyncCodyClient, CodyConnectionError
+from cody import AsyncCodyClient, CodyError
 
 async def main():
     async with AsyncCodyClient() as client:
         try:
             async for chunk in client.stream("分析这个项目"):
-                if chunk.type == "text":
+                if chunk.type == "text_delta":
                     print(chunk.content, end="", flush=True)
                 elif chunk.type == "done":
                     print("\n✅ 完成")
-                elif chunk.type == "error":
-                    print(f"\n❌ 错误：{chunk.content}")
-        except CodyConnectionError as e:
-            print(f"连接失败：{e.message}")
+        except CodyError as e:
+            print(f"错误：{e.message}")
 
 asyncio.run(main())
 ```
@@ -358,379 +344,12 @@ asyncio.run(main())
 
 ---
 
-## Go SDK
-
-### 安装
-
-```bash
-go get github.com/SUT-GC/cody-go
-```
-
-### 快速开始
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    cody "github.com/SUT-GC/cody-go"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx := context.Background()
-
-    result, err := client.Run(ctx, "创建一个 hello world 应用")
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Println(result.Output)
-}
-```
-
-### 客户端创建
-
-```go
-// 默认配置（timeout: 120s, retries: 3）
-client := cody.NewClient("http://localhost:8000")
-
-// 自定义配置
-client := cody.NewClient("http://localhost:8000",
-    cody.WithTimeout(30 * time.Second),
-    cody.WithMaxRetries(5),
-    cody.WithHTTPClient(customHTTPClient),
-)
-```
-
-### 核心方法
-
-#### 1. Run() — 执行任务
-
-```go
-ctx := context.Background()
-
-// 基础用法
-result, err := client.Run(ctx, "创建文件")
-if err != nil {
-    log.Fatal(err)
-}
-fmt.Println(result.Output)
-
-// 带选项
-result, err = client.Run(ctx, "重构代码",
-    cody.WithWorkdir("/path/to/project"),
-    cody.WithModel("anthropic:claude-sonnet-4-0"),
-    cody.WithSession(sessionID),
-)
-```
-
-**选项函数：**
-```go
-cody.WithWorkdir(path string) RunOption
-cody.WithModel(model string) RunOption
-cody.WithSession(sessionID string) RunOption
-```
-
-**返回：**
-```go
-type RunResult struct {
-    Output    string
-    SessionID string
-    Usage     Usage
-}
-
-type Usage struct {
-    InputTokens  int
-    OutputTokens int
-    TotalTokens  int
-}
-```
-
----
-
-#### 2. Stream() — 流式执行
-
-```go
-ctx := context.Background()
-
-ch, err := client.Stream(ctx, "解释这段代码")
-if err != nil {
-    log.Fatal(err)
-}
-
-for chunk := range ch {
-    switch chunk.Type {
-    case "text":
-        fmt.Print(chunk.Content)
-    case "done":
-        fmt.Println("\n--- Done ---")
-    case "error":
-        fmt.Println("Error:", chunk.Content)
-    }
-}
-```
-
-**流式事件：**
-```go
-type StreamChunk struct {
-    Type      string  // "text", "done", "error"
-    Content   string
-    SessionID string
-}
-```
-
----
-
-#### 3. Tool() — 调用工具
-
-```go
-ctx := context.Background()
-
-// 读取文件
-result, err := client.Tool(ctx, "read_file",
-    map[string]interface{}{"path": "main.py"},
-)
-if err != nil {
-    log.Fatal(err)
-}
-fmt.Println(result.Result)
-
-// 执行命令
-result, err = client.Tool(ctx, "exec_command",
-    map[string]interface{}{"command": "ls -la"},
-)
-```
-
----
-
-#### 4. 会话管理
-
-```go
-ctx := context.Background()
-
-// 创建会话
-session, err := client.CreateSession(ctx,
-    cody.WithTitle("My Project"),
-    cody.WithModel("anthropic:claude-sonnet-4-0"),
-    cody.WithWorkdir("/path/to/project"),
-)
-
-// 多轮对话
-client.Run(ctx, "创建 Flask 应用", cody.WithSession(session.ID))
-client.Run(ctx, "添加 /health 端点", cody.WithSession(session.ID))
-
-// 列出会话
-sessions, err := client.ListSessions(ctx, cody.WithLimit(10))
-
-// 获取会话详情
-detail, err := client.GetSession(ctx, session.ID)
-for _, msg := range detail.Messages {
-    fmt.Printf("%s: %s\n", msg.Role, msg.Content)
-}
-
-// 删除会话
-err = client.DeleteSession(ctx, session.ID)
-```
-
----
-
-#### 5. 技能管理
-
-```go
-ctx := context.Background()
-
-// 列出技能
-skills, err := client.ListSkills(ctx)
-for _, skill := range skills {
-    fmt.Printf("%s: %s\n", skill.Name, skill.Description)
-}
-
-// 获取技能文档
-skill, err := client.GetSkill(ctx, "git")
-fmt.Println(skill.Documentation)
-```
-
----
-
-#### 6. Health() — 健康检查
-
-```go
-health, err := client.Health(ctx)
-fmt.Printf("Status: %s, Version: %s\n", health.Status, health.Version)
-```
-
----
-
-### 错误处理
-
-```go
-import "github.com/SUT-GC/cody-go"
-
-result, err := client.Run(ctx, "任务")
-if err != nil {
-    switch e := err.(type) {
-    case *cody.NotFoundError:
-        fmt.Println("Not found:", e.Message)
-    case *cody.ConnectionError:
-        fmt.Println("Connection failed after", e.Attempts, "attempts")
-    case *cody.APIError:
-        fmt.Println("API error:", e.Code, e.Message, e.StatusCode)
-    default:
-        fmt.Println("Unknown error:", err)
-    }
-}
-```
-
-**错误类型：**
-| 错误 | 说明 |
-|------|------|
-| `*Error` | 基础错误类 |
-| `*NotFoundError` | 资源不存在 (404) |
-| `*ConnectionError` | 连接失败（含重试次数） |
-| `*APIError` | API 错误（含状态码和错误码） |
-
----
-
-### 完整示例
-
-#### 示例 1：单次任务
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    cody "github.com/SUT-GC/cody-go"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx := context.Background()
-
-    result, err := client.Run(ctx, "创建一个 Python 脚本")
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Println(result.Output)
-}
-```
-
-#### 示例 2：多轮对话
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    cody "github.com/SUT-GC/cody-go"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx := context.Background()
-
-    // 创建会话
-    session, err := client.CreateSession(ctx, cody.WithTitle("Flask 开发"))
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    // 多轮对话
-    r1, _ := client.Run(ctx, "创建 Flask 应用", cody.WithSession(session.ID))
-    fmt.Println(r1.Output)
-
-    r2, _ := client.Run(ctx, "添加 /health 端点", cody.WithSession(session.ID))
-    fmt.Println(r2.Output)
-
-    r3, _ := client.Run(ctx, "添加用户认证", cody.WithSession(session.ID))
-    fmt.Println(r3.Output)
-}
-```
-
-#### 示例 3：流式输出
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    cody "github.com/SUT-GC/cody-go"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx := context.Background()
-
-    ch, err := client.Stream(ctx, "分析这个项目")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for chunk := range ch {
-        switch chunk.Type {
-        case "text":
-            fmt.Print(chunk.Content)
-        case "done":
-            fmt.Println("\n✅ 完成")
-        case "error":
-            fmt.Println("\n❌ 错误:", chunk.Content)
-        }
-    }
-}
-```
-
-#### 示例 4：上下文取消
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-    "time"
-
-    cody "github.com/SUT-GC/cody-go"
-)
-
-func main() {
-    client := cody.NewClient("http://localhost:8000")
-    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-    defer cancel()
-
-    ch, err := client.Stream(ctx, "大型任务...")
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    for chunk := range ch {
-        if chunk.Type == "text" {
-            fmt.Print(chunk.Content)
-        }
-    }
-}
-```
-
----
-
 ## 最佳实践
 
-### 1. 使用上下文管理器（Python）
+### 1. 使用上下文管理器
 
 ```python
-# 推荐：自动关闭连接
+# 推荐：自动清理资源
 async with AsyncCodyClient() as client:
     result = await client.run("任务")
 
@@ -740,28 +359,16 @@ result = await client.run("任务")
 await client.close()
 ```
 
-### 2. 合理设置超时
-
-```python
-# 简单任务：30 秒
-async with AsyncCodyClient(timeout=30.0) as client:
-    await client.run("创建文件")
-
-# 复杂任务：120 秒或更长
-async with AsyncCodyClient(timeout=300.0) as client:
-    await client.run("重构整个模块")
-```
-
-### 3. 使用流式处理大任务
+### 2. 使用流式处理大任务
 
 ```python
 # 对于可能耗时较长的任务，使用流式可以实时看到进度
 async for chunk in client.stream("分析整个项目"):
-    if chunk.type == "text":
+    if chunk.type == "text_delta":
         print(chunk.content, end="", flush=True)
 ```
 
-### 4. 会话复用
+### 3. 会话复用
 
 ```python
 # 多轮对话使用同一个 session_id
@@ -771,20 +378,7 @@ await client.run("添加功能", session_id=session.id)
 await client.run("修复 bug", session_id=session.id)
 ```
 
-### 5. 错误重试
-
-SDK 内置自动重试（默认 3 次，指数退避）：
-- 0.5s → 1s → 2s → 4s → 8s（上限）
-
-```python
-# 自定义重试次数
-client = AsyncCodyClient(max_retries=5)
-
-# 禁用重试
-client = AsyncCodyClient(max_retries=0)
-```
-
-### 6. 并发请求
+### 4. 并发请求
 
 ```python
 # Python asyncio 并发
@@ -814,22 +408,6 @@ async with asyncio.TaskGroup() as tg:
 | `client.get_skill()` | 获取技能文档 |
 | `client.health()` | 健康检查 |
 
-### Go SDK
-
-| 函数/方法 | 说明 |
-|----------|------|
-| `NewClient()` | 创建客户端 |
-| `client.Run()` | 执行任务 |
-| `client.Stream()` | 流式执行 |
-| `client.Tool()` | 调用工具 |
-| `client.CreateSession()` | 创建会话 |
-| `client.ListSessions()` | 列出会话 |
-| `client.GetSession()` | 获取会话详情 |
-| `client.DeleteSession()` | 删除会话 |
-| `client.ListSkills()` | 列出技能 |
-| `client.GetSkill()` | 获取技能文档 |
-| `client.Health()` | 健康检查 |
-
 ---
 
-**最后更新:** 2026-02-28
+**最后更新:** 2026-03-02

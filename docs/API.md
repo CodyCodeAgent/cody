@@ -628,10 +628,12 @@ curl -H 'Authorization: Bearer <signed-token>' http://localhost:8000/run ...
 
 ### Python SDK（推荐）
 
+SDK 是 in-process 封装，直接调用核心引擎，无需启动 Server。
+
 ```python
 from cody import AsyncCodyClient
 
-async with AsyncCodyClient("http://localhost:8000") as client:
+async with AsyncCodyClient(workdir="/path/to/project") as client:
     # 一次性调用
     result = await client.run("创建 hello.py")
     print(result.output)
@@ -649,33 +651,6 @@ async with AsyncCodyClient("http://localhost:8000") as client:
     result = await client.tool("read_file", {"path": "main.py"})
     print(result.result)
 ```
-
-### Go SDK
-
-```go
-client := cody.NewClient("http://localhost:8000")
-
-// 一次性调用
-result, _ := client.Run(ctx, "创建 hello.py")
-fmt.Println(result.Output)
-
-// 多轮会话
-session, _ := client.CreateSession(ctx)
-client.Run(ctx, "创建 Flask 项目", cody.WithSession(session.ID))
-client.Run(ctx, "添加 /health 端点", cody.WithSession(session.ID))
-
-// 流式响应
-ch, _ := client.Stream(ctx, "解释这段代码")
-for chunk := range ch {
-    fmt.Print(chunk.Content)
-}
-
-// 直接调工具
-tool, _ := client.Tool(ctx, "read_file", map[string]interface{}{"path": "main.py"})
-fmt.Println(tool.Result)
-```
-
-详细文档见 `sdk/go/README.md`。
 
 ### curl
 

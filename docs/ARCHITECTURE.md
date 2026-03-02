@@ -6,26 +6,27 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                        Users / Callers                       │
 │    (CLI / TUI / Web / Clawdbot / CI-CD / Other Agents)      │
-└──┬──────────────┬──────────────┬──────────────┬─────────────┘
-   │              │              │              │
-  CLI          TUI          Web Frontend    RPC Server
-  (Click)      (Textual)    (React+Vite)   (FastAPI)
-  cody/cli.py  cody/tui.py  web/src/       cody/server.py
-   │              │              │              │
-   │              │         Web Backend         │
-   │              │         (FastAPI:5001)      │
-   │              │         web/backend/        │
-   │              │         ↕ web.db            │
-   │              │              │              │
-   └──────────────┴──────────────┴──────────────┘
+└──┬──────────────┬──────────────┬──────────────────────────────┘
+   │              │              │
+  CLI          TUI          Web Frontend
+  (Click)      (Textual)    (React+Vite)
+  cody/cli.py  cody/tui.py  web/src/
+   │              │              │
+   │              │     Unified Web Backend
+   │              │     (FastAPI:8000)
+   │              │     web/backend/
+   │              │     (Web + RPC endpoints)
+   │              │     ↕ web.db
+   │              │              │
+   └──────────────┴──────────────┘
                       │
          ┌────────────▼────────────┐
          │    Python SDK           │
          │    cody/client.py       │
-         │    (CodyClient /        │
-         │     AsyncCodyClient)    │
+         │    (in-process,         │
+         │     no HTTP)            │
          └────────────┬────────────┘
-                      │ (or direct)
+                      │ (direct import)
 ┌─────────────────────▼───────────────────────────────────────┐
 │                     Cody Core Engine                         │
 │  ┌───────────────────────────────────────────────────────┐  │
@@ -232,7 +233,7 @@ SQLite-backed persistence:
 | Path Safety | `core/tools.py` | `_resolve_and_check()` prevents symlink/traversal escapes |
 | Cmd Safety | `core/tools.py` | Dangerous command detection (rm -rf, dd, fork bomb) |
 
-Server wires these as middleware: auth → rate_limit → audit.
+Web Backend (`web/backend/middleware.py`) wires these as middleware: auth → rate_limit → audit.
 
 ---
 
@@ -259,10 +260,10 @@ User Input → Textual App (tui.py) → AgentRunner.run_stream()
   → DoneEvent → update message history + persist to SQLite
 ```
 
-### RPC Mode
+### HTTP/WS Mode (via Web Backend)
 
 ```
-HTTP POST /run → FastAPI (server.py) → AgentRunner.run_with_session()
+HTTP POST /run → FastAPI (web/backend/) → AgentRunner.run_with_session()
   → ... → JSON Response {output, thinking, tool_traces, session_id, usage}
 
 HTTP POST /run/stream → SSE stream (structured events)
@@ -316,18 +317,20 @@ Config
 
 ```
 cli.py ──→
-tui.py ──→  core/*  ←── server.py
-web/backend/ ──→ cody/client.py (AsyncCodyClient) ──→ server.py ──→ core/*
+tui.py ──→  core/*
+web/backend/ ──→ core/* (direct import)
+cody/client.py (Python SDK) ──→ core/* (in-process, no HTTP)
              ↓
          pydantic-ai, sqlite3, httpx, etc.
 ```
 
-**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, `server.py`, or `web/`. All functionality lives in core; shells just expose it.
+**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, or `web/`. All functionality lives in core; shells just expose it.
 
-**Web is an independent shell:**
-- `web/backend/` has its own FastAPI app (port 5001), own SQLite DB (`web.db`), and communicates with core via `AsyncCodyClient` SDK
-- `web/src/` is a React SPA that talks to the web backend only
-- Core `server.py` remains a pure RPC server with no web-specific code
+**Unified architecture:**
+- `web/backend/` is the unified FastAPI app (port 8000) that serves both Web-specific (projects, chat) and RPC endpoints (run, tool, sessions, skills, agents, ws)
+- `web/backend/` imports core directly (no HTTP intermediary)
+- `web/src/` is a React SPA that talks to the web backend
+- `cody/client.py` (Python SDK) is an in-process wrapper around core (no HTTP, no server needed)
 
 ---
 

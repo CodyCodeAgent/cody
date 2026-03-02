@@ -1,305 +1,223 @@
-"""Tests for Python SDK (CodyClient / AsyncCodyClient)"""
+"""Tests for Python SDK (CodyClient / AsyncCodyClient) — in-process mode"""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
-
-from cody.core.runner import CodyResult
+from cody.core.runner import CodyResult, TextDeltaEvent, DoneEvent
 
 from cody.client import (
     AsyncCodyClient,
     CodyClient,
-    CodyConnectionError,
     CodyError,
     CodyNotFoundError,
     RunResult,
     SessionInfo,
     SessionDetail,
-    ToolResult,
+    _event_to_chunk,
+    _usage_from_result,
 )
-from cody.server import app
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _async_client() -> AsyncCodyClient:
-    """Create an async CodyClient backed by the real FastAPI app (no network)."""
-    transport = httpx.ASGITransport(app=app)
-    client = AsyncCodyClient.__new__(AsyncCodyClient)
-    client.base_url = "http://testserver"
-    client.max_retries = 0
-    client._client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
-    return client
+def _make_result(output="done", thinking=None):
+    """Create a CodyResult with optional mock usage."""
+    mock_usage = MagicMock()
+    mock_usage.input_tokens = 10
+    mock_usage.output_tokens = 5
+    mock_usage.total_tokens = 15
+    mock_raw = MagicMock()
+    mock_raw.usage.return_value = mock_usage
+    mock_raw.all_messages.return_value = []
+    return CodyResult(output=output, thinking=thinking, _raw_result=mock_raw)
 
 
-def _mock_response(status_code: int = 200, json_data: dict = None) -> httpx.Response:
-    """Build a mock httpx.Response."""
-    return httpx.Response(
-        status_code=status_code,
-        json=json_data or {},
-    )
+# ── _event_to_chunk unit tests ───────────────────────────────────────────────
 
 
-# ── Sync client: unit tests (mocked HTTP) ───────────────────────────────────
+def test_event_to_chunk_text_delta():
+    event = TextDeltaEvent(content="hello")
+    chunk = _event_to_chunk(event, session_id="s1")
+    assert chunk.type == "text_delta"
+    assert chunk.content == "hello"
+    assert chunk.session_id == "s1"
 
 
-def test_sync_health():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.get.return_value = _mock_response(200, {"status": "ok", "version": "0.1.0"})
-
-    result = client.health()
-    assert result["status"] == "ok"
-    client._client.get.assert_called_once_with("/health")
+def test_event_to_chunk_done():
+    event = DoneEvent(result=CodyResult(output="all done"))
+    chunk = _event_to_chunk(event)
+    assert chunk.type == "done"
+    assert chunk.content == "all done"
+    assert chunk.session_id is None
 
 
-def test_sync_run():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.post.return_value = _mock_response(200, {
-        "status": "success",
-        "output": "done",
-        "session_id": None,
-        "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
-    })
-
-    result = client.run("hello")
-    assert isinstance(result, RunResult)
-    assert result.output == "done"
-    assert result.usage.total_tokens == 15
-    assert result.session_id is None
+def test_usage_from_result_with_usage():
+    result = _make_result()
+    usage = _usage_from_result(result)
+    assert usage.input_tokens == 10
+    assert usage.output_tokens == 5
+    assert usage.total_tokens == 15
 
 
-def test_sync_run_with_session():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.post.return_value = _mock_response(200, {
-        "status": "success",
-        "output": "continued",
-        "session_id": "abc123",
-        "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
-    })
-
-    result = client.run("hello", session_id="abc123")
-    assert result.session_id == "abc123"
-    # Verify session_id was sent in request body
-    call_args = client._client.post.call_args
-    body = call_args.kwargs["json"]
-    assert body["session_id"] == "abc123"
+def test_usage_from_result_without_usage():
+    result = CodyResult(output="no usage")
+    usage = _usage_from_result(result)
+    assert usage.total_tokens == 0
 
 
-def test_sync_run_with_options():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.post.return_value = _mock_response(200, {
-        "status": "success",
-        "output": "done",
-        "session_id": None,
-        "usage": {},
-    })
-
-    client.run("hello", workdir="/tmp/test", model="openai:gpt-4o")
-    body = client._client.post.call_args.kwargs["json"]
-    assert body["prompt"] == "hello"
-    assert body["workdir"] == "/tmp/test"
-    assert body["model"] == "openai:gpt-4o"
-
-
-def test_sync_tool():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.post.return_value = _mock_response(200, {
-        "status": "success",
-        "result": "file contents here",
-    })
-
-    result = client.tool("read_file", {"path": "test.txt"}, workdir="/tmp")
-    assert isinstance(result, ToolResult)
-    assert result.result == "file contents here"
-    body = client._client.post.call_args.kwargs["json"]
-    assert body["tool"] == "read_file"
-    assert body["params"] == {"path": "test.txt"}
-    assert body["workdir"] == "/tmp"
-
-
-def test_sync_create_session():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.post.return_value = _mock_response(200, {
-        "id": "abc123def456",
-        "title": "my session",
-        "model": "test",
-        "workdir": "/tmp",
-        "message_count": 0,
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z",
-    })
-
-    session = client.create_session(title="my session")
-    assert isinstance(session, SessionInfo)
-    assert session.id == "abc123def456"
-    assert session.title == "my session"
-
-
-def test_sync_list_sessions():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.get.return_value = _mock_response(200, {
-        "sessions": [
-            {
-                "id": "s1", "title": "first", "model": "", "workdir": "",
-                "message_count": 2, "created_at": "2026-01-01", "updated_at": "2026-01-01",
-            },
-            {
-                "id": "s2", "title": "second", "model": "", "workdir": "",
-                "message_count": 0, "created_at": "2026-01-01", "updated_at": "2026-01-01",
-            },
-        ]
-    })
-
-    sessions = client.list_sessions()
-    assert len(sessions) == 2
-    assert sessions[0].id == "s1"
-    assert sessions[1].title == "second"
-
-
-def test_sync_get_session():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.get.return_value = _mock_response(200, {
-        "id": "s1", "title": "chat", "model": "", "workdir": "",
-        "message_count": 2, "created_at": "2026-01-01", "updated_at": "2026-01-01",
-        "messages": [
-            {"role": "user", "content": "hello", "timestamp": "2026-01-01"},
-            {"role": "assistant", "content": "hi", "timestamp": "2026-01-01"},
-        ],
-    })
-
-    detail = client.get_session("s1")
-    assert isinstance(detail, SessionDetail)
-    assert len(detail.messages) == 2
-    assert detail.messages[0]["role"] == "user"
-
-
-def test_sync_delete_session():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.delete.return_value = _mock_response(200, {"status": "deleted", "id": "s1"})
-
-    client.delete_session("s1")  # should not raise
-    client._client.delete.assert_called_once_with("/sessions/s1")
-
-
-# ── Sync client: error handling ──────────────────────────────────────────────
-
-
-def test_sync_connection_error():
-    client = CodyClient("http://localhost:99999")
-    with pytest.raises(CodyConnectionError):
-        client.health()
-    client.close()
-
-
-def test_sync_404_raises_not_found():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.get.return_value = _mock_response(404, {"detail": "Session not found: xyz"})
-
-    with pytest.raises(CodyNotFoundError, match="Session not found"):
-        client.get_session("xyz")
-
-
-def test_sync_500_raises_cody_error():
-    client = CodyClient("http://localhost:8000")
-    client._client = MagicMock()
-    client._client.post.return_value = _mock_response(500, {"detail": "Internal error"})
-
-    with pytest.raises(CodyError) as exc_info:
-        client.run("test")
-    assert exc_info.value.status_code == 500
-
-
-# ── Async client: integration tests (real FastAPI) ───────────────────────────
+# ── Async client: health ─────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_async_health():
-    client = _async_client()
+    client = AsyncCodyClient()
     result = await client.health()
     assert result["status"] == "ok"
+    assert "version" in result
     await client.close()
+
+
+# ── Async client: run ────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_async_run():
-    mock_usage = MagicMock()
-    mock_usage.input_tokens = 20
-    mock_usage.output_tokens = 10
-    mock_usage.total_tokens = 30
-    mock_raw = MagicMock()
-    mock_raw.usage.return_value = mock_usage
-    mock_raw.all_messages.return_value = []
-    mock_result = CodyResult(output="async result", _raw_result=mock_raw)
+    client = AsyncCodyClient()
+    mock_result = _make_result("async result")
 
-    with patch("cody.server.AgentRunner") as MockRunner:
-        instance = MockRunner.return_value
-        instance.run = AsyncMock(return_value=mock_result)
+    with patch.object(client, "_get_runner") as mock_get_runner:
+        mock_runner = MagicMock()
+        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_get_runner.return_value = mock_runner
 
-        client = _async_client()
         result = await client.run("test")
 
     assert isinstance(result, RunResult)
     assert result.output == "async result"
-    assert result.usage.total_tokens == 30
+    assert result.usage.total_tokens == 15
+    assert result.session_id is None
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_run_with_session():
+    client = AsyncCodyClient()
+    mock_result = _make_result("continued")
+
+    with patch.object(client, "_get_runner") as mock_get_runner, \
+         patch.object(client, "_get_session_store"):
+        mock_runner = MagicMock()
+        mock_runner.run_with_session = AsyncMock(return_value=(mock_result, "abc123"))
+        mock_get_runner.return_value = mock_runner
+
+        result = await client.run("hello", session_id="abc123")
+
+    assert result.session_id == "abc123"
+    assert result.output == "continued"
+    await client.close()
+
+
+# ── Async client: stream ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_async_stream():
+    client = AsyncCodyClient()
+
+    async def fake_stream(prompt, message_history=None):
+        yield TextDeltaEvent(content="Hello")
+        yield TextDeltaEvent(content=" async")
+        yield DoneEvent(result=CodyResult(output="Hello async"))
+
+    with patch.object(client, "_get_runner") as mock_get_runner:
+        mock_runner = MagicMock()
+        mock_runner.run_stream = fake_stream
+        mock_get_runner.return_value = mock_runner
+
+        chunks = []
+        async for chunk in client.stream("test"):
+            chunks.append(chunk)
+
+    text_chunks = [c for c in chunks if c.type == "text_delta"]
+    assert len(text_chunks) == 2
+    assert text_chunks[0].content == "Hello"
+    assert text_chunks[1].content == " async"
+
+    done_chunks = [c for c in chunks if c.type == "done"]
+    assert len(done_chunks) == 1
+    assert done_chunks[0].content == "Hello async"
+    await client.close()
+
+
+# ── Async client: tool ───────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_async_tool(tmp_path):
     (tmp_path / "hello.py").write_text("print('hi')")
-    client = _async_client()
-    result = await client.tool("read_file", {"path": "hello.py"}, workdir=str(tmp_path))
+    client = AsyncCodyClient(workdir=str(tmp_path))
+    result = await client.tool("read_file", {"path": "hello.py"})
     assert "print('hi')" in result.result
     await client.close()
 
 
 @pytest.mark.asyncio
 async def test_async_tool_not_found():
-    client = _async_client()
+    client = AsyncCodyClient()
     with pytest.raises(CodyNotFoundError):
         await client.tool("nonexistent_tool")
     await client.close()
 
 
+# ── Async client: sessions ───────────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
 async def test_async_session_lifecycle(tmp_path):
-    from cody.core.session import SessionStore
-    store = SessionStore(db_path=tmp_path / "test.db")
+    client = AsyncCodyClient(db_path=str(tmp_path / "test.db"))
 
-    with patch("cody.server._get_session_store", return_value=store):
-        client = _async_client()
+    session = await client.create_session(title="test session")
+    assert isinstance(session, SessionInfo)
+    assert session.title == "test session"
 
-        session = await client.create_session(title="async test")
-        assert session.title == "async test"
+    sessions = await client.list_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].id == session.id
 
-        sessions = await client.list_sessions()
-        assert len(sessions) == 1
+    detail = await client.get_session(session.id)
+    assert isinstance(detail, SessionDetail)
+    assert detail.messages == []
 
-        detail = await client.get_session(session.id)
-        assert detail.messages == []
+    await client.delete_session(session.id)
+    with pytest.raises(CodyNotFoundError):
+        await client.get_session(session.id)
 
-        await client.delete_session(session.id)
-        with pytest.raises(CodyNotFoundError):
-            await client.get_session(session.id)
+    await client.close()
 
-        await client.close()
+
+@pytest.mark.asyncio
+async def test_async_session_not_found(tmp_path):
+    client = AsyncCodyClient(db_path=str(tmp_path / "test.db"))
+    with pytest.raises(CodyNotFoundError, match="Session not found"):
+        await client.get_session("nonexistent")
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_delete_session_not_found(tmp_path):
+    client = AsyncCodyClient(db_path=str(tmp_path / "test.db"))
+    with pytest.raises(CodyNotFoundError):
+        await client.delete_session("nonexistent")
+    await client.close()
+
+
+# ── Async client: skills ─────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_async_list_skills():
-    client = _async_client()
+    client = AsyncCodyClient()
     skills = await client.list_skills()
     assert isinstance(skills, list)
     names = [s["name"] for s in skills]
@@ -309,7 +227,7 @@ async def test_async_list_skills():
 
 @pytest.mark.asyncio
 async def test_async_get_skill():
-    client = _async_client()
+    client = AsyncCodyClient()
     skill = await client.get_skill("git")
     assert skill["name"] == "git"
     assert "documentation" in skill
@@ -319,32 +237,67 @@ async def test_async_get_skill():
 
 @pytest.mark.asyncio
 async def test_async_get_skill_not_found():
-    client = _async_client()
+    client = AsyncCodyClient()
     with pytest.raises(CodyNotFoundError):
         await client.get_skill("nonexistent_skill_xyz")
     await client.close()
 
 
-@pytest.mark.asyncio
-async def test_async_stream():
-    from cody.core.runner import TextDeltaEvent, DoneEvent, CodyResult
+# ── Sync client ──────────────────────────────────────────────────────────────
 
-    async def fake_stream(prompt, message_history=None):
-        yield TextDeltaEvent(content="Hello")
-        yield TextDeltaEvent(content=" async")
-        yield DoneEvent(result=CodyResult(output="Hello async"))
 
-    with patch("cody.server.AgentRunner") as MockRunner:
-        instance = MockRunner.return_value
-        instance.run_stream = fake_stream
+def test_sync_health():
+    client = CodyClient()
+    result = client.health()
+    assert result["status"] == "ok"
+    client.close()
 
-        client = _async_client()
-        chunks = []
-        async for chunk in client.stream("test"):
-            chunks.append(chunk)
 
-    text_chunks = [c for c in chunks if c.type == "text_delta"]
-    assert len(text_chunks) == 2
-    assert text_chunks[0].content == "Hello"
-    assert text_chunks[1].content == " async"
-    await client.close()
+def test_sync_session_lifecycle(tmp_path):
+    client = CodyClient(db_path=str(tmp_path / "test.db"))
+
+    session = client.create_session(title="sync session")
+    assert session.title == "sync session"
+
+    sessions = client.list_sessions()
+    assert len(sessions) == 1
+
+    detail = client.get_session(session.id)
+    assert detail.messages == []
+
+    client.delete_session(session.id)
+    with pytest.raises(CodyNotFoundError):
+        client.get_session(session.id)
+
+    client.close()
+
+
+def test_sync_tool(tmp_path):
+    (tmp_path / "test.txt").write_text("hello world")
+    client = CodyClient(workdir=str(tmp_path))
+    result = client.tool("read_file", {"path": "test.txt"})
+    assert "hello world" in result.result
+    client.close()
+
+
+def test_sync_tool_not_found():
+    client = CodyClient()
+    with pytest.raises(CodyNotFoundError):
+        client.tool("nonexistent_tool")
+    client.close()
+
+
+# ── Error classes ─────────────────────────────────────────────────────────────
+
+
+def test_cody_error_fields():
+    err = CodyError("test", status_code=400, code="TOOL_ERROR")
+    assert err.code == "TOOL_ERROR"
+    assert err.status_code == 400
+    assert err.message == "test"
+
+
+def test_cody_not_found_is_cody_error():
+    err = CodyNotFoundError("missing", code="SESSION_NOT_FOUND")
+    assert isinstance(err, CodyError)
+    assert err.code == "SESSION_NOT_FOUND"
