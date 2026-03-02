@@ -345,7 +345,7 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 ```json
 {
   "status": "ok",
-  "version": "1.1.0"
+  "version": "1.3.0"
 }
 ```
 
@@ -512,10 +512,9 @@ cody "使用项目 B 的配置"
 - [x] `CodyClient` / `AsyncCodyClient` — 同步 + 异步双客户端
 - [x] 核心方法 — `run()`, `stream()`, `tool()`, `health()`
 - [x] 会话管理 — `create_session()`, `list_sessions()`, `get_session()`, `delete_session()`
-- [x] 错误处理 — `CodyError`, `CodyConnectionError`, `CodyNotFoundError`, `CodyTimeoutError`
-- [x] 结构化错误解析 — 自动解析 `{"error": {"code", "message"}}` 格式，兼容旧 `detail` 格式
-- [x] 自动重连 — `max_retries` 参数（默认 3），指数退避（0.5s → 1s → 2s → 4s → 8s 上限）
-- [x] 19+ 个 SDK 测试 + 18 个 retry 测试
+- [x] 错误处理 — `CodyError`, `CodyNotFoundError`
+- [x] In-process 封装 — 直接调用核心引擎，无需 HTTP 连接
+- [x] 22 个 SDK 测试
 
 **P1：MCP Client 集成**
 - [x] `MCPClient` 实现 — stdio JSON-RPC 协议，管理 MCP Server 子进程
