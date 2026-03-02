@@ -2,6 +2,7 @@ import type {
   DirectoryListResponse,
   HealthResponse,
   Project,
+  SessionDetail,
   WSEvent,
 } from "../types";
 
@@ -76,46 +77,131 @@ export function deleteProject(id: string): Promise<{ status: string }> {
   return request(`/api/projects/${id}`, { method: "DELETE" });
 }
 
+// ── Sessions ───────────────────────────────────────────────────────────────
+
+/** GET /sessions/:id */
+export function getSession(sessionId: string): Promise<SessionDetail> {
+  return request(`/sessions/${sessionId}`);
+}
+
+// ── Skills ─────────────────────────────────────────────────────────────────
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  enabled: boolean;
+  source: string;
+}
+
+/** GET /skills */
+export function listSkills(): Promise<{ skills: SkillInfo[] }> {
+  return request("/skills");
+}
+
+/** POST /skills/:name/enable */
+export function enableSkill(name: string): Promise<{ name: string; enabled: boolean }> {
+  return request(`/skills/${name}/enable`, { method: "POST" });
+}
+
+/** POST /skills/:name/disable */
+export function disableSkill(name: string): Promise<{ name: string; enabled: boolean }> {
+  return request(`/skills/${name}/disable`, { method: "POST" });
+}
+
+// ── Config ─────────────────────────────────────────────────────────────────
+
+/** GET /config */
+export function getConfig(): Promise<Record<string, unknown>> {
+  return request("/config");
+}
+
+/** PUT /config */
+export function updateConfig(data: {
+  model?: string;
+  model_base_url?: string;
+  enable_thinking?: boolean;
+  thinking_budget?: number;
+}): Promise<{ status: string }> {
+  return request("/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 // ── WebSocket Chat ──────────────────────────────────────────────────────────
+
+export type ChatSocketStatus = "connecting" | "connected" | "disconnected";
 
 export interface ChatSocket {
   send: (msg: Record<string, unknown>) => void;
   close: () => void;
   onEvent: ((event: WSEvent) => void) | null;
+  onStatus: ((status: ChatSocketStatus) => void) | null;
 }
 
 /**
- * Open a WebSocket to /ws/chat/:projectId.
+ * Open a WebSocket to /ws/chat/:projectId with auto-reconnect.
  *
  * Usage:
  *   const ws = connectChat("abc123");
  *   ws.onEvent = (e) => console.log(e);
+ *   ws.onStatus = (s) => console.log("ws:", s);
  *   ws.send({ type: "message", content: "hello" });
  *   ws.close();
  */
 export function connectChat(projectId: string): ChatSocket {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const url = `${proto}//${location.host}/ws/chat/${projectId}`;
-  const ws = new WebSocket(url);
+
+  let ws: WebSocket;
+  let closed = false;
+  let reconnectTimer: ReturnType<typeof setTimeout>;
 
   const handle: ChatSocket = {
     send(msg) {
-      ws.send(JSON.stringify(msg));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+      }
     },
     close() {
-      ws.close();
+      closed = true;
+      clearTimeout(reconnectTimer);
+      if (ws) ws.close();
     },
     onEvent: null,
+    onStatus: null,
   };
 
-  ws.onmessage = (e) => {
-    try {
-      const event = JSON.parse(e.data) as WSEvent;
-      handle.onEvent?.(event);
-    } catch {
-      /* ignore non-JSON */
-    }
-  };
+  function connect() {
+    handle.onStatus?.("connecting");
+    ws = new WebSocket(url);
 
+    ws.onopen = () => {
+      handle.onStatus?.("connected");
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as WSEvent;
+        handle.onEvent?.(event);
+      } catch {
+        /* ignore non-JSON */
+      }
+    };
+
+    ws.onclose = () => {
+      if (!closed) {
+        handle.onStatus?.("disconnected");
+        reconnectTimer = setTimeout(connect, 2000);
+      }
+    };
+
+    ws.onerror = () => {
+      /* onclose fires after onerror, reconnect handled there */
+    };
+  }
+
+  connect();
   return handle;
 }

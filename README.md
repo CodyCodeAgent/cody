@@ -160,11 +160,12 @@ cody tui --workdir /path/to/project  # 指定目录
 
 ---
 
-### 3. RPC Server
+### 3. Web / RPC Server
 
 ```bash
-cody-server                          # 默认 0.0.0.0:8000
-cody-server --port 9000              # 自定义端口
+cody-web                             # 生产模式（托管 dist/）
+cody-web --dev                       # 开发模式（同时启动 Vite）
+cody-web --port 9000                 # 自定义端口
 ```
 
 **端点：** `POST /run`, `POST /run/stream` (SSE), `POST /tool`, `GET /skills`, `GET /sessions`, `WS /ws`, `GET /audit`, `GET /health`

@@ -4,6 +4,7 @@ Migrated from cody/server.py. Supports run/cancel/ping.
 """
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
@@ -14,6 +15,8 @@ from cody.core.errors import ErrorCode
 
 from ..helpers import serialize_stream_event
 from ..state import get_config, get_session_store
+
+logger = logging.getLogger("cody.web.ws")
 
 router = APIRouter(tags=["websocket"])
 
@@ -27,6 +30,7 @@ class _WSConnection:
 
     async def accept(self):
         await self.ws.accept()
+        logger.info("RPC WS connected")
 
     async def send_event(self, event_type: str, data: Optional[dict] = None):
         payload: dict[str, Any] = {"type": event_type}
@@ -44,12 +48,14 @@ class _WSConnection:
                 if msg_type == "run":
                     await self._handle_run(raw.get("data", {}))
                 elif msg_type == "cancel":
+                    logger.info("RPC WS cancel requested")
                     if self._cancel_event:
                         self._cancel_event.set()
                     await self.send_event("cancelled")
                 elif msg_type == "ping":
                     await self.send_event("pong")
                 else:
+                    logger.warning("RPC WS unknown message type: %s", msg_type)
                     await self.send_event("error", {
                         "error": {
                             "code": ErrorCode.INVALID_PARAMS.value,
@@ -58,11 +64,12 @@ class _WSConnection:
                     })
 
         except WebSocketDisconnect:
-            pass
+            logger.info("RPC WS disconnected")
 
     async def _handle_run(self, data: dict):
         prompt = data.get("prompt", "")
         if not prompt:
+            logger.warning("RPC WS run: empty prompt")
             await self.send_event("error", {
                 "error": {
                     "code": ErrorCode.INVALID_PARAMS.value,
@@ -72,6 +79,10 @@ class _WSConnection:
             return
 
         session_id = data.get("session_id")
+        logger.info(
+            "RPC WS run: session=%s prompt_len=%d workdir=%s",
+            session_id, len(prompt), data.get("workdir", "(cwd)"),
+        )
 
         self._cancel_event = asyncio.Event()
 
@@ -113,6 +124,7 @@ class _WSConnection:
                     await self.send_event(payload.pop("type"), payload)
 
         except Exception as e:
+            logger.error("RPC WS run error: %s", e, exc_info=True)
             await self.send_event("error", {
                 "error": {
                     "code": ErrorCode.SERVER_ERROR.value,

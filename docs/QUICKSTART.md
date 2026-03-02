@@ -401,11 +401,11 @@ async with AsyncCodyClient(workdir="/path/to/project") as client:
 
 ---
 
-## 11. 启动 Server
+## 11. 启动 Web
 
 ```bash
 # 启动统一服务器（RPC API + Web 功能）
-cody-server --port 8000
+cody-web --port 8000
 
 # 访问 API 文档
 open http://localhost:8000/docs

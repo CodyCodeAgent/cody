@@ -30,7 +30,7 @@ export default function ChatPage() {
         {loading ? (
           <div className="loading">Loading...</div>
         ) : project ? (
-          <ChatWindow projectId={project.id} projectName={project.name} />
+          <ChatWindow projectId={project.id} projectName={project.name} sessionId={project.session_id} />
         ) : (
           <div className="loading">Project not found</div>
         )}

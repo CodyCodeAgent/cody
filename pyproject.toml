@@ -24,7 +24,7 @@ dependencies = [
 
 [project.scripts]
 cody = "cody.cli:main"
-cody-server = "web.backend.app:run"
+cody-web = "web.backend.app:run"
 cody-tui = "cody.tui:run_tui"
 
 [project.optional-dependencies]

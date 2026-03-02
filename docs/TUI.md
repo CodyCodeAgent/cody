@@ -487,14 +487,14 @@ cody sessions delete abc123
 
 ## 与 Server 的关系
 
-TUI 直接使用核心引擎（in-process），不需要启动 Server。Server（`cody-server`）是独立的 Web + RPC 服务，供外部系统通过 HTTP/WebSocket 调用。
+TUI 直接使用核心引擎（in-process），不需要启动 Server。Web（`cody-web`）是独立的 Web + RPC 服务，供外部系统通过 HTTP/WebSocket 调用。
 
 ```bash
 # TUI — 直接使用核心引擎
 cody tui
 
-# Server — 供外部系统调用（端口 8000）
-cody-server
+# Web — 供外部系统调用（端口 8000）
+cody-web
 ```
 
 ---
