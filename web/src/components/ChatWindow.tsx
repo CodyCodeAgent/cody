@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { connectChat, getSession } from "../api/client";
 import type { ChatSocket, ChatSocketStatus } from "../api/client";
 import type { Message, ToolCallInfo, WSEvent } from "../types";
@@ -62,6 +64,7 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
 
   const socketRef = useRef<ChatSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const streamingRef = useRef(false);
 
   // ── RAF batching: accumulate events in ref, flush to state at ~60fps ──
   const bufferRef = useRef<StreamBuffer>({ content: "", thinking: "", toolCalls: [] });
@@ -91,6 +94,11 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
     setStreamThinking("");
     setStreamToolCalls([]);
   }, []);
+
+  // Keep streamingRef in sync so WebSocket callbacks see the latest value
+  useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -123,10 +131,25 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
 
     sock.onStatus = (status: ChatSocketStatus) => {
       setWsStatus(status);
+      // If WebSocket disconnects while streaming, the response is lost — reset
+      if (status === "disconnected" && streamingRef.current) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "system" as const,
+            content: "Connection lost — response interrupted. Please try again.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        resetBuffer();
+        setStreaming(false);
+      }
     };
 
     sock.onEvent = (event: WSEvent) => {
       const buf = bufferRef.current;
+      // Refresh idle timer on every event
+      lastEventRef.current = Date.now();
 
       switch (event.type) {
         case "thinking":
@@ -259,6 +282,41 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
 
   const hasStreamActivity = streaming && (streamThinking || streamToolCalls.length > 0 || streamContent);
 
+  // ── Elapsed timer while streaming ──
+  const [elapsed, setElapsed] = useState(0);
+  const lastEventRef = useRef(0);
+
+  useEffect(() => {
+    if (!streaming) {
+      setElapsed(0);
+      return;
+    }
+    lastEventRef.current = Date.now();
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - t0) / 1000));
+      // Idle timeout: no events for 120s → auto-stop
+      if (Date.now() - lastEventRef.current > 120_000) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "system" as const,
+            content: "Response timed out (no data for 120s). Please try again.",
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        resetBuffer();
+        setStreaming(false);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [streaming, resetBuffer]);
+
+  const formatElapsed = (s: number) => {
+    if (s < 60) return `${s}s`;
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+  };
+
   return (
     <div className="chat-window">
       <div className="chat-header">
@@ -310,16 +368,44 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
             )}
 
             {streamContent && (
-              <div className="message-content">{streamContent}</div>
+              <div className="message-content">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamContent}</ReactMarkdown>
+              </div>
             )}
           </div>
         )}
 
-        {/* Show spinner when streaming but no content yet */}
-        {streaming && !hasStreamActivity && (
-          <div className="message message-assistant">
-            <div className="message-role">Cody</div>
-            <div className="message-content stream-placeholder">Thinking...</div>
+        {/* Streaming status bar */}
+        {streaming && (
+          <div className="stream-status">
+            <span className="stream-status-dot" />
+            <span className="stream-status-text">
+              {!hasStreamActivity
+                ? "Thinking..."
+                : streamToolCalls.some((tc) => tc.loading)
+                  ? `Running ${streamToolCalls.filter((tc) => tc.loading).slice(-1)[0]?.name ?? "tool"}...`
+                  : "Generating..."}
+            </span>
+            <span className="stream-status-time">{formatElapsed(elapsed)}</span>
+            <button
+              type="button"
+              className="stream-stop-btn"
+              onClick={() => {
+                resetBuffer();
+                setStreaming(false);
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    role: "system" as const,
+                    content: "Stopped by user.",
+                    timestamp: new Date().toISOString(),
+                  },
+                ]);
+              }}
+              title="Stop generating"
+            >
+              Stop
+            </button>
           </div>
         )}
 
