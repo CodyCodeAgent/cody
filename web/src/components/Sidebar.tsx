@@ -60,6 +60,14 @@ export default function Sidebar({
           <li className="session-empty">No projects yet</li>
         )}
       </ul>
+      <div className="sidebar-footer">
+        <button className="sidebar-nav-btn" onClick={() => navigate("/skills")}>
+          Skills
+        </button>
+        <button className="sidebar-nav-btn" onClick={() => navigate("/settings")}>
+          Settings
+        </button>
+      </div>
     </aside>
   );
 }

@@ -205,6 +205,29 @@ body {
   height: 100%;
 }
 
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ws-status {
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ws-status-connecting {
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.1);
+}
+
+.ws-status-disconnected {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -244,6 +267,53 @@ body {
 
 .message-assistant .message-content {
   background: #27272a;
+}
+
+/* ── Chat settings panel ────────────────────────── */
+
+.chat-settings {
+  display: flex;
+  gap: 16px;
+  padding: 8px 20px;
+  background: #1e1e2e;
+  border-top: 1px solid #27272a;
+  flex-wrap: wrap;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.setting-input {
+  padding: 4px 8px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #e4e4e7;
+  font-size: 12px;
+  width: 160px;
+  outline: none;
+}
+
+.setting-input:focus {
+  border-color: #6366f1;
+}
+
+.setting-input-sm {
+  width: 80px;
+}
+
+.settings-toggle {
+  color: #71717a;
+  font-size: 10px;
+}
+
+.settings-toggle:hover {
+  color: #a1a1aa;
 }
 
 /* ── Chat input ──────────────────────────────────── */
@@ -353,4 +423,367 @@ body {
 
 .delete-btn {
   margin-right: 8px;
+}
+
+/* ── System messages ────────────────────────────── */
+
+.message-system {
+  text-align: center;
+  margin: 8px 0;
+}
+
+.system-content {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #1e1e2e;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #71717a;
+}
+
+/* ── Thinking block ─────────────────────────────── */
+
+.thinking-block {
+  margin-bottom: 8px;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.thinking-block summary {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a78bfa;
+  background: #1e1e2e;
+  cursor: pointer;
+  user-select: none;
+}
+
+.thinking-content {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #a1a1aa;
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #18181b;
+}
+
+/* ── Tool call cards ────────────────────────────── */
+
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tool-call-card {
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tool-call-card.tool-loading {
+  border-color: #6366f1;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #1e1e2e;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.tool-call-header::-webkit-details-marker {
+  display: none;
+}
+
+.tool-call-icon {
+  font-size: 12px;
+  color: #6366f1;
+}
+
+.tool-loading .tool-call-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tool-call-name {
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.tool-call-args {
+  color: #71717a;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-result {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #a1a1aa;
+  background: #18181b;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 150px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* ── Stream placeholder ─────────────────────────── */
+
+.stream-placeholder {
+  color: #71717a;
+  font-style: italic;
+}
+
+/* ── Message usage ──────────────────────────────── */
+
+.message-usage {
+  font-size: 11px;
+  color: #52525b;
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* ── Markdown content styles ────────────────────── */
+
+.message-assistant .message-content p {
+  margin-bottom: 8px;
+}
+
+.message-assistant .message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-assistant .message-content code {
+  padding: 1px 5px;
+  background: #1e1e2e;
+  border-radius: 3px;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 13px;
+  color: #a78bfa;
+}
+
+.message-assistant .message-content pre {
+  margin: 8px 0;
+  padding: 12px;
+  background: #1e1e2e;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.message-assistant .message-content pre code {
+  padding: 0;
+  background: none;
+  color: #e4e4e7;
+  font-size: 13px;
+}
+
+.message-assistant .message-content ul,
+.message-assistant .message-content ol {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.message-assistant .message-content li {
+  margin-bottom: 4px;
+}
+
+.message-assistant .message-content h1,
+.message-assistant .message-content h2,
+.message-assistant .message-content h3,
+.message-assistant .message-content h4 {
+  margin: 12px 0 6px;
+  color: #fff;
+}
+
+.message-assistant .message-content blockquote {
+  border-left: 3px solid #6366f1;
+  padding-left: 12px;
+  color: #a1a1aa;
+  margin: 8px 0;
+}
+
+.message-assistant .message-content table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.message-assistant .message-content th,
+.message-assistant .message-content td {
+  border: 1px solid #3f3f46;
+  padding: 6px 10px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.message-assistant .message-content th {
+  background: #1e1e2e;
+  font-weight: 600;
+}
+
+.message-assistant .message-content a {
+  color: #818cf8;
+  text-decoration: none;
+}
+
+.message-assistant .message-content a:hover {
+  text-decoration: underline;
+}
+
+.message-assistant .message-content hr {
+  border: none;
+  border-top: 1px solid #3f3f46;
+  margin: 12px 0;
+}
+
+/* ── Sidebar footer nav ─────────────────────────── */
+
+.sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid #27272a;
+  padding: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.sidebar-nav-btn {
+  flex: 1;
+  padding: 6px 0;
+  background: none;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #a1a1aa;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sidebar-nav-btn:hover {
+  background: #27272a;
+  color: #e4e4e7;
+}
+
+/* ── Manage pages (Skills / Settings) ───────────── */
+
+.manage-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.manage-page h2 {
+  font-size: 24px;
+  margin-bottom: 24px;
+}
+
+/* Skills page */
+
+.skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+}
+
+.skill-info {
+  flex: 1;
+}
+
+.skill-name {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.skill-source {
+  font-size: 12px;
+  color: #71717a;
+}
+
+.skill-desc {
+  font-size: 13px;
+  color: #a1a1aa;
+  margin-top: 4px;
+}
+
+/* Settings page */
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-field span {
+  font-size: 13px;
+  color: #a1a1aa;
+  font-weight: 500;
+}
+
+.settings-field input[type="text"],
+.settings-field input[type="number"] {
+  padding: 8px 12px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #e4e4e7;
+  font-size: 14px;
+  outline: none;
+}
+
+.settings-field input:focus {
+  border-color: #6366f1;
+}
+
+.settings-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.settings-success {
+  font-size: 13px;
+  color: #22c55e;
+}
+
+.settings-error {
+  font-size: 13px;
+  color: #ef4444;
 }

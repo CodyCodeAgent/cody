@@ -58,6 +58,11 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 **命令执行：**
 - `exec_command(command)` - 执行 Shell 命令（支持白名单和危险命令检测）
 
+**工具错误自动重试：**
+- 工具执行失败（如 `edit_file` 找不到目标文本）时，错误信息自动返回给 AI 模型
+- AI 可以根据错误信息修正参数后重试（最多 2 次重试）
+- 基于 pydantic-ai 的 `ModelRetry` 机制，不会打断整个对话流
+
 **任务管理：**
 - `todo_write(todos)` - 创建/更新任务清单
 - `todo_read()` - 读取当前任务清单
@@ -266,14 +271,17 @@ cd web && npm run build
 
 **启动服务：**
 ```bash
-# 默认端口 8000
-cody-server
+# 生产模式（托管 dist/ 静态文件）
+cody-web
+
+# 开发模式（同时启动 Vite dev server）
+cody-web --dev
 
 # 指定端口
-cody-server --port 9000
+cody-web --port 9000
 
 # 指定主机
-cody-server --host 0.0.0.0
+cody-web --host 0.0.0.0
 ```
 
 Server 由 `web/backend/` 统一提供（单一 FastAPI 应用，端口 8000），同时包含 RPC API 和 Web 功能。

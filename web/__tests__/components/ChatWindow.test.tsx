@@ -2,13 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ChatWindow from "../../src/components/ChatWindow";
 
-// Mock connectChat
+// Mock API client
 vi.mock("../../src/api/client", () => ({
   connectChat: () => ({
     send: vi.fn(),
     close: vi.fn(),
     onEvent: null,
   }),
+  getSession: vi.fn().mockRejectedValue(new Error("no session")),
 }));
 
 describe("ChatWindow", () => {

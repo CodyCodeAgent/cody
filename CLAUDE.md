@@ -103,8 +103,9 @@ cd web && npx vitest run
 # Lint（必须零告警）
 python3 -m ruff check cody/ tests/ web/
 
-# 启动 Server
-cody-server --port 8000
+# 启动 Web（后端 + 前端）
+cody-web --dev              # 开发模式（含 Vite HMR）
+cody-web --port 8000        # 生产模式（托管 dist/）
 
 # 启动 TUI
 cody tui

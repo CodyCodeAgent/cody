@@ -4,6 +4,7 @@ Migrated from cody/server.py. Uses core AgentRunner directly.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -20,12 +21,18 @@ from ..helpers import config_from_run_request, raise_structured, serialize_strea
 from ..models import RunRequest, RunResponse, ToolTraceResponse
 from ..state import get_session_store
 
+logger = logging.getLogger("cody.web.run")
+
 router = APIRouter(tags=["run"])
 
 
 @router.post("/run", response_model=RunResponse)
 async def run_agent(request: RunRequest):
     """Run agent with prompt, optionally within a session."""
+    logger.info(
+        "POST /run: session=%s prompt_len=%d workdir=%s",
+        request.session_id, len(request.prompt), request.workdir or "(cwd)",
+    )
     try:
         config = config_from_run_request(request)
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
@@ -61,6 +68,13 @@ async def run_agent(request: RunRequest):
                 "total_tokens": usage.total_tokens,
             }
 
+        logger.info(
+            "POST /run done: output_len=%d traces=%d tokens=%s",
+            len(result.output or ""),
+            len(result.tool_traces or []),
+            usage_data.get("total_tokens") if usage_data else "N/A",
+        )
+
         return RunResponse(
             output=result.output,
             thinking=result.thinking,
@@ -70,11 +84,14 @@ async def run_agent(request: RunRequest):
         )
 
     except (ToolPermissionDenied, ToolPathDenied) as e:
+        logger.warning("POST /run permission denied: %s", e.message)
         raise_structured(e.code, e.message, status_code=403)
     except ToolError as e:
+        logger.warning("POST /run tool error: %s", e.message)
         raise_structured(e.code, e.message, status_code=400)
     except ValueError as e:
         msg = str(e)
+        logger.warning("POST /run value error: %s", msg)
         if "Session not found" in msg:
             raise_structured(ErrorCode.SESSION_NOT_FOUND, msg, status_code=404)
         else:
@@ -82,12 +99,17 @@ async def run_agent(request: RunRequest):
     except CodyAPIError:
         raise
     except Exception as e:
+        logger.error("POST /run unexpected error: %s", e, exc_info=True)
         raise_structured(ErrorCode.SERVER_ERROR, str(e), status_code=500)
 
 
 @router.post("/run/stream")
 async def run_agent_stream(request: RunRequest):
     """Run agent with streaming response, emitting structured events."""
+    logger.info(
+        "POST /run/stream: session=%s prompt_len=%d workdir=%s",
+        request.session_id, len(request.prompt), request.workdir or "(cwd)",
+    )
 
     async def generate() -> AsyncIterator[str]:
         try:
@@ -109,6 +131,7 @@ async def run_agent_stream(request: RunRequest):
                     yield f"data: {json.dumps(serialize_stream_event(event))}\n\n"
 
         except Exception as e:
+            logger.error("POST /run/stream error: %s", e, exc_info=True)
             error_payload = {
                 "type": "error",
                 "error": {

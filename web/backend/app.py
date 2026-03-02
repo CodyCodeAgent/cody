@@ -6,9 +6,17 @@ core RPC endpoints (run, stream, tool, sessions, skills, agents, audit, ws).
 All business logic lives in core/. This is a thin shell.
 
 Run standalone:
-    python -m web.backend.app
+    cody-web              # production (serves dist/ static files)
+    cody-web --dev        # development (also starts Vite dev server)
+    cody-web --port 9000  # custom port
 """
 
+import argparse
+import atexit
+import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request, WebSocket
@@ -25,8 +33,6 @@ from .models import HealthResponse, ProjectCreate, ProjectUpdate, ProjectRespons
 from .state import get_project_store
 from .middleware import auth_middleware, rate_limit_middleware, audit_middleware
 
-# ── Route imports ───────────────────────────────────────────────────────────
-
 from .routes.directories import router as directories_router
 from .routes.run import router as run_router
 from .routes.tool import router as tool_router
@@ -35,8 +41,19 @@ from .routes.skills import router as skills_router
 from .routes.audit_routes import router as audit_router
 from .routes.agents import router as agents_router
 from .routes.websocket import router as ws_router
+from .routes.config import router as config_router
 from .routes import projects as _projects
 from .routes import chat as _chat
+
+# ── Logging setup ─────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+)
+logger = logging.getLogger("cody.web")
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
@@ -73,6 +90,10 @@ app.middleware("http")(auth_middleware)
 @app.exception_handler(CodyAPIError)
 async def cody_api_error_handler(request: Request, exc: CodyAPIError):
     """Convert CodyAPIError to structured JSON response."""
+    logger.warning(
+        "CodyAPIError %s %s: [%s] %s",
+        request.method, request.url.path, exc.code, exc.message,
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content=exc.to_detail(),
@@ -88,6 +109,7 @@ app.include_router(skills_router)
 app.include_router(audit_router)
 app.include_router(agents_router)
 app.include_router(ws_router)
+app.include_router(config_router)
 
 
 # ── Web routes ──────────────────────────────────────────────────────────────
@@ -135,6 +157,16 @@ async def delete_project_endpoint(
     store: ProjectStore = Depends(get_project_store),
 ):
     return await _projects.delete_project(project_id=project_id, store=store)
+
+
+@app.post("/api/projects/{project_id}/init")
+async def init_project_endpoint(
+    project_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
+    return await _projects.init_project_cody_md(
+        project_id=project_id, store=store
+    )
 
 
 # Chat WebSocket
@@ -187,9 +219,81 @@ if _WEB_DIST.is_dir():
 
 # ── Entry point ──────────────────────────────────────────────────────────────
 
-def run(host: str = "0.0.0.0", port: int = 8000):
-    """Run the server."""
-    uvicorn.run(app, host=host, port=port)
+_WEB_DIR = Path(__file__).resolve().parent.parent
+
+
+def _start_vite() -> subprocess.Popen:
+    """Start the Vite dev server as a child process."""
+    logger.info("Starting Vite dev server (port 5173)...")
+    proc = subprocess.Popen(
+        ["npx", "vite", "--host"],
+        cwd=str(_WEB_DIR),
+        env={**os.environ, "FORCE_COLOR": "1"},
+    )
+    atexit.register(proc.terminate)
+    return proc
+
+
+def _cmd_run(args):
+    """Handle `cody-web run`."""
+    has_dist = (_WEB_DIR / "dist" / "index.html").is_file()
+    need_vite = args.dev or not has_dist
+
+    vite_proc = None
+    if need_vite:
+        if not has_dist:
+            logger.info("No dist/ found — starting Vite dev server automatically")
+        vite_proc = _start_vite()
+
+    mode = "dev (Vite :5173)" if need_vite else "production (dist/)"
+    logger.info("Starting Cody Web v%s on %s:%d [%s]", __version__, args.host, args.port, mode)
+
+    try:
+        uvicorn.run(app, host=args.host, port=args.port)
+    finally:
+        if vite_proc:
+            logger.info("Stopping Vite dev server...")
+            vite_proc.terminate()
+            vite_proc.wait(timeout=5)
+
+
+def _cmd_build(_args):
+    """Handle `cody-web build`."""
+    logger.info("Building frontend (web/dist/)...")
+    result = subprocess.run(
+        ["npx", "vite", "build"],
+        cwd=str(_WEB_DIR),
+    )
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+    logger.info("Build complete → web/dist/")
+
+
+def run():
+    """Entry point for `cody-web` command."""
+    parser = argparse.ArgumentParser(
+        prog="cody-web",
+        description="Cody Web — backend API + frontend UI",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # cody-web run
+    run_parser = sub.add_parser("run", help="start backend (+ frontend if needed)")
+    run_parser.add_argument("--dev", action="store_true", help="force Vite dev server")
+    run_parser.add_argument("--host", default="0.0.0.0", help="bind host (default: 0.0.0.0)")
+    run_parser.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
+
+    # cody-web build
+    sub.add_parser("build", help="build frontend for production")
+
+    args = parser.parse_args()
+
+    if args.command == "build":
+        _cmd_build(args)
+    elif args.command == "run":
+        _cmd_run(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

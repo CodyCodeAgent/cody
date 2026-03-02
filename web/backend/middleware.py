@@ -3,6 +3,7 @@
 Migrated from cody/server.py. These are registered in app.py.
 """
 
+import logging
 import time
 from typing import Set
 
@@ -14,6 +15,8 @@ from cody.core.auth import AuthError
 from cody.core.errors import ErrorCode
 
 from .state import get_audit_logger, get_auth_manager, get_rate_limiter
+
+logger = logging.getLogger("cody.web.middleware")
 
 
 # Endpoints that do not require authentication
@@ -36,6 +39,7 @@ async def auth_middleware(request: Request, call_next):
 
     auth_header = request.headers.get("Authorization", "")
     if not auth_header:
+        logger.warning("Auth failed: missing header, path=%s", path)
         try:
             get_audit_logger().log(
                 event=AuditEvent.AUTH_FAILURE,
@@ -58,6 +62,7 @@ async def auth_middleware(request: Request, call_next):
     try:
         auth_mgr.validate(credential)
     except AuthError as e:
+        logger.warning("Auth failed: %s, path=%s", e, path)
         try:
             get_audit_logger().log(
                 event=AuditEvent.AUTH_FAILURE,
@@ -93,6 +98,7 @@ async def rate_limit_middleware(request: Request, call_next):
     result = limiter.hit(client_ip)
 
     if not result.allowed:
+        logger.warning("Rate limited: ip=%s path=%s", client_ip, path)
         return JSONResponse(
             status_code=429,
             content={
@@ -123,6 +129,13 @@ async def audit_middleware(request: Request, call_next):
     start = time.monotonic()
     response = await call_next(request)
     elapsed_ms = int((time.monotonic() - start) * 1000)
+
+    log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
+    logger.log(
+        log_level,
+        "%s %s → %d (%dms)",
+        request.method, path, response.status_code, elapsed_ms,
+    )
 
     try:
         get_audit_logger().log(

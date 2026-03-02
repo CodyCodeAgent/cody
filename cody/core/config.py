@@ -93,12 +93,20 @@ class Config(BaseModel):
             project_config = Path(workdir) / ".cody" / "config.json"
             global_config = Path.home() / ".cody" / "config.json"
 
+            # Layer: defaults ← global ← project ← env vars
+            # This ensures secrets (coding_plan_key, etc.) from the global
+            # config survive even when a project config exists but omits them
+            # (Config.save() strips secrets for security).
+            merged: dict = {}
+            if global_config.exists():
+                merged.update(json.loads(
+                    global_config.read_text(encoding="utf-8"),
+                ))
             if project_config.exists():
-                path = project_config
-            elif global_config.exists():
-                path = global_config
-            else:
-                return cls._apply_env_overrides(cls())
+                merged.update(json.loads(
+                    project_config.read_text(encoding="utf-8"),
+                ))
+            return cls._apply_env_overrides(cls(**merged))
 
         path = Path(path)
         if not path.exists():

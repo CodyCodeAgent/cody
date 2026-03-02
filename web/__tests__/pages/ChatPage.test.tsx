@@ -20,6 +20,16 @@ vi.mock("../../src/api/client", () => ({
     close: vi.fn(),
     onEvent: null,
   }),
+  getSession: vi.fn().mockResolvedValue({
+    id: "sess1",
+    title: "Test",
+    model: "test",
+    workdir: "/tmp",
+    message_count: 0,
+    created_at: "",
+    updated_at: "",
+    messages: [],
+  }),
 }));
 
 describe("ChatPage", () => {

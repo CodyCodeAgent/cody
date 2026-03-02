@@ -13,18 +13,23 @@ Error conventions:
   - ToolPathDenied     → path outside workdir    (server maps to 403)
   - ToolPermissionDenied → permission check fail (server maps to 403)
   - FileNotFoundError  → missing file/dir        (server maps to 500)
+
+In agent context, all ToolError subclasses are automatically converted to
+pydantic-ai ModelRetry (via _with_model_retry wrapper in register_tools),
+so the model can self-correct and retry instead of breaking the run.
 """
 
 import fnmatch
+import functools
 import os
 import re
 import subprocess
 from pathlib import Path
 
-from pydantic_ai import RunContext
+from pydantic_ai import ModelRetry, RunContext
 
 from .deps import CodyDeps
-from .errors import ToolPermissionDenied, ToolPathDenied, ToolInvalidParams
+from .errors import ToolError, ToolPermissionDenied, ToolPathDenied, ToolInvalidParams
 
 
 def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
@@ -1190,17 +1195,39 @@ SUB_AGENT_TOOLSETS = {
 }
 
 
+def _with_model_retry(func):
+    """Wrap a tool function so ToolError is converted to ModelRetry.
+
+    When a tool raises ToolError (e.g. ToolInvalidParams for "text not found"),
+    pydantic-ai would normally propagate it as an unhandled exception, breaking
+    the entire agent run. By converting it to ModelRetry, the error message is
+    sent back to the model so it can correct its parameters and try again.
+    """
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except ToolError as e:
+            raise ModelRetry(str(e)) from e
+
+    return wrapper
+
+
 def register_tools(agent, *, include_mcp: bool = False) -> None:
-    """Register all core tools on an agent. Optionally include MCP tools."""
+    """Register all core tools on an agent. Optionally include MCP tools.
+
+    Each tool is wrapped with _with_model_retry so that ToolError exceptions
+    are converted to ModelRetry, allowing the model to self-correct.
+    """
     for tool_func in CORE_TOOLS:
-        agent.tool(tool_func)
+        agent.tool(retries=2)(_with_model_retry(tool_func))
     if include_mcp:
         for tool_func in MCP_TOOLS:
-            agent.tool(tool_func)
+            agent.tool(retries=2)(_with_model_retry(tool_func))
 
 
 def register_sub_agent_tools(agent, agent_type: str) -> None:
     """Register the appropriate tool subset for a sub-agent type."""
     tool_set = SUB_AGENT_TOOLSETS.get(agent_type, SUB_AGENT_TOOLSETS["generic"])
     for tool_func in tool_set:
-        agent.tool(tool_func)
+        agent.tool(retries=2)(_with_model_retry(tool_func))

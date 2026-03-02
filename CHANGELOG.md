@@ -29,6 +29,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   - `cody init` always (re-)generates `CODY.md` via AI analysis — shows "Created" on first run, "Updated" on subsequent runs; if `.cody/` already exists, scaffold is skipped but `CODY.md` is still regenerated; fails loudly on error (no silent fallback)
   - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `generate_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
 - **`read_file` encoding safety** — tool now reads with `encoding="utf-8", errors="replace"` instead of platform default, preventing `UnicodeDecodeError` on binary or non-UTF-8 files
+- **Tool error auto-retry** — `ToolError` exceptions (e.g. `ToolInvalidParams` from `edit_file` when text is not found) are now converted to pydantic-ai `ModelRetry`, allowing the model to self-correct and retry (up to 2 retries per tool call) instead of breaking the entire agent run
 
 ### Changed
 - **Architecture simplification** — eliminated `cody/server.py` (standalone RPC server)
