@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 1.1.0
+**版本：** 1.3.0
 
 ---
 
@@ -448,7 +448,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 ```json
 {
   "status": "ok",
-  "version": "1.1.0"
+  "version": "1.3.0"
 }
 ```
 

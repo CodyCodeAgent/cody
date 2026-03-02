@@ -4,7 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-582%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-526%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **核心理念：引擎做厚，壳子做薄。** CLI、TUI、Web 和 Server 都是基于核心引擎的薄壳。Server + SDK 交付模式是我们的差异化优势 — 让其他人能够将 AI 编码能力嵌入到自己的系统中。
@@ -344,11 +344,14 @@ cody config set model_base_url "https://..."          # 设置 API 地址
 # 安装开发依赖
 pip install -e ".[dev]"
 
-# 运行测试（493 个）
+# 运行核心测试（481 个）
 python3 -m pytest tests/ -v
 
+# 运行 Web 后端测试（45 个）
+PYTHONPATH=. python3 -m pytest web/tests/ -v
+
 # Lint
-python3 -m ruff check cody/ tests/
+python3 -m ruff check cody/ tests/ web/
 
 # 格式化
 python3 -m ruff format cody/ tests/
@@ -394,4 +397,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-03-01 | **版本:** 1.2.0
+**最后更新:** 2026-03-02 | **版本:** 1.3.0

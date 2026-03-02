@@ -94,7 +94,7 @@ pip install -e ".[dev]"
 # 核心测试（481 个，不需要真实 API Key）
 python3 -m pytest tests/ -v
 
-# Web 后端测试（20 个）
+# Web 后端测试（45 个）
 PYTHONPATH=. python3 -m pytest web/tests/ -v
 
 # Web 前端测试（33 个）
@@ -136,12 +136,11 @@ cody tui
 
 ## 版本管理
 
-版本号在 **4 个位置**，必须同步更新：
+版本号在 **3 个位置**，必须同步更新：
 
 1. `pyproject.toml` → `version = "x.y.z"`
-2. `cody/__init__.py` → `__version__ = "x.y.z"`
-3. `web/backend/app.py` → `FastAPI(version=)` 和 `HealthResponse`
-4. `cody/core/mcp_client.py` → `clientInfo.version`
+2. `cody/__init__.py` → `__version__ = "x.y.z"`（`web/backend/` 自动引用此值）
+3. `cody/core/mcp_client.py` → `clientInfo.version`
 
 同时更新 `CHANGELOG.md` 添加版本条目，`CONTRIBUTING.md` 中的版本号。
 

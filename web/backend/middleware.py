@@ -17,7 +17,7 @@ from .state import get_audit_logger, get_auth_manager, get_rate_limiter
 
 
 # Endpoints that do not require authentication
-PUBLIC_PATHS: Set[str] = {"/health", "/docs", "/openapi.json", "/redoc"}
+PUBLIC_PATHS: Set[str] = {"/health", "/api/health", "/docs", "/openapi.json", "/redoc"}
 
 
 async def auth_middleware(request: Request, call_next):

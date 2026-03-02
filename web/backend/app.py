@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
+from cody import __version__
 from cody.core.errors import CodyAPIError
 
 from .db import ProjectStore
@@ -43,7 +44,7 @@ from .routes import chat as _chat
 app = FastAPI(
     title="Cody Server",
     description="AI Coding Assistant — Web frontend + RPC API",
-    version="1.3.0",
+    version=__version__,
 )
 
 app.add_middleware(
@@ -157,7 +158,6 @@ async def health():
 @app.get("/api/health")
 async def api_health():
     """Web frontend health check — no separate core server needed."""
-    from cody import __version__
     return {"status": "ok", "version": __version__}
 
 

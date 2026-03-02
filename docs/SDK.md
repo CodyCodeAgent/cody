@@ -69,8 +69,6 @@ with CodyClient(workdir="/path/to/project") as client:
 # 异步
 result = await client.run(
     "创建一个 FastAPI 项目",
-    workdir="/path/to/project",
-    model="anthropic:claude-sonnet-4-0",
     session_id="abc123",  # 可选，用于多轮对话
 )
 
@@ -86,9 +84,9 @@ print(result.usage.total_tokens)  # Token 使用量
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `prompt` | str | ✅ | 任务描述 |
-| `workdir` | str | ❌ | 工作目录 |
-| `model` | str | ❌ | 模型名称 |
 | `session_id` | str | ❌ | 会话 ID（多轮对话）|
+
+> **注意：** `workdir` 和 `model` 在构造函数中设置，不支持 per-call 覆盖。
 
 **返回：** `RunResult` 对象
 ```python
@@ -108,7 +106,7 @@ class RunResult:
 async for chunk in client.stream("解释这段代码"):
     print(chunk.content, end="")
 
-# 同步
+# 同步（注意：同步版本会一次性返回所有 chunks 的列表，非真正流式）
 for chunk in client.stream("解释这段代码"):
     print(chunk.content, end="")
 ```

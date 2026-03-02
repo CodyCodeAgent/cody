@@ -209,8 +209,6 @@ class AsyncCodyClient:
         self,
         prompt: str,
         *,
-        workdir: Optional[str] = None,
-        model: Optional[str] = None,
         session_id: Optional[str] = None,
     ) -> RunResult:
         """Run agent with prompt. Returns result."""
@@ -233,8 +231,6 @@ class AsyncCodyClient:
         self,
         prompt: str,
         *,
-        workdir: Optional[str] = None,
-        model: Optional[str] = None,
         session_id: Optional[str] = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects."""
@@ -446,25 +442,25 @@ class CodyClient:
         self,
         prompt: str,
         *,
-        workdir: Optional[str] = None,
-        model: Optional[str] = None,
         session_id: Optional[str] = None,
     ) -> RunResult:
         """Run agent with prompt."""
-        return _run_async(self._async.run(prompt, workdir=workdir, model=model, session_id=session_id))
+        return _run_async(self._async.run(prompt, session_id=session_id))
 
     def stream(
         self,
         prompt: str,
         *,
-        workdir: Optional[str] = None,
-        model: Optional[str] = None,
         session_id: Optional[str] = None,
     ):
-        """Stream agent response. Returns list of StreamChunks (sync version)."""
+        """Stream agent response. Returns list of StreamChunks (sync version).
+
+        Note: Unlike the async version which yields chunks incrementally,
+        the sync version collects all chunks and returns them as a list.
+        """
         async def _collect():
             chunks = []
-            async for chunk in self._async.stream(prompt, workdir=workdir, model=model, session_id=session_id):
+            async for chunk in self._async.stream(prompt, session_id=session_id):
                 chunks.append(chunk)
             return chunks
         return _run_async(_collect())

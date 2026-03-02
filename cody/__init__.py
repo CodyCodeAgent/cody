@@ -7,4 +7,10 @@ from .client import (  # noqa: F401
     CodyClient,
     CodyError,
     CodyNotFoundError,
+    RunResult,
+    SessionDetail,
+    SessionInfo,
+    StreamChunk,
+    ToolResult,
+    Usage,
 )

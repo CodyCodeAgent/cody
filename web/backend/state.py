@@ -101,6 +101,7 @@ def create_full_deps(config: Config, workdir: Path) -> CodyDeps:
         config=config,
         workdir=workdir,
         skill_manager=get_skill_manager(config, workdir),
+        allowed_roots=[workdir],
         audit_logger=get_audit_logger(),
         permission_manager=PermissionManager(
             overrides=config.permissions.overrides,

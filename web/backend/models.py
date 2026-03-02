@@ -8,6 +8,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from cody import __version__
 from cody.core.errors import ErrorDetail
 
 
@@ -91,7 +92,7 @@ class ToolResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str = "ok"
-    version: str = "1.3.0"
+    version: str = __version__
 
 
 class ErrorResponse(BaseModel):
