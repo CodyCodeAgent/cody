@@ -155,7 +155,7 @@ PYTHONPATH=. python3 -m pytest web/tests/ -v
 | 路由 | React Router 6 |
 | 构建 | Vite 6 |
 | 样式 | CSS（暗色主题） |
-| Markdown | react-markdown |
+| Markdown | react-markdown + remark-gfm |
 | 前端测试 | Vitest + Testing Library |
 | 后端框架 | FastAPI + Uvicorn |
 | 数据库 | SQLite（WAL 模式） |
@@ -169,3 +169,7 @@ PYTHONPATH=. python3 -m pytest web/tests/ -v
 - 生产构建后，后端自动托管 `web/dist/` 静态文件，并提供 SPA fallback
 - 后端直接 import `cody.core`，不经过 HTTP SDK — 零网络开销
 - 每个项目创建时会自动初始化 `.cody/config.json` 并创建关联的 Cody session
+- 流式状态栏 — 显示 Thinking/Running/Generating 状态 + 实时耗时 + Stop 按钮
+- WebSocket 断连恢复 — streaming 中 WS 断连时自动重置状态并提示 "Connection lost"
+- 空闲超时 — 120s 无事件自动停止 streaming，防止永久卡住
+- GFM Markdown — `remark-gfm` 支持表格、删除线、任务列表等 GitHub 风格 Markdown
