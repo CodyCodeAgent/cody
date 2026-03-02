@@ -10,20 +10,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - **Web frontend** — React + TypeScript + Vite single-page application (`web/`)
-  - Project wizard with directory browser for selecting workdir
+  - Project wizard with directory browser, name/description fields
   - Real-time chat via WebSocket with streaming message display
-  - Session sidebar with create/delete/navigate
+  - Project sidebar with create/delete/navigate
   - Dark theme UI
-  - 31 frontend tests (Vitest + Testing Library)
-- **Web API endpoints** — `GET /api/directories` (directory browsing) and `POST /api/projects/init` (project initialization)
-- **CORS middleware** — Allows dev server (localhost:5173) cross-origin requests
-- **Static file serving** — Production builds served directly from FastAPI (`web/dist/`)
+  - 33 frontend tests (Vitest + Testing Library)
+- **Web backend** — Independent FastAPI application (`web/backend/`, port 5001)
+  - Own SQLite database (`~/.cody/web.db`) for project management (CRUD)
+  - Proxies chat to core server via `AsyncCodyClient` SDK
+  - WebSocket `/ws/chat/{project_id}` endpoint for real-time chat relay
+  - Directory browsing API (`GET /api/directories`)
+  - Health endpoint with core server connectivity check
+  - 20 backend tests (pytest)
+  - Dependency injection via FastAPI `Depends()` for clean testing
 - **CODY.md project instructions** — Cody now reads `CODY.md` at the start of every session and injects its content into the system prompt, similar to Claude Code's `CLAUDE.md`.
   - Two-layer loading: `~/.cody/CODY.md` (global user-level) + `<workdir>/CODY.md` (project-level); both are optional and additive
   - Global instructions come first, project instructions appended after a `---` separator
   - `cody init` always (re-)generates `CODY.md` via AI analysis — shows "Created" on first run, "Updated" on subsequent runs; if `.cody/` already exists, scaffold is skipped but `CODY.md` is still regenerated; fails loudly on error (no silent fallback)
   - New module `cody/core/project_instructions.py` with `load_project_instructions()`, `generate_project_instructions()`, `CODY_MD_FILENAME`, `CODY_MD_TEMPLATE`
 - **`read_file` encoding safety** — tool now reads with `encoding="utf-8", errors="replace"` instead of platform default, preventing `UnicodeDecodeError` on binary or non-UTF-8 files
+
+### Architecture
+- Web follows "thick engine, thin shell" philosophy — an independent shell like CLI/TUI
+- Architecture: `React → Web Backend (port 5001, web.db) → Core Server (port 8000, sessions.db) → Core Engine`
+- Web backend uses `AsyncCodyClient` SDK to communicate with core server
+- Core `server.py` remains a pure RPC server with no web-specific code
 
 ---
 

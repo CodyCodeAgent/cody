@@ -8,9 +8,14 @@
 │    (CLI / TUI / Web / Clawdbot / CI-CD / Other Agents)      │
 └──┬──────────────┬──────────────┬──────────────┬─────────────┘
    │              │              │              │
-  CLI          TUI          Web (React)    RPC Server
-  (Click)      (Textual)    web/src/       (FastAPI)
-  cody/cli.py  cody/tui.py  ↕ fetch/ws     cody/server.py
+  CLI          TUI          Web Frontend    RPC Server
+  (Click)      (Textual)    (React+Vite)   (FastAPI)
+  cody/cli.py  cody/tui.py  web/src/       cody/server.py
+   │              │              │              │
+   │              │         Web Backend         │
+   │              │         (FastAPI:5001)      │
+   │              │         web/backend/        │
+   │              │         ↕ web.db            │
    │              │              │              │
    └──────────────┴──────────────┴──────────────┘
                       │
@@ -312,12 +317,18 @@ Config
 ```
 cli.py ──→
 tui.py ──→  core/*  ←── server.py
+web/backend/ ──→ cody/client.py (AsyncCodyClient) ──→ server.py ──→ core/*
              ↓
          pydantic-ai, sqlite3, httpx, etc.
 ```
 
-**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, or `server.py`. All functionality lives in core; shells just expose it.
+**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, `server.py`, or `web/`. All functionality lives in core; shells just expose it.
+
+**Web is an independent shell:**
+- `web/backend/` has its own FastAPI app (port 5001), own SQLite DB (`web.db`), and communicates with core via `AsyncCodyClient` SDK
+- `web/src/` is a React SPA that talks to the web backend only
+- Core `server.py` remains a pure RPC server with no web-specific code
 
 ---
 
-**Last updated:** 2026-02-28
+**Last updated:** 2026-03-02

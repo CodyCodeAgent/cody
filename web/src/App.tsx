@@ -7,7 +7,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/chat/:sessionId" element={<ChatPage />} />
+        <Route path="/chat/:projectId" element={<ChatPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { listDirectories, initProject } from "../api/client";
-import type { DirectoryEntry } from "../types";
+import { listDirectories, createProject } from "../api/client";
+import type { DirectoryEntry, Project } from "../types";
 
 interface Props {
-  onComplete: (workdir: string) => void;
+  onComplete: (project: Project) => void;
 }
 
 export default function ProjectWizard({ onComplete }: Props) {
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState<DirectoryEntry[]>([]);
+  const [projectName, setProjectName] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -19,6 +21,11 @@ export default function ProjectWizard({ onComplete }: Props) {
       const data = await listDirectories(path);
       setCurrentPath(data.path);
       setEntries(data.entries);
+      // Default project name to directory name
+      if (!projectName) {
+        const dirName = data.path.split("/").pop() || "";
+        setProjectName(dirName);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to list directory");
     } finally {
@@ -32,22 +39,33 @@ export default function ProjectWizard({ onComplete }: Props) {
 
   function navigateTo(name: string) {
     const next = currentPath ? `${currentPath}/${name}` : name;
+    setProjectName(name);
     loadDirectory(next);
   }
 
   function navigateUp() {
     const parent = currentPath.split("/").slice(0, -1).join("/") || "/";
+    const parentName = parent.split("/").pop() || "";
+    setProjectName(parentName);
     loadDirectory(parent);
   }
 
-  async function handleSelect() {
+  async function handleCreate() {
+    if (!projectName.trim()) {
+      setError("Project name is required");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      await initProject(currentPath);
-      onComplete(currentPath);
+      const project = await createProject(
+        projectName.trim(),
+        currentPath,
+        description.trim()
+      );
+      onComplete(project);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to initialize project");
+      setError(e instanceof Error ? e.message : "Failed to create project");
     } finally {
       setLoading(false);
     }
@@ -57,7 +75,30 @@ export default function ProjectWizard({ onComplete }: Props) {
 
   return (
     <div className="wizard">
-      <h3>Select project directory</h3>
+      <h3>Create New Project</h3>
+
+      <div className="wizard-fields">
+        <label>
+          Project Name
+          <input
+            type="text"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            placeholder="My Project"
+          />
+        </label>
+        <label>
+          Description (optional)
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="A brief description"
+          />
+        </label>
+      </div>
+
+      <h4>Select project directory</h4>
 
       <div className="wizard-path">
         <code>{currentPath}</code>
@@ -86,10 +127,10 @@ export default function ProjectWizard({ onComplete }: Props) {
 
       <button
         className="btn btn-primary"
-        onClick={handleSelect}
-        disabled={loading || !currentPath}
+        onClick={handleCreate}
+        disabled={loading || !currentPath || !projectName.trim()}
       >
-        {loading ? "Initializing..." : "Use this directory"}
+        {loading ? "Creating..." : "Create Project"}
       </button>
     </div>
   );

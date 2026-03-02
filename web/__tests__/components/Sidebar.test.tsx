@@ -13,27 +13,27 @@ vi.mock("react-router-dom", async () => {
 
 // Mock API
 vi.mock("../../src/api/client", () => ({
-  listSessions: vi.fn().mockResolvedValue([
+  listProjects: vi.fn().mockResolvedValue([
     {
-      id: "s1",
-      title: "Session 1",
-      message_count: 3,
-      workdir: "/tmp",
-      model: "",
+      id: "p1",
+      name: "Project Alpha",
+      description: "",
+      workdir: "/tmp/alpha",
+      session_id: null,
       created_at: "",
       updated_at: "",
     },
     {
-      id: "s2",
-      title: "Session 2",
-      message_count: 0,
-      workdir: "/tmp",
-      model: "",
+      id: "p2",
+      name: "Project Beta",
+      description: "",
+      workdir: "/tmp/beta",
+      session_id: null,
       created_at: "",
       updated_at: "",
     },
   ]),
-  deleteSession: vi.fn().mockResolvedValue({ status: "deleted" }),
+  deleteProject: vi.fn().mockResolvedValue({ status: "deleted" }),
 }));
 
 beforeEach(() => {
@@ -41,27 +41,27 @@ beforeEach(() => {
 });
 
 describe("Sidebar", () => {
-  it("renders session list", async () => {
+  it("renders project list", async () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByText("Session 1")).toBeInTheDocument();
-      expect(screen.getByText("Session 2")).toBeInTheDocument();
+      expect(screen.getByText("Project Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Project Beta")).toBeInTheDocument();
     });
   });
 
-  it("navigates to session on click", async () => {
+  it("navigates to project on click", async () => {
     render(
       <MemoryRouter>
         <Sidebar />
       </MemoryRouter>
     );
-    await waitFor(() => screen.getByText("Session 1"));
-    await userEvent.click(screen.getByText("Session 1"));
-    expect(mockNavigate).toHaveBeenCalledWith("/chat/s1");
+    await waitFor(() => screen.getByText("Project Alpha"));
+    await userEvent.click(screen.getByText("Project Alpha"));
+    expect(mockNavigate).toHaveBeenCalledWith("/chat/p1");
   });
 
   it("navigates to home on '+ New' click", async () => {
@@ -75,13 +75,13 @@ describe("Sidebar", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/");
   });
 
-  it("highlights current session", async () => {
+  it("highlights current project", async () => {
     const { container } = render(
       <MemoryRouter>
-        <Sidebar currentSessionId="s1" />
+        <Sidebar currentProjectId="p1" />
       </MemoryRouter>
     );
-    await waitFor(() => screen.getByText("Session 1"));
+    await waitFor(() => screen.getByText("Project Alpha"));
     const active = container.querySelector(".session-item.active");
     expect(active).toBeInTheDocument();
   });

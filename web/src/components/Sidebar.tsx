@@ -1,24 +1,24 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listSessions, deleteSession } from "../api/client";
-import type { Session } from "../types";
+import { listProjects, deleteProject } from "../api/client";
+import type { Project } from "../types";
 
 export default function Sidebar({
-  currentSessionId,
+  currentProjectId,
 }: {
-  currentSessionId?: string;
+  currentProjectId?: string;
 }) {
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
-    listSessions().then(setSessions).catch(console.error);
-  }, [currentSessionId]);
+    listProjects().then(setProjects).catch(console.error);
+  }, [currentProjectId]);
 
   async function handleDelete(id: string) {
-    await deleteSession(id);
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    if (id === currentSessionId) {
+    await deleteProject(id);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    if (id === currentProjectId) {
       navigate("/");
     }
   }
@@ -26,40 +26,38 @@ export default function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h2>Sessions</h2>
+        <h2>Projects</h2>
         <button className="btn btn-sm" onClick={() => navigate("/")}>
           + New
         </button>
       </div>
       <ul className="session-list">
-        {sessions.map((s) => (
+        {projects.map((p) => (
           <li
-            key={s.id}
-            className={`session-item ${s.id === currentSessionId ? "active" : ""}`}
+            key={p.id}
+            className={`session-item ${p.id === currentProjectId ? "active" : ""}`}
           >
             <button
               className="session-link"
-              onClick={() => navigate(`/chat/${s.id}`)}
+              onClick={() => navigate(`/chat/${p.id}`)}
             >
-              <span className="session-title">{s.title}</span>
-              <span className="session-meta">
-                {s.message_count} messages
-              </span>
+              <span className="session-title">{p.name}</span>
+              <span className="session-meta">{p.workdir}</span>
             </button>
             <button
               className="btn-icon delete-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                handleDelete(s.id);
+                handleDelete(p.id);
               }}
-              aria-label={`Delete session ${s.title}`}
+              aria-label={`Delete project ${p.name}`}
             >
               ×
             </button>
           </li>
         ))}
-        {sessions.length === 0 && (
-          <li className="session-empty">No sessions yet</li>
+        {projects.length === 0 && (
+          <li className="session-empty">No projects yet</li>
         )}
       </ul>
     </aside>

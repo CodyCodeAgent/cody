@@ -11,67 +11,70 @@ vi.mock("react-router-dom", async () => {
 });
 
 vi.mock("../../src/api/client", () => ({
-  listSessions: vi.fn().mockResolvedValue([
+  listProjects: vi.fn().mockResolvedValue([
     {
-      id: "s1",
-      title: "Old chat",
-      message_count: 5,
+      id: "p1",
+      name: "My Project",
+      description: "A test project",
       workdir: "/tmp",
-      model: "",
+      session_id: null,
       created_at: "",
       updated_at: "",
     },
   ]),
-  createSession: vi.fn().mockResolvedValue({ id: "new1" }),
   listDirectories: vi.fn().mockResolvedValue({
     path: "/home/user",
     entries: [{ name: "project", is_dir: true }],
   }),
-  initProject: vi.fn().mockResolvedValue({ status: "success", workdir: "/home/user" }),
+  createProject: vi.fn().mockResolvedValue({
+    id: "new1",
+    name: "user",
+    workdir: "/home/user",
+  }),
 }));
 
 describe("HomePage", () => {
-  it("renders title and new chat button", async () => {
+  it("renders title and new project button", async () => {
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
     expect(screen.getByText("Cody")).toBeInTheDocument();
-    expect(screen.getByText("New Chat")).toBeInTheDocument();
+    expect(screen.getByText("New Project")).toBeInTheDocument();
   });
 
-  it("shows recent sessions", async () => {
+  it("shows recent projects", async () => {
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByText("Old chat")).toBeInTheDocument();
+      expect(screen.getByText("My Project")).toBeInTheDocument();
     });
   });
 
-  it("navigates to session on click", async () => {
+  it("navigates to project on click", async () => {
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
-    await waitFor(() => screen.getByText("Old chat"));
-    await userEvent.click(screen.getByText("Old chat"));
-    expect(mockNavigate).toHaveBeenCalledWith("/chat/s1");
+    await waitFor(() => screen.getByText("My Project"));
+    await userEvent.click(screen.getByText("My Project"));
+    expect(mockNavigate).toHaveBeenCalledWith("/chat/p1");
   });
 
-  it("shows project wizard when New Chat is clicked", async () => {
+  it("shows project wizard when New Project is clicked", async () => {
     render(
       <MemoryRouter>
         <HomePage />
       </MemoryRouter>
     );
-    await userEvent.click(screen.getByText("New Chat"));
+    await userEvent.click(screen.getByText("New Project"));
     await waitFor(() => {
-      expect(screen.getByText("Select project directory")).toBeInTheDocument();
+      expect(screen.getByText("Create New Project")).toBeInTheDocument();
     });
   });
 });

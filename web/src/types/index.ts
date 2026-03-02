@@ -1,3 +1,14 @@
+/** Matches backend ProjectResponse */
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  workdir: string;
+  session_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Matches backend DirectoryEntry */
 export interface DirectoryEntry {
   name: string;
@@ -10,32 +21,12 @@ export interface DirectoryListResponse {
   entries: DirectoryEntry[];
 }
 
-/** Matches backend ProjectInitResponse */
-export interface ProjectInitResponse {
-  status: string;
-  workdir: string;
-}
-
-/** Matches backend HealthResponse */
+/** Matches backend WebHealthResponse */
 export interface HealthResponse {
   status: string;
   version: string;
-}
-
-/** Matches backend SessionResponse */
-export interface Session {
-  id: string;
-  title: string;
-  model: string;
-  workdir: string;
-  message_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Matches backend SessionDetailResponse */
-export interface SessionDetail extends Session {
-  messages: Message[];
+  core_server: string;
+  core_version: string | null;
 }
 
 /** A single chat message */
@@ -57,5 +48,8 @@ export interface WSEvent {
     | "error"
     | "cancelled"
     | "pong";
+  content?: string;
+  session_id?: string;
+  message?: string;
   [key: string]: unknown;
 }

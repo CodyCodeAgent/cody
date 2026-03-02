@@ -4,7 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-497%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-582%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **核心理念：引擎做厚，壳子做薄。** CLI、TUI、Web 和 Server 都是基于核心引擎的薄壳。Server + SDK 交付模式是我们的差异化优势 — 让其他人能够将 AI 编码能力嵌入到自己的系统中。

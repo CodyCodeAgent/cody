@@ -7,8 +7,9 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Core Engine** (`cody/core/`) — 所有功能逻辑，不依赖任何 CLI / Server 框架
 - **CLI** (`cody/cli.py`) — Click 命令行
 - **TUI** (`cody/tui.py`) — Textual 全屏终端
-- **Web** (`web/`) — React + TypeScript SPA（项目向导 + 实时对话）
-- **RPC Server** (`cody/server.py`) — FastAPI HTTP/WebSocket
+- **Web Frontend** (`web/src/`) — React + TypeScript SPA（项目管理 + 实时对话）
+- **Web Backend** (`web/backend/`) — 独立 FastAPI 应用（端口 5001，自有 SQLite `web.db`），通过 SDK 连接核心
+- **RPC Server** (`cody/server.py`) — FastAPI HTTP/WebSocket（纯 RPC，无 Web 特定代码）
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)
 - **Go SDK** (`sdk/go/`) — 零依赖 Go 客户端
 
@@ -17,12 +18,14 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 ## 架构要点
 
 ```
-cli.py / tui.py / web/ / server.py  →  core/runner.py  →  core/tools.py
-                                      ↓
-                              pydantic-ai, sqlite3, httpx
+cli.py / tui.py / server.py  →  core/runner.py  →  core/tools.py
+                                  ↓
+                          pydantic-ai, sqlite3, httpx
+
+web/src/ (React) → web/backend/ (FastAPI:5001, web.db) → cody/client.py → server.py → core/
 ```
 
-- `core/` **不允许**导入 `cli.py`、`tui.py` 或 `server.py`
+- `core/` **不允许**导入 `cli.py`、`tui.py`、`server.py` 或 `web/`
 - 新功能先在 `core/` 实现，再在 shell 层暴露
 - 工具注册是声明式的：在 `tools.py` 底部的 `*_TOOLS` 列表中添加即可，不需要改 `runner.py`
 - 详细架构图见 `docs/ARCHITECTURE.md`
@@ -37,9 +40,12 @@ cli.py / tui.py / web/ / server.py  →  core/runner.py  →  core/tools.py
 | `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON |
 | `core/deps.py` | CodyDeps 数据类，工具的依赖注入容器 |
 | `core/project_instructions.py` | CODY.md 加载逻辑 — 全局 + 项目级合并，注入系统提示 |
-| `server.py` | FastAPI 壳子，顶部 docstring 有缓存策略说明 |
+| `server.py` | FastAPI 壳子（纯 RPC），顶部 docstring 有缓存策略说明 |
 | `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
 | `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |
+| `web/backend/app.py` | Web 后端 FastAPI 应用 — 路由注册、依赖注入、静态文件 |
+| `web/backend/db.py` | Web 项目数据库 — ProjectStore + SQLite (`web.db`) |
+| `web/backend/routes/` | Web API 路由 — projects (CRUD)、directories、chat (WS 代理) |
 
 ## CLI 命令速查
 
@@ -86,8 +92,14 @@ cody init                                  # 初始化 .cody/ 目录
 # 安装
 pip install -e ".[dev]"
 
-# 测试（493 个，不需要真实 API Key）
+# 核心测试（529 个，不需要真实 API Key）
 python3 -m pytest tests/ -v
+
+# Web 后端测试（20 个）
+PYTHONPATH=. python3 -m pytest web/tests/ -v
+
+# Web 前端测试（33 个）
+cd web && npx vitest run
 
 # Lint（必须零告警）
 python3 -m ruff check cody/ tests/

@@ -4,18 +4,17 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import ChatPage from "../../src/pages/ChatPage";
 
 vi.mock("../../src/api/client", () => ({
-  getSession: vi.fn().mockResolvedValue({
-    id: "s1",
-    title: "Test session",
-    model: "",
+  getProject: vi.fn().mockResolvedValue({
+    id: "p1",
+    name: "Test Project",
+    description: "",
     workdir: "/tmp",
-    message_count: 1,
+    session_id: "sess1",
     created_at: "",
     updated_at: "",
-    messages: [{ role: "user", content: "Hello Cody", timestamp: "" }],
   }),
-  listSessions: vi.fn().mockResolvedValue([]),
-  deleteSession: vi.fn().mockResolvedValue({ status: "deleted" }),
+  listProjects: vi.fn().mockResolvedValue([]),
+  deleteProject: vi.fn().mockResolvedValue({ status: "deleted" }),
   connectChat: () => ({
     send: vi.fn(),
     close: vi.fn(),
@@ -24,32 +23,32 @@ vi.mock("../../src/api/client", () => ({
 }));
 
 describe("ChatPage", () => {
-  it("loads session and renders messages", async () => {
+  it("loads project and renders chat window", async () => {
     render(
-      <MemoryRouter initialEntries={["/chat/s1"]}>
+      <MemoryRouter initialEntries={["/chat/p1"]}>
         <Routes>
-          <Route path="/chat/:sessionId" element={<ChatPage />} />
+          <Route path="/chat/:projectId" element={<ChatPage />} />
         </Routes>
       </MemoryRouter>
     );
     // First shows loading
     expect(screen.getByText("Loading...")).toBeInTheDocument();
-    // Then shows messages
+    // Then shows project name in chat header
     await waitFor(() => {
-      expect(screen.getByText("Hello Cody")).toBeInTheDocument();
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
   });
 
-  it("renders sidebar", async () => {
+  it("renders sidebar with Projects header", async () => {
     render(
-      <MemoryRouter initialEntries={["/chat/s1"]}>
+      <MemoryRouter initialEntries={["/chat/p1"]}>
         <Routes>
-          <Route path="/chat/:sessionId" element={<ChatPage />} />
+          <Route path="/chat/:projectId" element={<ChatPage />} />
         </Routes>
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByText("Sessions")).toBeInTheDocument();
+      expect(screen.getByText("Projects")).toBeInTheDocument();
     });
   });
 });

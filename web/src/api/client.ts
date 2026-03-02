@@ -1,9 +1,7 @@
 import type {
   DirectoryListResponse,
   HealthResponse,
-  ProjectInitResponse,
-  Session,
-  SessionDetail,
+  Project,
   WSEvent,
 } from "../types";
 
@@ -13,16 +11,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, init);
   if (!resp.ok) {
     const body = await resp.json().catch(() => null);
-    const msg = body?.error?.message ?? resp.statusText;
+    const msg = body?.detail ?? body?.error?.message ?? resp.statusText;
     throw new Error(msg);
   }
   return resp.json() as Promise<T>;
 }
 
-/** GET /health */
+// ── Health ──────────────────────────────────────────────────────────────────
+
+/** GET /api/health */
 export function healthCheck(): Promise<HealthResponse> {
-  return request("/health");
+  return request("/api/health");
 }
+
+// ── Directories ─────────────────────────────────────────────────────────────
 
 /** GET /api/directories */
 export function listDirectories(
@@ -32,65 +34,72 @@ export function listDirectories(
   return request(`/api/directories${params}`);
 }
 
-/** POST /api/projects/init */
-export function initProject(workdir: string): Promise<ProjectInitResponse> {
-  return request("/api/projects/init", {
+// ── Projects ────────────────────────────────────────────────────────────────
+
+/** GET /api/projects */
+export function listProjects(): Promise<Project[]> {
+  return request("/api/projects");
+}
+
+/** POST /api/projects */
+export function createProject(
+  name: string,
+  workdir: string,
+  description?: string
+): Promise<Project> {
+  return request("/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workdir }),
+    body: JSON.stringify({ name, workdir, description: description ?? "" }),
   });
 }
 
-/** GET /sessions */
-export async function listSessions(): Promise<Session[]> {
-  const data = await request<{ sessions: Session[] }>("/sessions");
-  return data.sessions;
+/** GET /api/projects/:id */
+export function getProject(id: string): Promise<Project> {
+  return request(`/api/projects/${id}`);
 }
 
-/** POST /sessions */
-export function createSession(
-  title: string,
-  workdir: string
-): Promise<Session> {
-  const params = new URLSearchParams({ title, workdir });
-  return request(`/sessions?${params}`, { method: "POST" });
+/** PUT /api/projects/:id */
+export function updateProject(
+  id: string,
+  data: { name?: string; description?: string }
+): Promise<Project> {
+  return request(`/api/projects/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
 }
 
-/** GET /sessions/:id */
-export function getSession(id: string): Promise<SessionDetail> {
-  return request(`/sessions/${id}`);
+/** DELETE /api/projects/:id */
+export function deleteProject(id: string): Promise<{ status: string }> {
+  return request(`/api/projects/${id}`, { method: "DELETE" });
 }
 
-/** DELETE /sessions/:id */
-export function deleteSession(id: string): Promise<{ status: string }> {
-  return request(`/sessions/${id}`, { method: "DELETE" });
-}
+// ── WebSocket Chat ──────────────────────────────────────────────────────────
 
-/**
- * Open a WebSocket to /ws and return helpers.
- *
- * Usage:
- *   const ws = connectChat();
- *   ws.onEvent = (e) => console.log(e);
- *   ws.send({ type: "run", prompt: "hello", workdir: "/tmp" });
- *   ws.close();
- */
 export interface ChatSocket {
   send: (msg: Record<string, unknown>) => void;
   close: () => void;
   onEvent: ((event: WSEvent) => void) | null;
 }
 
-export function connectChat(sessionId?: string): ChatSocket {
+/**
+ * Open a WebSocket to /ws/chat/:projectId.
+ *
+ * Usage:
+ *   const ws = connectChat("abc123");
+ *   ws.onEvent = (e) => console.log(e);
+ *   ws.send({ type: "message", content: "hello" });
+ *   ws.close();
+ */
+export function connectChat(projectId: string): ChatSocket {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${proto}//${location.host}/ws`;
+  const url = `${proto}//${location.host}/ws/chat/${projectId}`;
   const ws = new WebSocket(url);
 
   const handle: ChatSocket = {
     send(msg) {
-      if (sessionId) {
-        msg.session_id = sessionId;
-      }
       ws.send(JSON.stringify(msg));
     },
     close() {

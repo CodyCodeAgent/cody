@@ -230,23 +230,36 @@ cody-tui
 
 #### Web 前端
 
-React + TypeScript 单页应用（`web/`），通过 HTTP/WebSocket 连接 RPC Server。
+独立 Web 应用，遵循"引擎做厚，壳子做薄"理念。
+
+**架构：** `React (Vite:5173) → Web Backend (FastAPI:5001, web.db) → Core Server (8000) → Core Engine`
 
 **功能：**
+- 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
 - 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
-- 实时对话 — WebSocket 流式消息显示
-- 会话管理 — 侧边栏创建/切换/删除会话
+- 实时对话 — WebSocket 流式消息显示，通过 SDK 代理到核心服务
+- 项目侧边栏 — 快速切换/删除项目
 - 深色主题 UI
+
+**Web Backend（`web/backend/`）：**
+- 独立 FastAPI 应用（端口 5001）
+- 自有 SQLite 数据库（`~/.cody/web.db`）管理项目数据
+- 通过 `AsyncCodyClient` SDK 与核心服务通信
+- WebSocket `/ws/chat/{project_id}` 代理聊天
 
 **开发：**
 ```bash
+# 启动 Web 后端
+PYTHONPATH=. python -m web.backend
+
+# 启动前端开发服务器
 cd web && npm install && npm run dev
 ```
 
 **生产构建：**
 ```bash
 cd web && npm run build
-# dist/ 由 FastAPI 自动托管
+# dist/ 由 Web Backend 自动托管
 ```
 
 #### RPC Server 模式

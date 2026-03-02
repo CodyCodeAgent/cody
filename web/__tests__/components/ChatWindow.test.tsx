@@ -12,33 +12,19 @@ vi.mock("../../src/api/client", () => ({
 }));
 
 describe("ChatWindow", () => {
-  it("renders initial messages", () => {
-    render(
-      <ChatWindow
-        sessionId="s1"
-        workdir="/tmp"
-        initialMessages={[
-          { role: "user", content: "Hello", timestamp: "" },
-          { role: "assistant", content: "Hi there", timestamp: "" },
-        ]}
-      />
-    );
-    expect(screen.getByText("Hello")).toBeInTheDocument();
-    expect(screen.getByText("Hi there")).toBeInTheDocument();
+  it("renders project name header", () => {
+    render(<ChatWindow projectId="p1" projectName="My Project" />);
+    expect(screen.getByText("My Project")).toBeInTheDocument();
   });
 
   it("renders input field and send button", () => {
-    render(
-      <ChatWindow sessionId="s1" workdir="/tmp" initialMessages={[]} />
-    );
+    render(<ChatWindow projectId="p1" projectName="Test" />);
     expect(screen.getByPlaceholderText("Ask Cody...")).toBeInTheDocument();
     expect(screen.getByText("Send")).toBeInTheDocument();
   });
 
   it("disables send button when input is empty", () => {
-    render(
-      <ChatWindow sessionId="s1" workdir="/tmp" initialMessages={[]} />
-    );
+    render(<ChatWindow projectId="p1" projectName="Test" />);
     expect(screen.getByText("Send")).toBeDisabled();
   });
 });

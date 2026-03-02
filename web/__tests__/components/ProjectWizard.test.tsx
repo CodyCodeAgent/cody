@@ -4,16 +4,16 @@ import userEvent from "@testing-library/user-event";
 import ProjectWizard from "../../src/components/ProjectWizard";
 
 const mockListDirectories = vi.fn();
-const mockInitProject = vi.fn();
+const mockCreateProject = vi.fn();
 
 vi.mock("../../src/api/client", () => ({
   listDirectories: (...args: unknown[]) => mockListDirectories(...args),
-  initProject: (...args: unknown[]) => mockInitProject(...args),
+  createProject: (...args: unknown[]) => mockCreateProject(...args),
 }));
 
 beforeEach(() => {
   mockListDirectories.mockReset();
-  mockInitProject.mockReset();
+  mockCreateProject.mockReset();
   mockListDirectories.mockResolvedValue({
     path: "/home/user",
     entries: [
@@ -62,28 +62,42 @@ describe("ProjectWizard", () => {
     });
   });
 
-  it("calls onComplete after selecting directory", async () => {
-    mockInitProject.mockResolvedValue({
-      status: "success",
-      workdir: "/home/user",
-    });
-    const onComplete = vi.fn();
-
-    render(<ProjectWizard onComplete={onComplete} />);
-    await waitFor(() => screen.getByText("Use this directory"));
-    await userEvent.click(screen.getByText("Use this directory"));
-
+  it("has project name and description fields", async () => {
+    render(<ProjectWizard onComplete={vi.fn()} />);
     await waitFor(() => {
-      expect(mockInitProject).toHaveBeenCalledWith("/home/user");
-      expect(onComplete).toHaveBeenCalledWith("/home/user");
+      expect(screen.getByText("Project Name")).toBeInTheDocument();
+      expect(screen.getByText("Description (optional)")).toBeInTheDocument();
     });
   });
 
-  it("shows error when init fails", async () => {
-    mockInitProject.mockRejectedValue(new Error("Permission denied"));
+  it("calls createProject and onComplete on submit", async () => {
+    const mockProject = {
+      id: "abc123",
+      name: "user",
+      description: "",
+      workdir: "/home/user",
+      session_id: null,
+      created_at: "",
+      updated_at: "",
+    };
+    mockCreateProject.mockResolvedValue(mockProject);
+    const onComplete = vi.fn();
+
+    render(<ProjectWizard onComplete={onComplete} />);
+    await waitFor(() => screen.getByText("Create Project"));
+    await userEvent.click(screen.getByText("Create Project"));
+
+    await waitFor(() => {
+      expect(mockCreateProject).toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalledWith(mockProject);
+    });
+  });
+
+  it("shows error when create fails", async () => {
+    mockCreateProject.mockRejectedValue(new Error("Permission denied"));
     render(<ProjectWizard onComplete={vi.fn()} />);
-    await waitFor(() => screen.getByText("Use this directory"));
-    await userEvent.click(screen.getByText("Use this directory"));
+    await waitFor(() => screen.getByText("Create Project"));
+    await userEvent.click(screen.getByText("Create Project"));
     await waitFor(() => {
       expect(screen.getByText("Permission denied")).toBeInTheDocument();
     });

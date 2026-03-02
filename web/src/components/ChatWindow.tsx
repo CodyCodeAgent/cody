@@ -5,17 +5,12 @@ import type { Message, WSEvent } from "../types";
 import MessageBubble from "./MessageBubble";
 
 interface Props {
-  sessionId: string;
-  workdir: string;
-  initialMessages?: Message[];
+  projectId: string;
+  projectName: string;
 }
 
-export default function ChatWindow({
-  sessionId,
-  workdir,
-  initialMessages = [],
-}: Props) {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+export default function ChatWindow({ projectId, projectName }: Props) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamContent, setStreamContent] = useState("");
@@ -29,21 +24,20 @@ export default function ChatWindow({
 
   // Connect WebSocket
   useEffect(() => {
-    const sock = connectChat(sessionId);
+    const sock = connectChat(projectId);
     socketRef.current = sock;
 
     sock.onEvent = (event: WSEvent) => {
       switch (event.type) {
         case "text_delta":
-          setStreamContent((prev) => prev + (event.content as string));
+          setStreamContent((prev) => prev + (event.content ?? ""));
           break;
         case "done": {
-          const output = (event.result as { output: string })?.output ?? "";
           setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content: output,
+              content: event.content ?? "",
               timestamp: new Date().toISOString(),
             },
           ]);
@@ -59,7 +53,7 @@ export default function ChatWindow({
     };
 
     return () => sock.close();
-  }, [sessionId]);
+  }, [projectId]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -76,14 +70,16 @@ export default function ChatWindow({
     setStreamContent("");
 
     socketRef.current?.send({
-      type: "run",
-      prompt: text,
-      workdir,
+      type: "message",
+      content: text,
     });
-  }, [input, streaming, workdir]);
+  }, [input, streaming]);
 
   return (
     <div className="chat-window">
+      <div className="chat-header">
+        <h3>{projectName}</h3>
+      </div>
       <div className="messages">
         {messages.map((m, i) => (
           <MessageBubble key={i} message={m} />

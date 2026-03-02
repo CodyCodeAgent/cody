@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   healthCheck,
   listDirectories,
-  initProject,
-  listSessions,
-  createSession,
-  getSession,
-  deleteSession,
+  listProjects,
+  createProject,
+  getProject,
+  updateProject,
+  deleteProject,
 } from "../../src/api/client";
 
 // Mock fetch globally
@@ -22,12 +22,12 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-function errorResponse(code: string, message: string, status = 400) {
+function errorResponse(detail: string, status = 400) {
   return Promise.resolve({
     ok: false,
     status,
     statusText: "Bad Request",
-    json: () => Promise.resolve({ error: { code, message } }),
+    json: () => Promise.resolve({ detail }),
   });
 }
 
@@ -36,12 +36,14 @@ beforeEach(() => {
 });
 
 describe("healthCheck", () => {
-  it("calls GET /health and returns data", async () => {
-    mockFetch.mockReturnValue(jsonResponse({ status: "ok", version: "1.3.0" }));
+  it("calls GET /api/health and returns data", async () => {
+    mockFetch.mockReturnValue(
+      jsonResponse({ status: "ok", version: "1.3.0", core_server: "connected" })
+    );
     const data = await healthCheck();
     expect(data.status).toBe("ok");
     expect(data.version).toBe("1.3.0");
-    expect(mockFetch).toHaveBeenCalledWith("/health", undefined);
+    expect(mockFetch).toHaveBeenCalledWith("/api/health", undefined);
   });
 });
 
@@ -68,70 +70,82 @@ describe("listDirectories", () => {
   });
 });
 
-describe("initProject", () => {
-  it("sends POST /api/projects/init with workdir", async () => {
+describe("listProjects", () => {
+  it("calls GET /api/projects", async () => {
     mockFetch.mockReturnValue(
-      jsonResponse({ status: "success", workdir: "/home/user/proj" })
+      jsonResponse([{ id: "abc", name: "My Project" }])
     );
-    const data = await initProject("/home/user/proj");
-    expect(data.status).toBe("success");
-    expect(mockFetch).toHaveBeenCalledWith("/api/projects/init", {
+    const projects = await listProjects();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].name).toBe("My Project");
+    expect(mockFetch).toHaveBeenCalledWith("/api/projects", undefined);
+  });
+});
+
+describe("createProject", () => {
+  it("sends POST /api/projects with JSON body", async () => {
+    mockFetch.mockReturnValue(
+      jsonResponse({ id: "new123", name: "Test", workdir: "/tmp" })
+    );
+    const project = await createProject("Test", "/tmp", "A description");
+    expect(project.id).toBe("new123");
+    expect(mockFetch).toHaveBeenCalledWith("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workdir: "/home/user/proj" }),
+      body: JSON.stringify({
+        name: "Test",
+        workdir: "/tmp",
+        description: "A description",
+      }),
+    });
+  });
+
+  it("defaults description to empty string", async () => {
+    mockFetch.mockReturnValue(jsonResponse({ id: "x", name: "T" }));
+    await createProject("T", "/tmp");
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.description).toBe("");
+  });
+});
+
+describe("getProject", () => {
+  it("calls GET /api/projects/:id", async () => {
+    mockFetch.mockReturnValue(jsonResponse({ id: "p1", name: "Proj" }));
+    const data = await getProject("p1");
+    expect(data.id).toBe("p1");
+    expect(mockFetch).toHaveBeenCalledWith("/api/projects/p1", undefined);
+  });
+});
+
+describe("updateProject", () => {
+  it("sends PUT /api/projects/:id", async () => {
+    mockFetch.mockReturnValue(
+      jsonResponse({ id: "p1", name: "Updated" })
+    );
+    const data = await updateProject("p1", { name: "Updated" });
+    expect(data.name).toBe("Updated");
+    expect(mockFetch).toHaveBeenCalledWith("/api/projects/p1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Updated" }),
     });
   });
 });
 
-describe("listSessions", () => {
-  it("returns sessions array", async () => {
-    mockFetch.mockReturnValue(jsonResponse({ sessions: [{ id: "abc" }] }));
-    const sessions = await listSessions();
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0].id).toBe("abc");
-  });
-});
-
-describe("createSession", () => {
-  it("sends POST /sessions with query params", async () => {
-    mockFetch.mockReturnValue(
-      jsonResponse({ id: "new123", title: "My Chat" })
-    );
-    await createSession("My Chat", "/tmp");
-    const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toContain("/sessions?");
-    expect(url).toContain("title=My+Chat");
-    expect(opts.method).toBe("POST");
-  });
-});
-
-describe("getSession", () => {
-  it("calls GET /sessions/:id", async () => {
-    mockFetch.mockReturnValue(
-      jsonResponse({ id: "s1", messages: [{ role: "user", content: "hi" }] })
-    );
-    const data = await getSession("s1");
-    expect(data.id).toBe("s1");
-    expect(mockFetch).toHaveBeenCalledWith("/sessions/s1", undefined);
-  });
-});
-
-describe("deleteSession", () => {
-  it("calls DELETE /sessions/:id", async () => {
+describe("deleteProject", () => {
+  it("calls DELETE /api/projects/:id", async () => {
     mockFetch.mockReturnValue(jsonResponse({ status: "deleted" }));
-    const data = await deleteSession("s1");
+    const data = await deleteProject("p1");
     expect(data.status).toBe("deleted");
-    expect(mockFetch).toHaveBeenCalledWith("/sessions/s1", {
+    expect(mockFetch).toHaveBeenCalledWith("/api/projects/p1", {
       method: "DELETE",
     });
   });
 });
 
 describe("error handling", () => {
-  it("throws with error message from response body", async () => {
-    mockFetch.mockReturnValue(
-      errorResponse("INVALID_PARAMS", "path is required", 400)
-    );
+  it("throws with detail from response body", async () => {
+    mockFetch.mockReturnValue(errorResponse("path is required", 400));
     await expect(healthCheck()).rejects.toThrow("path is required");
   });
 });
