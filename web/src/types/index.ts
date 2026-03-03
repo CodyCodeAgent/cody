@@ -29,6 +29,13 @@ export interface HealthResponse {
   core_version: string | null;
 }
 
+/** An image attached to a user message */
+export interface ImageAttachment {
+  data: string; // base64-encoded
+  media_type: string; // "image/png", "image/jpeg", etc.
+  filename?: string;
+}
+
 /** Tool call info tracked during streaming */
 export interface ToolCallInfo {
   id: string;
@@ -46,6 +53,7 @@ export interface Message {
   thinking?: string;
   toolCalls?: ToolCallInfo[];
   usage?: { total_tokens: number };
+  images?: ImageAttachment[];
 }
 
 /** WebSocket event from server */
@@ -87,5 +95,5 @@ export interface SessionDetail {
   message_count: number;
   created_at: string;
   updated_at: string;
-  messages: { role: string; content: string; timestamp: string }[];
+  messages: { role: string; content: string; timestamp: string; images?: ImageAttachment[] }[];
 }

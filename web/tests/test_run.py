@@ -149,3 +149,49 @@ def test_run_stream_error():
     assert resp.status_code == 200
     assert '"type": "error"' in resp.text
     assert "stream broke" in resp.text
+
+
+# ── Image support ────────────────────────────────────────────────────────────
+
+
+def test_run_agent_with_images():
+    """POST /run with images constructs MultimodalPrompt."""
+    mock_result = _mock_cody_result("I see the image.")
+
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+        instance = MockRunner.return_value
+        instance.run = AsyncMock(return_value=mock_result)
+
+        client = TestClient(app)
+        resp = client.post("/run", json={
+            "prompt": "what is in this image?",
+            "images": [{"data": "aGVsbG8=", "media_type": "image/png"}],
+        })
+
+    assert resp.status_code == 200
+    assert resp.json()["output"] == "I see the image."
+    # Verify the prompt passed to run() was a MultimodalPrompt
+    call_args = instance.run.call_args
+    prompt_arg = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt")
+    from cody.core.prompt import MultimodalPrompt
+    assert isinstance(prompt_arg, MultimodalPrompt)
+    assert len(prompt_arg.images) == 1
+    assert prompt_arg.images[0].media_type == "image/png"
+
+
+def test_run_agent_without_images():
+    """POST /run without images uses plain str prompt."""
+    mock_result = _mock_cody_result("text response")
+
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+        instance = MockRunner.return_value
+        instance.run = AsyncMock(return_value=mock_result)
+
+        client = TestClient(app)
+        resp = client.post("/run", json={"prompt": "hello"})
+
+    assert resp.status_code == 200
+    call_args = instance.run.call_args
+    prompt_arg = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt")
+    assert isinstance(prompt_arg, str)
+    assert prompt_arg == "hello"

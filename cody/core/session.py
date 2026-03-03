@@ -1,11 +1,14 @@
 """Session management with SQLite persistence"""
 
+import json
 import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
+
+from .prompt import ImageData
 
 
 @dataclass
@@ -14,6 +17,7 @@ class Message:
     role: str  # "user" or "assistant"
     content: str
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    images: List[ImageData] = field(default_factory=list)  # only for user messages
 
 
 @dataclass
@@ -68,6 +72,13 @@ class SessionStore:
                 CREATE INDEX IF NOT EXISTS idx_messages_session
                 ON messages(session_id)
             """)
+            # Migration: add images column for multimodal support
+            try:
+                conn.execute(
+                    "ALTER TABLE messages ADD COLUMN images TEXT DEFAULT NULL"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
     def create_session(
         self,
@@ -95,15 +106,23 @@ class SessionStore:
             )
         return session
 
-    def add_message(self, session_id: str, role: str, content: str) -> Message:
+    def add_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        images: Optional[List[ImageData]] = None,
+    ) -> Message:
         """Add a message to a session"""
-        msg = Message(role=role, content=content)
+        image_list = list(images) if images else []
+        images_json = json.dumps([img.to_dict() for img in image_list]) if image_list else None
+        msg = Message(role=role, content=content, images=image_list)
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO messages (session_id, role, content, timestamp) "
-                "VALUES (?, ?, ?, ?)",
-                (session_id, msg.role, msg.content, msg.timestamp),
+                "INSERT INTO messages (session_id, role, content, timestamp, images) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, msg.role, msg.content, msg.timestamp, images_json),
             )
             conn.execute(
                 "UPDATE sessions SET updated_at = ? WHERE id = ?",
@@ -123,12 +142,17 @@ class SessionStore:
                 return None
 
             msg_rows = conn.execute(
-                "SELECT role, content, timestamp FROM messages "
+                "SELECT role, content, timestamp, images FROM messages "
                 "WHERE session_id = ? ORDER BY id ASC",
                 (session_id,),
             ).fetchall()
 
-            messages = [Message(role=r[0], content=r[1], timestamp=r[2]) for r in msg_rows]
+            messages = []
+            for r in msg_rows:
+                imgs = []
+                if r[3]:  # images JSON column
+                    imgs = [ImageData.from_dict(d) for d in json.loads(r[3])]
+                messages.append(Message(role=r[0], content=r[1], timestamp=r[2], images=imgs))
 
             return Session(
                 id=row[0],

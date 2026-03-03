@@ -13,7 +13,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from cody.core import AgentRunner
 
 from ..db import ProjectStore
-from ..helpers import serialize_stream_event
+from ..helpers import build_prompt, serialize_stream_event
 from ..state import get_config, get_session_store
 
 logger = logging.getLogger("cody.web.chat")
@@ -45,13 +45,14 @@ async def chat_websocket(
                 await ws.send_json({"type": "pong"})
 
             elif msg_type == "message":
-                prompt = data.get("content", "")
-                if not prompt:
+                prompt_text = data.get("content", "")
+                if not prompt_text:
                     continue
+                prompt = build_prompt(prompt_text, data.get("images"))
 
                 logger.info(
                     "Chat message: project=%s session=%s prompt_len=%d",
-                    project_id, project.session_id, len(prompt),
+                    project_id, project.session_id, len(prompt_text),
                 )
 
                 try:

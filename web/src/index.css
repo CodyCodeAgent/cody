@@ -832,3 +832,68 @@ body {
   font-size: 13px;
   color: #ef4444;
 }
+
+/* ── Image preview bar (pending attachments) ───────────────────────────── */
+
+.image-preview-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 20px;
+  background: #18181b;
+  border-top: 1px solid #27272a;
+  overflow-x: auto;
+}
+
+.image-preview-item {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.image-preview-item img {
+  height: 60px;
+  border-radius: 6px;
+  border: 1px solid #3f3f46;
+}
+
+.image-preview-remove {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.image-preview-remove:hover {
+  background: #dc2626;
+}
+
+/* ── Message images ────────────────────────────────────────────────────── */
+
+.message-images {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.message-image {
+  max-width: 300px;
+  max-height: 200px;
+  border-radius: 6px;
+  border: 1px solid #3f3f46;
+}
+
+.image-upload-btn {
+  font-size: 18px;
+  padding: 6px 10px;
+}

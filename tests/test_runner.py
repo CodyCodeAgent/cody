@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from cody.core.config import Config
+from cody.core.prompt import ImageData, MultimodalPrompt
 from cody.core.runner import AgentRunner, _build_allowed_roots
 from cody.core.session import Message, SessionStore
 
@@ -501,3 +502,77 @@ def test_build_allowed_roots_rejects_relative_config_path(tmp_path):
     """Relative paths in config roots raise ValueError."""
     with pytest.raises(ValueError, match="absolute paths"):
         _build_allowed_roots(tmp_path, ["../relative"], [])
+
+
+# ── _to_pydantic_prompt ─────────────────────────────────────────────────────
+
+
+def test_to_pydantic_prompt_str():
+    """Plain str prompt passes through unchanged."""
+    result = AgentRunner._to_pydantic_prompt("hello")
+    assert result == "hello"
+
+
+def test_to_pydantic_prompt_multimodal():
+    """MultimodalPrompt converts to list with BinaryContent."""
+    img = ImageData(data="aGVsbG8=", media_type="image/png")
+    prompt = MultimodalPrompt(text="analyze", images=[img])
+    result = AgentRunner._to_pydantic_prompt(prompt)
+    assert isinstance(result, list)
+    assert result[0] == "analyze"
+    assert len(result) == 2
+    # Second item should be BinaryContent
+    from pydantic_ai import BinaryContent
+    assert isinstance(result[1], BinaryContent)
+
+
+def test_to_pydantic_prompt_multimodal_multiple_images():
+    """MultimodalPrompt with multiple images produces correct list."""
+    img1 = ImageData(data="aGVsbG8=", media_type="image/png")
+    img2 = ImageData(data="d29ybGQ=", media_type="image/jpeg")
+    prompt = MultimodalPrompt(text="compare", images=[img1, img2])
+    result = AgentRunner._to_pydantic_prompt(prompt)
+    assert isinstance(result, list)
+    assert len(result) == 3  # text + 2 images
+
+
+def test_to_pydantic_prompt_empty_text_multimodal():
+    """MultimodalPrompt with empty text still works."""
+    img = ImageData(data="aGVsbG8=", media_type="image/png")
+    prompt = MultimodalPrompt(text="", images=[img])
+    result = AgentRunner._to_pydantic_prompt(prompt)
+    assert isinstance(result, list)
+    assert len(result) == 1  # only BinaryContent, no empty text
+
+
+# ── messages_to_history with images ──────────────────────────────────────────
+
+
+def test_messages_to_history_with_images():
+    """Messages with images reconstruct multimodal UserPromptPart."""
+    imgs = [ImageData(data="aGVsbG8=", media_type="image/png")]
+    msgs = [Message(role="user", content="look at this", images=imgs)]
+    result = AgentRunner.messages_to_history(msgs)
+    assert len(result) == 1
+    assert isinstance(result[0], ModelRequest)
+    # The content should be a list (multimodal)
+    part = result[0].parts[0]
+    content = part.content
+    assert isinstance(content, list)
+    assert len(content) == 2  # text + BinaryContent
+
+
+def test_messages_to_history_mixed_with_and_without_images():
+    """Mixed messages: some with images, some without."""
+    imgs = [ImageData(data="aGVsbG8=", media_type="image/png")]
+    msgs = [
+        Message(role="user", content="look at this", images=imgs),
+        Message(role="assistant", content="I see it"),
+        Message(role="user", content="thanks"),
+    ]
+    result = AgentRunner.messages_to_history(msgs)
+    assert len(result) == 3
+    # First message: multimodal
+    assert isinstance(result[0].parts[0].content, list)
+    # Third message: plain text
+    assert isinstance(result[2].parts[0].content, str)

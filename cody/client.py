@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from .core.config import Config
+from .core.prompt import Prompt
 from .core.runner import (
     AgentRunner,
     CodyResult,
@@ -207,7 +208,7 @@ class AsyncCodyClient:
 
     async def run(
         self,
-        prompt: str,
+        prompt: Prompt,
         *,
         session_id: Optional[str] = None,
     ) -> RunResult:
@@ -229,7 +230,7 @@ class AsyncCodyClient:
 
     async def stream(
         self,
-        prompt: str,
+        prompt: Prompt,
         *,
         session_id: Optional[str] = None,
     ) -> AsyncIterator[StreamChunk]:
@@ -440,7 +441,7 @@ class CodyClient:
 
     def run(
         self,
-        prompt: str,
+        prompt: Prompt,
         *,
         session_id: Optional[str] = None,
     ) -> RunResult:
@@ -449,7 +450,7 @@ class CodyClient:
 
     def stream(
         self,
-        prompt: str,
+        prompt: Prompt,
         *,
         session_id: Optional[str] = None,
     ):

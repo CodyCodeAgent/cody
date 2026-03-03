@@ -1,6 +1,6 @@
 """Cody - AI coding companion"""
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 from .client import (  # noqa: F401
     AsyncCodyClient,

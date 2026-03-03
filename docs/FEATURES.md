@@ -29,6 +29,7 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 **基于 Pydantic AI：**
 - 多模型支持（Anthropic、OpenAI、Google、DeepSeek 等）
 - 自定义 OpenAI 兼容 API 支持（智谱 GLM、阿里通义千问/DashScope 等）
+- 多模态输入 — 支持文本+图片混合提示（Web 端），通过 `Prompt` 类型和 pydantic-ai `BinaryContent` 传递
 - 结构化输出
 - 工具调用（Function Calling）
 - 流式响应（结构化 StreamEvent：thinking / tool_call / tool_result / text_delta / done）
@@ -244,6 +245,7 @@ cody-tui
 - 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
 - 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
 - 实时对话 — WebSocket 流式消息显示，通过 SDK 代理到核心服务
+- 图片上传 — 支持粘贴截图（Ctrl+V）和文件选择，图片随消息发送到多模态模型（如 Qwen3.5-plus）
 - 流式状态栏 — 显示处理状态（Thinking/Running/Generating）+ 耗时 + Stop 按钮
 - WebSocket 断连恢复 — 断连时自动重置 streaming 状态并提示用户
 - 空闲超时 — 120 秒无事件自动停止，防止永久卡住
@@ -668,4 +670,4 @@ cody "使用项目 B 的配置"
 
 ---
 
-**最后更新：** 2026-03-02
+**最后更新：** 2026-03-03

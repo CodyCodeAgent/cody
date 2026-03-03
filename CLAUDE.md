@@ -11,7 +11,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Web Backend** (`web/backend/`) — 统一 FastAPI 应用（端口 8000），提供 Web + RPC 端点，直接导入 core
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)，in-process 封装 core
 
-当前版本：**v1.4.0**
+当前版本：**v1.5.0**
 
 ## 架构要点
 
@@ -33,6 +33,7 @@ cody/client.py (Python SDK) → core/（in-process，无 HTTP）
 
 | 文件 | 作用 |
 |------|------|
+| `core/prompt.py` | 多模态 Prompt 类型 — ImageData, MultimodalPrompt, Prompt |
 | `core/runner.py` | 中枢引擎 — Agent 创建、工具注册、run/stream 执行 |
 | `core/tools.py` | 28 个工具函数 + 底部声明式工具注册表 |
 | `core/errors.py` | 错误码 + ToolError 异常层级（Web Backend 按类型映射 HTTP 状态码） |

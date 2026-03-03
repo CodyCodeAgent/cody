@@ -7,8 +7,11 @@ config loading from request.
 from pathlib import Path
 from typing import Any, Optional
 
+from typing import List
+
 from cody.core import Config
 from cody.core.errors import CodyAPIError, ErrorCode
+from cody.core.prompt import ImageData, MultimodalPrompt, Prompt
 
 from .state import get_config
 
@@ -74,6 +77,25 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
             }
 
     return base
+
+
+def build_prompt(text: str, images_raw: Optional[List[dict]] = None) -> Prompt:
+    """Build a Prompt from text and optional raw image dicts.
+
+    Used by all routes (chat, run, websocket) to convert frontend payloads
+    into the core Prompt type.
+    """
+    if not images_raw:
+        return text
+    images = [
+        ImageData(
+            data=img["data"],
+            media_type=img["media_type"],
+            filename=img.get("filename"),
+        )
+        for img in images_raw
+    ]
+    return MultimodalPrompt(text=text, images=images)
 
 
 def config_from_run_request(request) -> Config:

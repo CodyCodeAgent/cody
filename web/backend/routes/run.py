@@ -17,7 +17,7 @@ from cody.core.errors import (
     ToolError, ToolPermissionDenied, ToolPathDenied,
 )
 
-from ..helpers import config_from_run_request, raise_structured, serialize_stream_event
+from ..helpers import build_prompt, config_from_run_request, raise_structured, serialize_stream_event
 from ..models import RunRequest, RunResponse, ToolTraceResponse
 from ..state import get_session_store
 
@@ -39,13 +39,16 @@ async def run_agent(request: RunRequest):
         extra_roots = [Path(r) for r in (request.allowed_roots or [])]
         runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
 
+        images_raw = [img.model_dump() for img in request.images] if request.images else None
+        prompt = build_prompt(request.prompt, images_raw)
+
         if request.session_id is not None:
             store = get_session_store()
             result, sid = await runner.run_with_session(
-                request.prompt, store, request.session_id
+                prompt, store, request.session_id
             )
         else:
-            result = await runner.run(request.prompt)
+            result = await runner.run(prompt)
             sid = None
 
         traces = None
@@ -120,14 +123,17 @@ async def run_agent_stream(request: RunRequest):
                 config=config, workdir=workdir, extra_roots=extra_roots
             )
 
+            images_raw = [img.model_dump() for img in request.images] if request.images else None
+            prompt = build_prompt(request.prompt, images_raw)
+
             if request.session_id is not None:
                 store = get_session_store()
                 async for event, sid in runner.run_stream_with_session(
-                    request.prompt, store, request.session_id
+                    prompt, store, request.session_id
                 ):
                     yield f"data: {json.dumps(serialize_stream_event(event, session_id=sid))}\n\n"
             else:
-                async for event in runner.run_stream(request.prompt):
+                async for event in runner.run_stream(prompt):
                     yield f"data: {json.dumps(serialize_stream_event(event))}\n\n"
 
         except Exception as e:

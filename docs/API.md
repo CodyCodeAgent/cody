@@ -6,7 +6,7 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 1.3.0
+**版本：** 1.5.0
 
 ---
 
@@ -29,7 +29,10 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
   "model_api_key": null,
   "claude_oauth_token": null,
   "skills": ["python", "git"],
-  "session_id": "optional-session-id"
+  "session_id": "optional-session-id",
+  "images": [
+    {"data": "<base64>", "media_type": "image/png", "filename": "screenshot.png"}
+  ]
 }
 ```
 
@@ -47,6 +50,14 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | thinking_budget | int | ❌ | thinking 最大 token 数（如 10000） |
 | skills | string[] | ❌ | 启用的 Skills 列表 |
 | session_id | string | ❌ | 会话 ID，用于多轮对话 |
+| images | ImagePayload[] | ❌ | 图片附件列表（base64 编码），用于多模态输入 |
+
+**ImagePayload 结构：**
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| data | string | ✅ | 图片 base64 编码数据 |
+| media_type | string | ✅ | MIME 类型（image/png, image/jpeg 等）|
+| filename | string | ❌ | 文件名 |
 
 **使用自定义模型提供商（如智谱 GLM）：**
 ```json
@@ -347,8 +358,8 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
   "created_at": "2026-02-13T12:00:00",
   "updated_at": "2026-02-13T12:10:00",
   "messages": [
-    {"role": "user", "content": "创建文件", "timestamp": "..."},
-    {"role": "assistant", "content": "已创建", "timestamp": "..."}
+    {"role": "user", "content": "创建文件", "timestamp": "...", "images": [{"data": "<base64>", "media_type": "image/png", "filename": "screenshot.png"}]},
+    {"role": "assistant", "content": "已创建", "timestamp": "...", "images": null}
   ]
 }
 ```
@@ -548,7 +559,10 @@ curl -H 'Authorization: Bearer <signed-token>' http://localhost:8000/run ...
     "prompt": "创建文件",
     "workdir": "/path",
     "model": "anthropic:claude-sonnet-4-0",
-    "session_id": "abc123"
+    "session_id": "abc123",
+    "images": [
+      {"data": "<base64>", "media_type": "image/png", "filename": "screenshot.png"}
+    ]
   }
 }
 ```
@@ -684,4 +698,4 @@ curl http://localhost:8000/health
 
 ---
 
-**最后更新：** 2026-02-28
+**最后更新：** 2026-03-03

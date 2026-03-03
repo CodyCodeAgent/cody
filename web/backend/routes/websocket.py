@@ -13,7 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from cody.core import AgentRunner
 from cody.core.errors import ErrorCode
 
-from ..helpers import serialize_stream_event
+from ..helpers import build_prompt, serialize_stream_event
 from ..state import get_config, get_session_store
 
 logger = logging.getLogger("cody.web.ws")
@@ -67,8 +67,8 @@ class _WSConnection:
             logger.info("RPC WS disconnected")
 
     async def _handle_run(self, data: dict):
-        prompt = data.get("prompt", "")
-        if not prompt:
+        prompt_text = data.get("prompt", "")
+        if not prompt_text:
             logger.warning("RPC WS run: empty prompt")
             await self.send_event("error", {
                 "error": {
@@ -78,10 +78,11 @@ class _WSConnection:
             })
             return
 
+        prompt = build_prompt(prompt_text, data.get("images"))
         session_id = data.get("session_id")
         logger.info(
             "RPC WS run: session=%s prompt_len=%d workdir=%s",
-            session_id, len(prompt), data.get("workdir", "(cwd)"),
+            session_id, len(prompt_text), data.get("workdir", "(cwd)"),
         )
 
         self._cancel_event = asyncio.Event()

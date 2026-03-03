@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.5.0] - 2026-03-03
+
+### Added
+- **Web 图片上传** — Web 前端支持多模态输入，用户可以粘贴截图或选择图片文件随消息一起发送
+  - 支持 Ctrl+V 粘贴剪贴板图片、点击按钮选择文件（`image/*`）
+  - 发送前预览已选图片，支持单独删除
+  - 消息气泡中展示历史图片
+  - 图片以 base64 存储在 SQLite 中，会话恢复时自动加载
+- **多模态 Prompt 类型** — 新增 `cody/core/prompt.py`，定义 `ImageData`、`MultimodalPrompt`、`Prompt` 类型
+  - `Prompt = Union[str, MultimodalPrompt]` — 类型安全的多模态提示，向后兼容纯文本
+  - `prompt_text()` / `prompt_images()` — 类型安全的提取函数
+  - 核心引擎 `AgentRunner` 通过 pydantic-ai `BinaryContent` 将图片传递给支持多模态的模型（如 Qwen3.5-plus）
+- **Session 图片持久化** — `Message` 新增 `images` 字段，SQLite 自动迁移 `ALTER TABLE messages ADD COLUMN images`
+
+### Changed
+- `AgentRunner.run()` / `run_stream()` / `run_sync()` / `run_with_session()` / `run_stream_with_session()` 签名从 `prompt: str` 扩展为 `prompt: Prompt`（纯 `str` 仍然兼容）
+- `CodyClient` / `AsyncCodyClient` SDK 签名同步扩展
+- Web Backend `RunRequest` 新增 `images` 可选字段
+- Web Backend 路由（chat、run、websocket）统一使用 `build_prompt()` 构造多模态提示
+- `messages_to_history()` 支持重建带图片的多模态对话历史
+
+---
+
 ## [1.4.0] - 2026-03-02
 
 ### Added

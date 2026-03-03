@@ -40,4 +40,32 @@ describe("MessageBubble", () => {
     );
     expect(container.querySelector(".message-assistant")).toBeInTheDocument();
   });
+
+  it("renders images in user message", () => {
+    const { container } = render(
+      <MessageBubble
+        message={{
+          role: "user",
+          content: "check this",
+          timestamp: "",
+          images: [
+            { data: "aGVsbG8=", media_type: "image/png", filename: "test.png" },
+          ],
+        }}
+      />
+    );
+    const img = container.querySelector(".message-image") as HTMLImageElement;
+    expect(img).toBeInTheDocument();
+    expect(img.src).toContain("data:image/png;base64,aGVsbG8=");
+    expect(img.alt).toBe("test.png");
+  });
+
+  it("does not render images div when no images", () => {
+    const { container } = render(
+      <MessageBubble
+        message={{ role: "user", content: "no images", timestamp: "" }}
+      />
+    );
+    expect(container.querySelector(".message-images")).toBeNull();
+  });
 });
