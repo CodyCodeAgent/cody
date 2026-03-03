@@ -25,7 +25,7 @@ cody --version
 cody config setup
 
 # 或手动设置环境变量
-export ANTHROPIC_API_KEY='sk-ant-...'
+export CODY_MODEL_API_KEY='sk-ant-...'
 ```
 
 ### 初始化项目
@@ -673,7 +673,6 @@ Initialized Cody in current directory
 | `CODY_MODEL_API_KEY` | 自定义 API Key |
 | `CODY_ENABLE_THINKING` | 启用思考模式 (`true`/`false`) |
 | `CODY_THINKING_BUDGET` | 思考 token 预算 |
-| `ANTHROPIC_API_KEY` | Anthropic API Key（pydantic-ai 自动使用） |
 
 ---
 

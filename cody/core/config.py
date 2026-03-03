@@ -73,20 +73,13 @@ class Config(BaseModel):
 
     def is_ready(self) -> bool:
         """Check if configuration has enough info to make API calls."""
-        if self.model_base_url:
-            return bool(self.model_api_key)
-        return bool(self.model_api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        return bool(self.model_api_key)
 
     def missing_fields(self) -> list:
         """Return descriptions of missing configuration fields."""
-        missing = []
-        if self.model_base_url:
-            if not self.model_api_key:
-                missing.append("model_api_key (API key for custom provider)")
-        else:
-            if not self.model_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
-                missing.append("API key (model_api_key or ANTHROPIC_API_KEY env var)")
-        return missing
+        if not self.model_api_key:
+            return ["model_api_key (run 'cody config setup' to configure)"]
+        return []
 
     @classmethod
     def load(

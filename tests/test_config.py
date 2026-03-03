@@ -286,13 +286,6 @@ def test_config_is_ready_with_api_key():
     assert config.is_ready() is True
 
 
-def test_config_is_ready_with_anthropic_env(monkeypatch):
-    """Config is ready when ANTHROPIC_API_KEY env var is set"""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    config = Config()
-    assert config.is_ready() is True
-
-
 def test_config_is_ready_with_base_url_and_key():
     """Config with base_url + api_key is ready"""
     config = Config(model_base_url="https://api.example.com/v1", model_api_key="sk-test")
@@ -305,28 +298,18 @@ def test_config_not_ready_with_base_url_no_key():
     assert config.is_ready() is False
 
 
-def test_config_not_ready_no_keys(monkeypatch):
-    """Config with no api_key and no ANTHROPIC_API_KEY is NOT ready"""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_config_not_ready_no_key():
+    """Config with no api_key is NOT ready"""
     config = Config()
     assert config.is_ready() is False
 
 
-def test_config_missing_fields_custom_no_key():
-    """missing_fields reports missing api_key for custom provider"""
-    config = Config(model_base_url="https://api.example.com/v1")
-    missing = config.missing_fields()
-    assert len(missing) == 1
-    assert "model_api_key" in missing[0]
-
-
-def test_config_missing_fields_no_key_no_env(monkeypatch):
-    """missing_fields reports missing API key when nothing is configured"""
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_config_missing_fields_no_key():
+    """missing_fields reports missing api_key when not configured"""
     config = Config()
     missing = config.missing_fields()
     assert len(missing) == 1
-    assert "API key" in missing[0]
+    assert "model_api_key" in missing[0]
 
 
 def test_config_missing_fields_empty_when_ready():

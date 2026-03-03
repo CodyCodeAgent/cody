@@ -1,19 +1,21 @@
 """Model resolution logic — shared between AgentRunner and SubAgentManager.
 
-Resolves a Config to a Pydantic AI model instance (or a bare model-string
-for Pydantic AI's built-in routing).
+Resolves a Config to a Pydantic AI model instance.
 
 Priority:
   1. model_base_url  → OpenAI-compatible provider (covers Qwen, DeepSeek, etc.)
   2. model_api_key (no base_url) → Anthropic provider with explicit API key
-  3. default → model string (Pydantic AI built-in routing, uses ANTHROPIC_API_KEY)
 """
 
 from .config import Config
 
 
 def resolve_model(config: Config):
-    """Return a Pydantic AI model instance (or model-name string) for *config*."""
+    """Return a Pydantic AI model instance for *config*.
+
+    Requires ``model_api_key`` to be set.  Use ``Config.is_ready()`` before
+    calling this to ensure the config is complete.
+    """
 
     if config.model_base_url:
         from pydantic_ai.models.openai import OpenAIChatModel  # pylint: disable=import-outside-toplevel
@@ -35,4 +37,6 @@ def resolve_model(config: Config):
         model_name = config.model.removeprefix("anthropic:")
         return AnthropicModel(model_name, provider=provider)
 
-    return config.model
+    raise ValueError(
+        "model_api_key is required. Run 'cody config setup' to configure."
+    )

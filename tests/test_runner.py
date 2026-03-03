@@ -270,14 +270,14 @@ async def test_run_with_session_not_found(tmp_path):
 # ── _resolve_model ──────────────────────────────────────────────────────────
 
 
-def test_resolve_model_default_string():
-    """Without base_url, _resolve_model returns the model string as-is"""
+def test_resolve_model_no_api_key_raises():
+    """Without api_key, _resolve_model raises ValueError"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(model="anthropic:claude-sonnet-4-0")
 
-    result = runner._resolve_model()
-    assert result == "anthropic:claude-sonnet-4-0"
+    with pytest.raises(ValueError, match="model_api_key is required"):
+        runner._resolve_model()
 
 
 def test_resolve_model_with_base_url():

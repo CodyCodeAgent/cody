@@ -2,7 +2,7 @@
 # When an issue is labeled "ai-fix", Cody attempts to fix it and opens a PR.
 #
 # Required secrets:
-#   ANTHROPIC_API_KEY — Your Anthropic API key
+#   CODY_MODEL_API_KEY — Your Anthropic API key
 
 name: AI Fix Issue
 
@@ -31,7 +31,7 @@ jobs:
 
       - name: Attempt fix
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CODY_MODEL_API_KEY: ${{ secrets.CODY_MODEL_API_KEY }}
         run: |
           ISSUE_TITLE="${{ github.event.issue.title }}"
           ISSUE_BODY="${{ github.event.issue.body }}"

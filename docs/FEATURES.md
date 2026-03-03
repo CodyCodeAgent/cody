@@ -407,7 +407,7 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 |------|------|------|
 | 交互式配置 | `cody config setup` | 推荐方式，引导配置并保存 |
 | OpenAI 兼容 API | `model_base_url` + `model_api_key` | 智谱 GLM、阿里 DashScope 等 |
-| Anthropic API Key | `model_api_key` 或 `ANTHROPIC_API_KEY` 环境变量 | 默认方式 |
+| Anthropic API Key | `model_api_key`（通过 `cody config setup` 配置） | 默认方式 |
 
 ### 8. 安全特性
 

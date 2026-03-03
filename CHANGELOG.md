@@ -15,7 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Config.is_ready()** — 配置完整性检查方法，判断是否有足够的 API 凭证
 - **Config.missing_fields()** — 返回缺失配置项的描述列表
 - **model_api_key 持久化** — API Key 现在保存到配置文件，无需环境变量
-- **model_api_key Anthropic 路径** — 配置了 `model_api_key` 但无 `model_base_url` 时，自动使用 Anthropic API（不再依赖 `ANTHROPIC_API_KEY` 环境变量）
+- **model_api_key Anthropic 路径** — 配置了 `model_api_key` 但无 `model_base_url` 时，自动使用 Anthropic API
 - **config show 脱敏** — `cody config show` 显示 API Key 时自动脱敏（如 `sk-ant...xyz`）
 - **config set 扩展** — 支持设置 `enable_thinking`、`thinking_budget`
 
@@ -23,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **claude_oauth_token** — 删除 OAuth 认证路径，统一使用 `model_api_key`
 - **CLI --model-base-url / --model-api-key** — 从 `run`/`chat`/`tui` 命令删除，改用 `cody config setup` 配置
 - **CLAUDE_OAUTH_TOKEN 环境变量** — 不再读取
+- **ANTHROPIC_API_KEY 环境变量** — 不再隐式使用，统一走 `model_api_key`
 
 ### Changed
 - `Config.save()` 现在保存 `model_api_key` 到配置文件

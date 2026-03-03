@@ -481,7 +481,6 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 | `CODY_CODING_PLAN_KEY` | `model_api_key`（兼容旧配置） | `sk-sp-...` |
 | `CODY_ENABLE_THINKING` | `enable_thinking` | `true` |
 | `CODY_THINKING_BUDGET` | `thinking_budget` | `10000` |
-| `ANTHROPIC_API_KEY` | (pydantic-ai 自动使用) | `sk-ant-...` |
 
 **优先级：** 环境变量 > 配置文件 > 默认值
 
@@ -743,8 +742,10 @@ cody config show
 确保 Key 正确：
 ```bash
 # 检查环境变量
-echo $ANTHROPIC_API_KEY
 echo $CODY_MODEL_API_KEY
+
+# 或查看配置
+cody config show
 
 # 测试连接
 cody run "hello"

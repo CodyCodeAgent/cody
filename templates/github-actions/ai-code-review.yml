@@ -2,7 +2,7 @@
 # Runs Cody on every pull request to review code changes.
 #
 # Required secrets:
-#   ANTHROPIC_API_KEY — Your Anthropic API key
+#   CODY_MODEL_API_KEY — Your Anthropic API key
 
 name: AI Code Review
 
@@ -34,7 +34,7 @@ jobs:
 
       - name: AI Review
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CODY_MODEL_API_KEY: ${{ secrets.CODY_MODEL_API_KEY }}
         run: |
           cody run "Review the following code diff. Focus on bugs, security issues, and performance problems. Be concise. Diff: $(cat /tmp/pr-diff.txt)" > /tmp/review.md
 

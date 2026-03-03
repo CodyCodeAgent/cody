@@ -78,17 +78,16 @@ cody --version
 ### 配置 API Key
 
 ```bash
-# Anthropic（默认）
-export ANTHROPIC_API_KEY='sk-ant-...'
+# 推荐：交互式配置（首次使用时自动触发）
+cody config setup
 
-# 或使用智谱 GLM
+# 或手动设置环境变量
+export CODY_MODEL_API_KEY='sk-ant-...'
+
+# 使用自定义 OpenAI 兼容 API（如智谱 GLM）
 export CODY_MODEL='glm-4'
 export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
 export CODY_MODEL_API_KEY='sk-...'
-
-# 或阿里云百炼 Coding Plan
-export CODY_MODEL='qwen3.5'
-export CODY_CODING_PLAN_KEY='sk-sp-...'
 ```
 
 ### 第一个任务

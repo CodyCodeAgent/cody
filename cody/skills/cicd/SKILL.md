@@ -25,9 +25,9 @@ cp templates/github-actions/ai-code-review.yml .github/workflows/
 ```
 
 ### Required secret
-All templates require `ANTHROPIC_API_KEY` in GitHub repository secrets:
+All templates require `CODY_MODEL_API_KEY` in GitHub repository secrets:
 ```bash
-gh secret set ANTHROPIC_API_KEY
+gh secret set CODY_MODEL_API_KEY
 ```
 
 ## GitHub Actions
