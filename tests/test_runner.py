@@ -514,16 +514,17 @@ def test_to_pydantic_prompt_str():
 
 
 def test_to_pydantic_prompt_multimodal():
-    """MultimodalPrompt converts to list with BinaryContent."""
+    """MultimodalPrompt converts to list with ImageUrl."""
     img = ImageData(data="aGVsbG8=", media_type="image/png")
     prompt = MultimodalPrompt(text="analyze", images=[img])
     result = AgentRunner._to_pydantic_prompt(prompt)
     assert isinstance(result, list)
     assert result[0] == "analyze"
     assert len(result) == 2
-    # Second item should be BinaryContent
-    from pydantic_ai import BinaryContent
-    assert isinstance(result[1], BinaryContent)
+    # Second item should be ImageUrl with data URI
+    from pydantic_ai.messages import ImageUrl
+    assert isinstance(result[1], ImageUrl)
+    assert result[1].url.startswith("data:image/png;base64,")
 
 
 def test_to_pydantic_prompt_multimodal_multiple_images():
@@ -542,7 +543,7 @@ def test_to_pydantic_prompt_empty_text_multimodal():
     prompt = MultimodalPrompt(text="", images=[img])
     result = AgentRunner._to_pydantic_prompt(prompt)
     assert isinstance(result, list)
-    assert len(result) == 1  # only BinaryContent, no empty text
+    assert len(result) == 1  # only ImageUrl, no empty text
 
 
 # ── messages_to_history with images ──────────────────────────────────────────
@@ -559,7 +560,7 @@ def test_messages_to_history_with_images():
     part = result[0].parts[0]
     content = part.content
     assert isinstance(content, list)
-    assert len(content) == 2  # text + BinaryContent
+    assert len(content) == 2  # text + ImageUrl
 
 
 def test_messages_to_history_mixed_with_and_without_images():

@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncGenerator, Literal, Optional, Union
 
-from pydantic_ai import Agent, BinaryContent
+from pydantic_ai import Agent
 from pydantic_ai.messages import (
+    ImageUrl,
     ModelMessage,
     ModelRequest,
     ModelResponse,
@@ -362,13 +363,11 @@ class AgentRunner:
         for msg in messages:
             if msg.role == "user":
                 if msg.images:
-                    # Reconstruct multimodal prompt for history
+                    # Reconstruct multimodal prompt for history using data URIs
                     parts: list = [msg.content]
                     for img in msg.images:
-                        parts.append(BinaryContent(
-                            data=img.data_bytes,
-                            media_type=img.media_type,
-                        ))
+                        data_uri = f"data:{img.media_type};base64,{img.data}"
+                        parts.append(ImageUrl(url=data_uri))
                     history.append(ModelRequest(parts=[UserPromptPart(content=parts)]))
                 else:
                     history.append(ModelRequest(parts=[UserPromptPart(content=msg.content)]))
@@ -477,7 +476,7 @@ class AgentRunner:
         """Convert a Prompt to pydantic-ai's user_prompt format.
 
         str → str (unchanged, backward compatible)
-        MultimodalPrompt → list[str | BinaryContent]
+        MultimodalPrompt → list[str | ImageUrl] using data URIs
         """
         if isinstance(prompt, str):
             return prompt
@@ -485,10 +484,8 @@ class AgentRunner:
         if prompt.text:
             parts.append(prompt.text)
         for img in prompt.images:
-            parts.append(BinaryContent(
-                data=img.data_bytes,
-                media_type=img.media_type,
-            ))
+            data_uri = f"data:{img.media_type};base64,{img.data}"
+            parts.append(ImageUrl(url=data_uri))
         return parts if parts else prompt.text
 
     # ── Core run methods ─────────────────────────────────────────────────────
