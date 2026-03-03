@@ -28,59 +28,46 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 def _interactive_setup() -> Config:
     """Interactive first-time configuration wizard.
 
-    Prompts the user to choose a provider, enter API credentials,
-    and saves the result to ~/.cody/config.json.
+    Prompts the user for API key, optional base URL, and model name,
+    then saves the result to ~/.cody/config.json.
     Returns the newly created Config.
     """
     console.print(Panel(
         "[bold]Welcome to Cody![/bold]\n\n"
-        "Let's configure your AI model provider.",
+        "Let's configure your model API.",
         border_style="blue",
     ))
 
-    # 1. Choose provider
-    console.print("\n[bold]Select provider:[/bold]")
-    console.print("  [1] Anthropic (Claude) — default")
-    console.print("  [2] OpenAI-compatible (Qwen, DeepSeek, GLM, etc.)")
-    choice = click.prompt("Enter choice", type=click.IntRange(1, 2), default=1)
+    # 1. API Key (required)
+    api_key = click.prompt("\nAPI Key", hide_input=True, prompt_suffix=": ")
 
-    if choice == 1:
-        # Anthropic path
-        api_key = click.prompt(
-            "Anthropic API Key",
-            hide_input=True,
-            prompt_suffix=": ",
-        )
-        model = click.prompt(
-            "Model name",
-            default="anthropic:claude-sonnet-4-0",
-            prompt_suffix=": ",
-        )
-        answers = SetupAnswers(
-            provider="anthropic",
-            model=model,
-            model_api_key=api_key,
-        )
-    else:
-        # Custom OpenAI-compatible path
-        base_url = click.prompt("API Base URL", prompt_suffix=": ")
-        model = click.prompt("Model name", prompt_suffix=": ")
-        api_key = click.prompt("API Key", hide_input=True, prompt_suffix=": ")
-        answers = SetupAnswers(
-            provider="custom",
-            model=model,
-            model_base_url=base_url,
-            model_api_key=api_key,
-        )
+    # 2. Base URL (optional — leave empty for Anthropic)
+    base_url = click.prompt(
+        "API Base URL (leave empty for Anthropic)",
+        default="",
+        prompt_suffix=": ",
+    ).strip() or None
 
-    # 3. Thinking mode
+    # 3. Model name
+    default_model = "anthropic:claude-sonnet-4-0" if not base_url else ""
+    model = click.prompt("Model name", default=default_model, prompt_suffix=": ")
+
+    # 4. Thinking mode
     enable_thinking = click.confirm("Enable thinking mode?", default=False)
-    answers.enable_thinking = enable_thinking
+    thinking_budget = None
     if enable_thinking:
-        budget = click.prompt("Thinking budget (tokens)", type=int, default=10000)
-        answers.thinking_budget = budget
+        thinking_budget = click.prompt(
+            "Thinking budget (tokens)", type=int, default=10000
+        )
 
-    # 4. Save
+    # 5. Save
+    answers = SetupAnswers(
+        model=model,
+        model_api_key=api_key,
+        model_base_url=base_url,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
+    )
     config_data = build_config_from_answers(answers)
     cfg = Config(**config_data)
     config_path = Path.home() / ".cody" / "config.json"
