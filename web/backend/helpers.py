@@ -105,8 +105,6 @@ def config_from_run_request(request) -> Config:
         model=request.model,
         model_base_url=request.model_base_url,
         model_api_key=request.model_api_key,
-        coding_plan_key=request.coding_plan_key,
-        coding_plan_protocol=request.coding_plan_protocol,
         enable_thinking=request.enable_thinking,
         thinking_budget=request.thinking_budget,
         skills=request.skills,

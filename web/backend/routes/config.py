@@ -25,6 +25,7 @@ class ConfigUpdateRequest(BaseModel):
     """Fields that can be updated via the web UI."""
     model: Optional[str] = None
     model_base_url: Optional[str] = None
+    model_api_key: Optional[str] = None
     enable_thinking: Optional[bool] = None
     thinking_budget: Optional[int] = None
 
@@ -38,9 +39,9 @@ async def get_config(workdir: Optional[str] = None):
         cfg = Config.load(workdir=wd)
         data = cfg.model_dump(exclude_none=True)
         # Strip secrets from response
-        data.pop("model_api_key", None)
-        data.pop("claude_oauth_token", None)
-        data.pop("coding_plan_key", None)
+        if "model_api_key" in data:
+            key = data["model_api_key"]
+            data["model_api_key"] = (key[:6] + "..." + key[-3:]) if len(key) > 8 else "***"
         if "auth" in data:
             data["auth"].pop("api_key", None)
             data["auth"].pop("token", None)
@@ -73,6 +74,7 @@ async def update_config(
             enable_thinking=body.enable_thinking,
             thinking_budget=body.thinking_budget,
             model_base_url=body.model_base_url,
+            model_api_key=body.model_api_key,
         )
 
         config_path = wd / ".cody" / "config.json"

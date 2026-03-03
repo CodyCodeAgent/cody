@@ -59,6 +59,8 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
   // Settings panel state
   const [showSettings, setShowSettings] = useState(false);
   const [modelOverride, setModelOverride] = useState("");
+  const [baseUrlOverride, setBaseUrlOverride] = useState("");
+  const [apiKeyOverride, setApiKeyOverride] = useState("");
   const [enableThinking, setEnableThinking] = useState(false);
   const [thinkingBudget, setThinkingBudget] = useState("");
 
@@ -319,11 +321,13 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
     };
     if (pendingImages.length > 0) payload.images = pendingImages;
     if (modelOverride) payload.model = modelOverride;
+    if (baseUrlOverride) payload.model_base_url = baseUrlOverride;
+    if (apiKeyOverride) payload.model_api_key = apiKeyOverride;
     if (enableThinking) payload.enable_thinking = true;
     if (thinkingBudget) payload.thinking_budget = parseInt(thinkingBudget, 10) || undefined;
 
     socketRef.current?.send(payload);
-  }, [input, streaming, pendingImages, modelOverride, enableThinking, thinkingBudget, resetBuffer]);
+  }, [input, streaming, pendingImages, modelOverride, baseUrlOverride, apiKeyOverride, enableThinking, thinkingBudget, resetBuffer]);
 
   const hasStreamActivity = streaming && (streamThinking || streamToolCalls.length > 0 || streamContent);
 
@@ -471,6 +475,26 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
             />
           </label>
           <label className="setting-item">
+            <span>Base URL</span>
+            <input
+              type="text"
+              value={baseUrlOverride}
+              onChange={(e) => setBaseUrlOverride(e.target.value)}
+              placeholder="https://api.openai.com/v1"
+              className="setting-input"
+            />
+          </label>
+          <label className="setting-item">
+            <span>API Key</span>
+            <input
+              type="password"
+              value={apiKeyOverride}
+              onChange={(e) => setApiKeyOverride(e.target.value)}
+              placeholder="sk-..."
+              className="setting-input"
+            />
+          </label>
+          <label className="setting-item">
             <span>Thinking</span>
             <input
               type="checkbox"
@@ -553,7 +577,6 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask Cody..."
           disabled={streaming}
-          onPaste={handlePaste}
         />
         <button type="submit" disabled={streaming || (!input.trim() && pendingImages.length === 0)}>
           Send

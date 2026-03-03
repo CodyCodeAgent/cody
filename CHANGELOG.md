@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.6.0] - 2026-03-03
+
+### Added
+- **交互式配置向导** — 新增 `cody config setup` 命令，引导用户选择模型提供商、输入 API Key 等
+  - 首次使用 `cody run`/`chat`/`tui` 时如果未配置会自动触发
+  - `cody init` 完成后也会提示配置
+- **Config.is_ready()** — 配置完整性检查方法，判断是否有足够的 API 凭证
+- **Config.missing_fields()** — 返回缺失配置项的描述列表
+- **model_api_key 持久化** — API Key 现在保存到配置文件，无需环境变量
+- **model_api_key Anthropic 路径** — 配置了 `model_api_key` 但无 `model_base_url` 时，自动使用 Anthropic API（不再依赖 `ANTHROPIC_API_KEY` 环境变量）
+- **config show 脱敏** — `cody config show` 显示 API Key 时自动脱敏（如 `sk-ant...xyz`）
+- **config set 扩展** — 支持设置 `enable_thinking`、`thinking_budget`
+
+### Removed
+- **claude_oauth_token** — 删除 OAuth 认证路径，统一使用 `model_api_key`
+- **CLI --model-base-url / --model-api-key** — 从 `run`/`chat`/`tui` 命令删除，改用 `cody config setup` 配置
+- **CLAUDE_OAUTH_TOKEN 环境变量** — 不再读取
+
+### Changed
+- `Config.save()` 现在保存 `model_api_key` 到配置文件
+- `model_resolver.py` 简化为 3 条路径：base_url → api_key(Anthropic) → 默认字符串
+- 新增 `cody/core/setup.py` 提供配置向导的数据层
+
+---
+
 ## [1.5.0] - 2026-03-03
 
 ### Added

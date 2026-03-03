@@ -112,10 +112,6 @@ class CodyTUI(App):
     def __init__(
         self,
         model: Optional[str] = None,
-        model_base_url: Optional[str] = None,
-        model_api_key: Optional[str] = None,
-        coding_plan_key: Optional[str] = None,
-        coding_plan_protocol: Optional[str] = None,
         thinking: Optional[bool] = None,
         thinking_budget: Optional[int] = None,
         workdir: Optional[Path] = None,
@@ -125,10 +121,6 @@ class CodyTUI(App):
     ) -> None:
         super().__init__()
         self._model_override = model
-        self._model_base_url_override = model_base_url
-        self._model_api_key_override = model_api_key
-        self._coding_plan_key_override = coding_plan_key
-        self._coding_plan_protocol_override = coding_plan_protocol
         self._thinking_override = thinking
         self._thinking_budget_override = thinking_budget
         self._workdir = (workdir or Path.cwd()).resolve()
@@ -153,10 +145,6 @@ class CodyTUI(App):
     def on_mount(self) -> None:
         self._config = Config.load(workdir=self._workdir).apply_overrides(
             model=self._model_override,
-            model_base_url=self._model_base_url_override,
-            model_api_key=self._model_api_key_override,
-            coding_plan_key=self._coding_plan_key_override,
-            coding_plan_protocol=self._coding_plan_protocol_override,
             enable_thinking=self._thinking_override,
             thinking_budget=self._thinking_budget_override,
             extra_roots=self._extra_roots or None,
@@ -509,10 +497,6 @@ class CodyTUI(App):
 
 def run_tui(
     model: Optional[str] = None,
-    model_base_url: Optional[str] = None,
-    model_api_key: Optional[str] = None,
-    coding_plan_key: Optional[str] = None,
-    coding_plan_protocol: Optional[str] = None,
     thinking: Optional[bool] = None,
     thinking_budget: Optional[int] = None,
     workdir: Optional[str] = None,
@@ -520,14 +504,13 @@ def run_tui(
     session_id: Optional[str] = None,
     continue_last: bool = False,
 ) -> None:
-    """Launch the Cody TUI."""
+    """Launch the Cody TUI.
+
+    Config readiness is checked by the CLI caller before launching.
+    """
     workdir_path = Path(workdir) if workdir else None
     app = CodyTUI(
         model=model,
-        model_base_url=model_base_url,
-        model_api_key=model_api_key,
-        coding_plan_key=coding_plan_key,
-        coding_plan_protocol=coding_plan_protocol,
         thinking=thinking,
         thinking_budget=thinking_budget,
         workdir=workdir_path,

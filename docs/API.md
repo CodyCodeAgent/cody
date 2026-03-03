@@ -27,7 +27,6 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
   "model": "anthropic:claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
-  "claude_oauth_token": null,
   "skills": ["python", "git"],
   "session_id": "optional-session-id",
   "images": [
@@ -45,7 +44,6 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 | model | string | ❌ | 模型名称，默认配置中的模型 |
 | model_base_url | string | ❌ | 自定义 OpenAI 兼容 API 地址 |
 | model_api_key | string | ❌ | 自定义模型提供商的 API Key |
-| claude_oauth_token | string | ❌ | Claude OAuth token（替代 API Key，来自 `claude login`） |
 | enable_thinking | bool | ❌ | 启用 thinking 模式（需模型支持） |
 | thinking_budget | int | ❌ | thinking 最大 token 数（如 10000） |
 | skills | string[] | ❌ | 启用的 Skills 列表 |
@@ -69,11 +67,13 @@ Cody RPC Server 基于 FastAPI 构建，提供 RESTful API 接口。
 }
 ```
 
-**使用 Claude OAuth token：**
+**使用自定义模型：**
 ```json
 {
   "prompt": "写一个排序算法",
-  "claude_oauth_token": "your-oauth-token"
+  "model": "qwen3.5",
+  "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "model_api_key": "sk-..."
 }
 ```
 

@@ -38,6 +38,7 @@ def test_init_creates_directory(runner, tmp_path, monkeypatch):
         return "# CODY.md\n\nAI-generated content."
 
     monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
         result = runner.invoke(main, ['init'])
@@ -55,6 +56,7 @@ def test_init_already_exists(runner, tmp_path, monkeypatch):
         return "# CODY.md\n\nAI content."
 
     monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
         (Path.cwd() / '.cody').mkdir()
@@ -72,6 +74,7 @@ def test_init_updates_existing_cody_md(runner, tmp_path, monkeypatch):
         return "# CODY.md\n\nNew AI content."
 
     monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
         (Path.cwd() / '.cody').mkdir()
@@ -108,7 +111,8 @@ def test_chat_help(runner):
     assert '--continue' in result.output
 
 
-def test_chat_nonexistent_session(runner):
+def test_chat_nonexistent_session(runner, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
     result = runner.invoke(main, ['chat', '--session', 'nonexistent'], input='/quit\n')
     assert 'Session not found' in result.output
 

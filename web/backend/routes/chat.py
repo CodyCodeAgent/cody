@@ -59,9 +59,11 @@ async def chat_websocket(
                     workdir = Path(project.workdir)
                     config = get_config(workdir)
 
-                    # Apply per-message model/thinking overrides from frontend
+                    # Apply per-message overrides from frontend
                     config.apply_overrides(
                         model=data.get("model"),
+                        model_base_url=data.get("model_base_url"),
+                        model_api_key=data.get("model_api_key"),
                         enable_thinking=data.get("enable_thinking"),
                         thinking_budget=data.get("thinking_budget"),
                     )

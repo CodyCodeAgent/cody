@@ -405,9 +405,9 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 
 | 方式 | 配置 | 说明 |
 |------|------|------|
+| 交互式配置 | `cody config setup` | 推荐方式，引导配置并保存 |
 | OpenAI 兼容 API | `model_base_url` + `model_api_key` | 智谱 GLM、阿里 DashScope 等 |
-| Claude OAuth | `claude_oauth_token` 或 `CLAUDE_OAUTH_TOKEN` 环境变量 | `claude login` 获取的 OAuth token |
-| Anthropic API Key | `ANTHROPIC_API_KEY` 环境变量 | 默认方式 |
+| Anthropic API Key | `model_api_key` 或 `ANTHROPIC_API_KEY` 环境变量 | 默认方式 |
 
 ### 8. 安全特性
 
@@ -639,7 +639,7 @@ cody "使用项目 B 的配置"
 - [x] 支持 OpenAI 和 Anthropic 两种协议
 - [x] CLI `--coding-plan-key` / `--coding-plan-protocol` 参数
 - [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
-- [x] Claude OAuth token 认证支持
+- [x] Claude OAuth token 认证支持（v1.6.0 已移除，统一为 model_api_key）
 
 **v1.0.1 总计：446 个 Python 测试，ruff 零告警**
 

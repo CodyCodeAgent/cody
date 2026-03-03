@@ -119,6 +119,7 @@ export function getConfig(): Promise<Record<string, unknown>> {
 export function updateConfig(data: {
   model?: string;
   model_base_url?: string;
+  model_api_key?: string;
   enable_thinking?: boolean;
   thinking_budget?: number;
 }): Promise<{ status: string }> {

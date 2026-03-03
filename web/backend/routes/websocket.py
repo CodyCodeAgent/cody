@@ -93,8 +93,6 @@ class _WSConnection:
                 model=data.get("model"),
                 model_base_url=data.get("model_base_url"),
                 model_api_key=data.get("model_api_key"),
-                coding_plan_key=data.get("coding_plan_key"),
-                coding_plan_protocol=data.get("coding_plan_protocol"),
                 enable_thinking=data.get("enable_thinking"),
                 thinking_budget=data.get("thinking_budget"),
                 extra_roots=data.get("allowed_roots"),

@@ -38,9 +38,6 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "model": "anthropic:claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
-  "claude_oauth_token": null,
-  "coding_plan_key": null,
-  "coding_plan_protocol": "openai",
   "enable_thinking": false,
   "thinking_budget": null,
   "auth": {
@@ -126,64 +123,17 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `model_api_key`
 
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** 自定义模型 API Key
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 模型 API Key。Anthropic 或自定义 OpenAI 兼容提供商的 API Key。
 
-⚠️ **安全提示:** 建议使用环境变量 `CODY_MODEL_API_KEY`，不要写入配置文件。
+`cody config setup` 交互式设置后会自动保存到配置文件。也可通过环境变量 `CODY_MODEL_API_KEY` 覆盖。
 
 ```json
 {
   "model_api_key": "sk-..."
 }
 ```
-
----
-
-#### `claude_oauth_token`
-
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** Claude OAuth Token（来自 `claude login`）
-
-```json
-{
-  "claude_oauth_token": "your-oauth-token"
-}
-```
-
----
-
-#### `coding_plan_key`
-
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** 阿里云百炼 Coding Plan Key (`sk-sp-xxx`)
-
-```json
-{
-  "coding_plan_key": "sk-sp-..."
-}
-```
-
----
-
-#### `coding_plan_protocol`
-
-**类型:** `"openai" | "anthropic"`  
-**默认:** `"openai"`  
-**说明:** Coding Plan 使用的协议
-
-```json
-{
-  "coding_plan_key": "sk-sp-...",
-  "coding_plan_protocol": "anthropic"
-}
-```
-
-**协议说明：**
-- `openai` — OpenAI 兼容协议（默认）
-- `anthropic` — Anthropic 兼容协议
 
 ---
 
@@ -528,18 +478,28 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 | `CODY_MODEL` | `model` | `glm-4` |
 | `CODY_MODEL_BASE_URL` | `model_base_url` | `https://...` |
 | `CODY_MODEL_API_KEY` | `model_api_key` | `sk-...` |
-| `CLAUDE_OAUTH_TOKEN` | `claude_oauth_token` | `...` |
-| `CODY_CODING_PLAN_KEY` | `coding_plan_key` | `sk-sp-...` |
-| `CODY_CODING_PLAN_PROTOCOL` | `coding_plan_protocol` | `anthropic` |
+| `CODY_CODING_PLAN_KEY` | `model_api_key`（兼容旧配置） | `sk-sp-...` |
 | `CODY_ENABLE_THINKING` | `enable_thinking` | `true` |
 | `CODY_THINKING_BUDGET` | `thinking_budget` | `10000` |
-| `ANTHROPIC_API_KEY` | (自动使用) | `sk-ant-...` |
+| `ANTHROPIC_API_KEY` | (pydantic-ai 自动使用) | `sk-ant-...` |
 
 **优先级：** 环境变量 > 配置文件 > 默认值
 
 ---
 
 ## 配置管理命令
+
+### 交互式配置（推荐）
+
+```bash
+cody config setup
+```
+
+交互式引导配置模型提供商、API Key 等信息，保存到 `~/.cody/config.json`。
+
+首次使用 `cody run`/`chat`/`tui` 时如果未配置 API Key，也会自动触发。
+
+---
 
 ### 查看配置
 
@@ -551,7 +511,7 @@ cody config show
 ```json
 {
   "model": "anthropic:claude-sonnet-4-0",
-  "model_base_url": null,
+  "model_api_key": "sk-ant...xyz",
   "enable_thinking": false,
   "skills": {
     "enabled": ["git", "github"],
@@ -560,6 +520,8 @@ cody config show
   ...
 }
 ```
+
+> API Key 在显示时会自动脱敏。
 
 ---
 
@@ -572,11 +534,13 @@ cody config set model "anthropic:claude-sonnet-4-0"
 # 设置 API 地址
 cody config set model_base_url "https://..."
 
-# 设置 API Key（不推荐）
+# 设置 API Key
 cody config set model_api_key "sk-..."
-```
 
-⚠️ **提示:** API Key 建议使用环境变量。
+# 启用思考模式
+cody config set enable_thinking true
+cody config set thinking_budget 10000
+```
 
 ---
 
@@ -601,33 +565,25 @@ cody config set model_api_key "sk-..."
 {
   "model": "glm-4",
   "model_base_url": "https://open.bigmodel.cn/api/paas/v4/",
+  "model_api_key": "sk-...",
   "skills": {
     "enabled": ["git", "python"]
   }
 }
 ```
 
-配合环境变量：
-```bash
-export CODY_MODEL_API_KEY='sk-...'
-```
-
 ---
 
-### 示例 3：阿里云百炼 Coding Plan
+### 示例 3：阿里云百炼（Qwen）
 
 ```json
 {
   "model": "qwen3.5",
-  "coding_plan_protocol": "openai",
+  "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "model_api_key": "sk-...",
   "enable_thinking": true,
   "thinking_budget": 10000
 }
-```
-
-配合环境变量：
-```bash
-export CODY_CODING_PLAN_KEY='sk-sp-...'
 ```
 
 ---
@@ -693,18 +649,17 @@ cody init
 
 ## 最佳实践
 
-### 1. 使用环境变量管理敏感信息
+### 1. 使用 `cody config setup` 管理 API Key
 
 ```bash
-# .env 文件（不提交到 Git）
-CODY_MODEL_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-CODY_CODING_PLAN_KEY=sk-sp-...
+# 交互式配置，API Key 安全保存到 ~/.cody/config.json
+cody config setup
 ```
 
+也可通过环境变量覆盖（优先级高于配置文件）：
+
 ```bash
-# 加载环境变量
-source .env
+export CODY_MODEL_API_KEY=sk-...
 ```
 
 ---
@@ -813,4 +768,4 @@ ls -la ~/.cody/skills/
 
 ---
 
-**最后更新:** 2026-02-28
+**最后更新:** 2026-03-03

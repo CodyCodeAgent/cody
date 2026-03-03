@@ -206,8 +206,8 @@ def test_config_load_with_custom_model(tmp_path):
     assert config.model_api_key is None
 
 
-def test_config_save_excludes_api_key(tmp_path):
-    """Save should NOT write model_api_key to disk for security"""
+def test_config_save_includes_api_key(tmp_path):
+    """Save should persist model_api_key to disk"""
     config = Config(
         model="glm-4",
         model_base_url="https://open.bigmodel.cn/api/paas/v4/",
@@ -217,7 +217,7 @@ def test_config_save_excludes_api_key(tmp_path):
     config.save(config_path)
 
     saved_data = json.loads(config_path.read_text())
-    assert "model_api_key" not in saved_data
+    assert saved_data["model_api_key"] == "sk-secret-key"
     assert saved_data["model"] == "glm-4"
     assert saved_data["model_base_url"] == "https://open.bigmodel.cn/api/paas/v4/"
 
@@ -277,108 +277,110 @@ def test_config_env_overrides_file_values(tmp_path, monkeypatch):
     assert config.model_api_key == "sk-env-key"
 
 
-# ── Claude OAuth token ──────────────────────────────────────────────────────
+# ── Config.is_ready / Config.missing_fields ──────────────────────────────
 
 
-def test_config_claude_oauth_token_default():
-    """claude_oauth_token defaults to None"""
+def test_config_is_ready_with_api_key():
+    """Config with model_api_key (no base_url) is ready"""
+    config = Config(model_api_key="sk-test")
+    assert config.is_ready() is True
+
+
+def test_config_is_ready_with_anthropic_env(monkeypatch):
+    """Config is ready when ANTHROPIC_API_KEY env var is set"""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     config = Config()
-    assert config.claude_oauth_token is None
+    assert config.is_ready() is True
 
 
-def test_config_claude_oauth_token_set():
-    """claude_oauth_token can be set directly"""
-    config = Config(claude_oauth_token="oauth-tok-123")
-    assert config.claude_oauth_token == "oauth-tok-123"
+def test_config_is_ready_with_base_url_and_key():
+    """Config with base_url + api_key is ready"""
+    config = Config(model_base_url="https://api.example.com/v1", model_api_key="sk-test")
+    assert config.is_ready() is True
 
 
-def test_config_env_overrides_claude_oauth_token(tmp_path, monkeypatch):
-    """CLAUDE_OAUTH_TOKEN env var overrides config"""
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
-    (tmp_path / "project").mkdir()
-    (tmp_path / "home").mkdir()
-
-    monkeypatch.setenv("CLAUDE_OAUTH_TOKEN", "oauth-from-env")
-    config = Config.load(workdir=tmp_path / "project")
-    assert config.claude_oauth_token == "oauth-from-env"
+def test_config_not_ready_with_base_url_no_key():
+    """Config with base_url but no api_key is NOT ready"""
+    config = Config(model_base_url="https://api.example.com/v1")
+    assert config.is_ready() is False
 
 
-def test_config_save_excludes_oauth_token(tmp_path):
-    """Save should NOT write claude_oauth_token to disk for security"""
-    config = Config(claude_oauth_token="oauth-secret")
+def test_config_not_ready_no_keys(monkeypatch):
+    """Config with no api_key and no ANTHROPIC_API_KEY is NOT ready"""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    config = Config()
+    assert config.is_ready() is False
+
+
+def test_config_missing_fields_custom_no_key():
+    """missing_fields reports missing api_key for custom provider"""
+    config = Config(model_base_url="https://api.example.com/v1")
+    missing = config.missing_fields()
+    assert len(missing) == 1
+    assert "model_api_key" in missing[0]
+
+
+def test_config_missing_fields_no_key_no_env(monkeypatch):
+    """missing_fields reports missing API key when nothing is configured"""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    config = Config()
+    missing = config.missing_fields()
+    assert len(missing) == 1
+    assert "API key" in missing[0]
+
+
+def test_config_missing_fields_empty_when_ready():
+    """missing_fields returns empty list when config is ready"""
+    config = Config(model_api_key="sk-test")
+    assert config.missing_fields() == []
+
+
+def test_config_load_strips_legacy_oauth(tmp_path):
+    """Config.load ignores legacy claude_oauth_token in JSON files"""
+    data = {"model": "anthropic:claude-sonnet-4-0", "claude_oauth_token": "old-oauth-token"}
     config_path = tmp_path / "config.json"
-    config.save(config_path)
+    config_path.write_text(json.dumps(data))
 
-    saved_data = json.loads(config_path.read_text())
-    assert "claude_oauth_token" not in saved_data
-
-
-# ── Coding Plan ──────────────────────────────────────────────────────────────
+    config = Config.load(config_path)
+    assert config.model == "anthropic:claude-sonnet-4-0"
+    assert not hasattr(config, "claude_oauth_token") or getattr(config, "claude_oauth_token", None) is None
 
 
-def test_config_coding_plan_key_default():
-    """coding_plan_key defaults to None"""
-    config = Config()
-    assert config.coding_plan_key is None
-    assert config.coding_plan_protocol == "openai"
+# ── Legacy CODY_CODING_PLAN_KEY env var compat ───────────────────────────────
 
 
-def test_config_coding_plan_key_set():
-    """coding_plan_key can be set directly"""
-    config = Config(coding_plan_key="sk-sp-test123")
-    assert config.coding_plan_key == "sk-sp-test123"
-
-
-def test_config_coding_plan_protocol_anthropic():
-    """coding_plan_protocol can be set to anthropic"""
-    config = Config(coding_plan_protocol="anthropic")
-    assert config.coding_plan_protocol == "anthropic"
-
-
-def test_config_env_overrides_coding_plan_key(tmp_path, monkeypatch):
-    """CODY_CODING_PLAN_KEY env var overrides config"""
+def test_config_env_coding_plan_key_maps_to_model_api_key(tmp_path, monkeypatch):
+    """CODY_CODING_PLAN_KEY env var maps to model_api_key"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
     monkeypatch.setenv("CODY_CODING_PLAN_KEY", "sk-sp-from-env")
     config = Config.load(workdir=tmp_path / "project")
-    assert config.coding_plan_key == "sk-sp-from-env"
+    assert config.model_api_key == "sk-sp-from-env"
 
 
-def test_config_env_overrides_coding_plan_protocol(tmp_path, monkeypatch):
-    """CODY_CODING_PLAN_PROTOCOL env var overrides config"""
+def test_config_env_coding_plan_key_does_not_override_model_api_key(tmp_path, monkeypatch):
+    """CODY_CODING_PLAN_KEY does NOT override explicit CODY_MODEL_API_KEY"""
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     (tmp_path / "project").mkdir()
     (tmp_path / "home").mkdir()
 
-    monkeypatch.setenv("CODY_CODING_PLAN_PROTOCOL", "anthropic")
+    monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-explicit")
+    monkeypatch.setenv("CODY_CODING_PLAN_KEY", "sk-sp-from-env")
     config = Config.load(workdir=tmp_path / "project")
-    assert config.coding_plan_protocol == "anthropic"
+    assert config.model_api_key == "sk-explicit"
 
 
-def test_config_save_excludes_coding_plan_key(tmp_path):
-    """Save should NOT write coding_plan_key to disk for security"""
-    config = Config(coding_plan_key="sk-sp-secret")
-    config_path = tmp_path / "config.json"
-    config.save(config_path)
-
-    saved_data = json.loads(config_path.read_text())
-    assert "coding_plan_key" not in saved_data
-
-
-def test_config_coding_plan_from_json(tmp_path):
-    """Load config with coding_plan_protocol from JSON"""
-    data = {
-        "model": "qwen3.5",
-        "coding_plan_protocol": "anthropic",
-    }
+def test_config_load_strips_legacy_coding_plan_fields(tmp_path):
+    """Config.load ignores legacy coding_plan fields in JSON files"""
+    data = {"model": "qwen3.5", "coding_plan_key": "sk-sp-old", "coding_plan_protocol": "anthropic"}
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(data))
 
     config = Config.load(config_path)
     assert config.model == "qwen3.5"
-    assert config.coding_plan_protocol == "anthropic"
+    assert not hasattr(config, "coding_plan_key") or getattr(config, "coding_plan_key", None) is None
 
 
 # ── Config.load with workdir ────────────────────────────────────────────────

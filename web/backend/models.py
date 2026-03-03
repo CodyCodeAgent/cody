@@ -64,8 +64,6 @@ class RunRequest(BaseModel):
     model: Optional[str] = None
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
-    coding_plan_key: Optional[str] = None
-    coding_plan_protocol: Optional[str] = None
     enable_thinking: Optional[bool] = None
     thinking_budget: Optional[int] = None
     skills: Optional[list[str]] = None

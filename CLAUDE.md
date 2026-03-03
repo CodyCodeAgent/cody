@@ -11,7 +11,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **Web Backend** (`web/backend/`) — 统一 FastAPI 应用（端口 8000），提供 Web + RPC 端点，直接导入 core
 - **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)，in-process 封装 core
 
-当前版本：**v1.5.0**
+当前版本：**v1.6.0**
 
 ## 架构要点
 
@@ -37,7 +37,8 @@ cody/client.py (Python SDK) → core/（in-process，无 HTTP）
 | `core/runner.py` | 中枢引擎 — Agent 创建、工具注册、run/stream 执行 |
 | `core/tools.py` | 28 个工具函数 + 底部声明式工具注册表 |
 | `core/errors.py` | 错误码 + ToolError 异常层级（Web Backend 按类型映射 HTTP 状态码） |
-| `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON |
+| `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON，is_ready() 检查 |
+| `core/setup.py` | 交互式配置向导数据层 — SetupAnswers + build_config_from_answers |
 | `core/deps.py` | CodyDeps 数据类，工具的依赖注入容器 |
 | `core/project_instructions.py` | CODY.md 加载逻辑 — 全局 + 项目级合并，注入系统提示 |
 | `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
@@ -79,7 +80,8 @@ cody skills enable github                  # 启用技能
 cody skills disable docker                 # 禁用技能
 
 # 配置
-cody config show                           # 查看当前配置
+cody config setup                          # 交互式配置向导
+cody config show                           # 查看当前配置（API Key 脱敏）
 cody config set model "anthropic:claude-sonnet-4-0"  # 设置模型
 cody init                                  # 初始化 .cody/ 目录
 ```

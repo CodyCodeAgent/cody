@@ -310,81 +310,43 @@ def test_resolve_model_base_url_without_api_key():
     assert not isinstance(result, str)
 
 
-def test_resolve_model_with_claude_oauth_token():
-    """With claude_oauth_token, _resolve_model returns an AnthropicModel"""
+def test_resolve_model_api_key_anthropic():
+    """With model_api_key (no base_url), _resolve_model returns an AnthropicModel"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="anthropic:claude-sonnet-4-0",
-            claude_oauth_token="oauth-test-token",
+            model_api_key="sk-ant-test-key",
         )
 
     result = runner._resolve_model()
-    # Should be an AnthropicModel, not a string
     assert not isinstance(result, str)
     from pydantic_ai.models.anthropic import AnthropicModel
     assert isinstance(result, AnthropicModel)
 
 
-def test_resolve_model_oauth_strips_prefix():
-    """OAuth path strips 'anthropic:' prefix from model name"""
+def test_resolve_model_api_key_strips_prefix():
+    """Anthropic API key path strips 'anthropic:' prefix from model name"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="anthropic:claude-sonnet-4-0",
-            claude_oauth_token="oauth-test-token",
+            model_api_key="sk-ant-test-key",
         )
 
     result = runner._resolve_model()
     assert not isinstance(result, str)
-    # The model_name passed to AnthropicModel should not have the prefix
     assert "anthropic:" not in str(result.model_name)
 
 
-def test_resolve_model_oauth_without_prefix():
-    """OAuth path works when model name has no 'anthropic:' prefix"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="claude-sonnet-4-0",
-            claude_oauth_token="oauth-test-token",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    from pydantic_ai.models.anthropic import AnthropicModel
-    assert isinstance(result, AnthropicModel)
-
-
-def test_resolve_model_base_url_takes_priority_over_oauth():
-    """model_base_url takes priority over claude_oauth_token"""
+def test_resolve_model_base_url_takes_priority_over_api_key():
+    """model_base_url takes priority over model_api_key for Anthropic"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="glm-4",
             model_base_url="https://open.bigmodel.cn/api/paas/v4/",
             model_api_key="sk-test",
-            claude_oauth_token="oauth-test-token",
-        )
-
-    result = runner._resolve_model()
-    # Should use OpenAI path, not Anthropic OAuth
-    assert not isinstance(result, str)
-    from pydantic_ai.models.openai import OpenAIChatModel
-    assert isinstance(result, OpenAIChatModel)
-
-
-# ── Coding Plan _resolve_model ─────────────────────────────────────────────
-
-
-def test_resolve_model_coding_plan_openai():
-    """Coding Plan with openai protocol returns OpenAIChatModel"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="qwen3.5",
-            coding_plan_key="sk-sp-test123",
-            coding_plan_protocol="openai",
         )
 
     result = runner._resolve_model()
@@ -393,44 +355,17 @@ def test_resolve_model_coding_plan_openai():
     assert isinstance(result, OpenAIChatModel)
 
 
-def test_resolve_model_coding_plan_anthropic():
-    """Coding Plan with anthropic protocol returns AnthropicModel"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="claude-sonnet-4-0",
-            coding_plan_key="sk-sp-test123",
-            coding_plan_protocol="anthropic",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    from pydantic_ai.models.anthropic import AnthropicModel
-    assert isinstance(result, AnthropicModel)
+# ── model_base_url _resolve_model ──────────────────────────────────────────
 
 
-def test_resolve_model_coding_plan_anthropic_strips_prefix():
-    """Coding Plan anthropic protocol strips 'anthropic:' prefix"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="anthropic:claude-sonnet-4-0",
-            coding_plan_key="sk-sp-test123",
-            coding_plan_protocol="anthropic",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    assert "anthropic:" not in str(result.model_name)
-
-
-def test_resolve_model_coding_plan_default_protocol():
-    """Coding Plan defaults to openai protocol"""
+def test_resolve_model_base_url():
+    """model_base_url returns OpenAIChatModel"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="qwen3.5",
-            coding_plan_key="sk-sp-test123",
+            model_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model_api_key="sk-test123",
         )
 
     result = runner._resolve_model()
@@ -439,16 +374,14 @@ def test_resolve_model_coding_plan_default_protocol():
     assert isinstance(result, OpenAIChatModel)
 
 
-def test_resolve_model_coding_plan_takes_priority():
-    """coding_plan_key takes priority over model_base_url and oauth"""
+def test_resolve_model_base_url_deepseek():
+    """model_base_url with DeepSeek returns OpenAIChatModel"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
-            model="qwen3.5",
-            coding_plan_key="sk-sp-test123",
-            model_base_url="https://other.api.com/v1",
-            model_api_key="sk-other",
-            claude_oauth_token="oauth-token",
+            model="deepseek-chat",
+            model_base_url="https://api.deepseek.com/v1",
+            model_api_key="sk-test123",
         )
 
     result = runner._resolve_model()

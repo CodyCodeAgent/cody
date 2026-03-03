@@ -62,9 +62,6 @@ class Config(BaseModel):
     model: str = 'anthropic:claude-sonnet-4-0'
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
-    claude_oauth_token: Optional[str] = None
-    coding_plan_key: Optional[str] = None
-    coding_plan_protocol: Literal['openai', 'anthropic'] = 'openai'
     enable_thinking: bool = False
     thinking_budget: Optional[int] = None
     auth: AuthConfig = Field(default_factory=AuthConfig)
@@ -73,6 +70,23 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
+
+    def is_ready(self) -> bool:
+        """Check if configuration has enough info to make API calls."""
+        if self.model_base_url:
+            return bool(self.model_api_key)
+        return bool(self.model_api_key or os.environ.get("ANTHROPIC_API_KEY"))
+
+    def missing_fields(self) -> list:
+        """Return descriptions of missing configuration fields."""
+        missing = []
+        if self.model_base_url:
+            if not self.model_api_key:
+                missing.append("model_api_key (API key for custom provider)")
+        else:
+            if not self.model_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+                missing.append("API key (model_api_key or ANTHROPIC_API_KEY env var)")
+        return missing
 
     @classmethod
     def load(
@@ -94,9 +108,6 @@ class Config(BaseModel):
             global_config = Path.home() / ".cody" / "config.json"
 
             # Layer: defaults ← global ← project ← env vars
-            # This ensures secrets (coding_plan_key, etc.) from the global
-            # config survive even when a project config exists but omits them
-            # (Config.save() strips secrets for security).
             merged: dict = {}
             if global_config.exists():
                 merged.update(json.loads(
@@ -106,6 +117,10 @@ class Config(BaseModel):
                 merged.update(json.loads(
                     project_config.read_text(encoding="utf-8"),
                 ))
+            # Strip legacy fields from old config files
+            merged.pop("coding_plan_key", None)
+            merged.pop("coding_plan_protocol", None)
+            merged.pop("claude_oauth_token", None)
             return cls._apply_env_overrides(cls(**merged))
 
         path = Path(path)
@@ -113,6 +128,10 @@ class Config(BaseModel):
             return cls._apply_env_overrides(cls())
 
         data = json.loads(path.read_text(encoding="utf-8"))
+        # Strip legacy fields from old config files
+        data.pop("coding_plan_key", None)
+        data.pop("coding_plan_protocol", None)
+        data.pop("claude_oauth_token", None)
         return cls._apply_env_overrides(cls(**data))
 
     @staticmethod
@@ -127,15 +146,10 @@ class Config(BaseModel):
         env_api_key = os.environ.get("CODY_MODEL_API_KEY")
         if env_api_key:
             config.model_api_key = env_api_key
-        env_oauth = os.environ.get("CLAUDE_OAUTH_TOKEN")
-        if env_oauth:
-            config.claude_oauth_token = env_oauth
+        # Legacy: CODY_CODING_PLAN_KEY maps to model_api_key
         env_coding_plan = os.environ.get("CODY_CODING_PLAN_KEY")
-        if env_coding_plan:
-            config.coding_plan_key = env_coding_plan
-        env_coding_plan_proto = os.environ.get("CODY_CODING_PLAN_PROTOCOL")
-        if env_coding_plan_proto:
-            config.coding_plan_protocol = env_coding_plan_proto
+        if env_coding_plan and not config.model_api_key:
+            config.model_api_key = env_coding_plan
         env_thinking = os.environ.get("CODY_ENABLE_THINKING")
         if env_thinking:
             config.enable_thinking = env_thinking.lower() in ("1", "true", "yes")
@@ -149,11 +163,8 @@ class Config(BaseModel):
         model: Optional[str] = None,
         model_base_url: Optional[str] = None,
         model_api_key: Optional[str] = None,
-        coding_plan_key: Optional[str] = None,
-        coding_plan_protocol: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
         thinking_budget: Optional[int] = None,
-        claude_oauth_token: Optional[str] = None,
         skills: Optional[list[str]] = None,
         extra_roots: Optional[list[str]] = None,
     ) -> "Config":
@@ -169,16 +180,10 @@ class Config(BaseModel):
             self.model_base_url = model_base_url
         if model_api_key is not None:
             self.model_api_key = model_api_key
-        if coding_plan_key is not None:
-            self.coding_plan_key = coding_plan_key
-        if coding_plan_protocol is not None:
-            self.coding_plan_protocol = coding_plan_protocol
         if enable_thinking is not None:
             self.enable_thinking = enable_thinking
         if thinking_budget is not None:
             self.thinking_budget = thinking_budget
-        if claude_oauth_token is not None:
-            self.claude_oauth_token = claude_oauth_token
         if skills is not None:
             self.skills.enabled = skills
         if extra_roots:
@@ -192,13 +197,10 @@ class Config(BaseModel):
     def save(self, path: Union[Path, str]):
         """Save configuration to file.
 
-        Note: model_api_key and claude_oauth_token are excluded from saved
-        files for security. Use environment variables instead.
+        model_api_key is persisted to the config file for convenience.
+        Use environment variables (CODY_MODEL_API_KEY) to override if needed.
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump(exclude_none=True)
-        data.pop("model_api_key", None)
-        data.pop("claude_oauth_token", None)
-        data.pop("coding_plan_key", None)
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
