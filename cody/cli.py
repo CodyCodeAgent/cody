@@ -39,7 +39,7 @@ def _interactive_setup() -> Config:
     ))
 
     # 1. API Key (required)
-    api_key = click.prompt("\nAPI Key", hide_input=True, prompt_suffix=": ")
+    api_key = click.prompt("\nAPI Key", prompt_suffix=": ")
 
     # 2. Base URL (optional — leave empty for Anthropic)
     base_url = click.prompt(

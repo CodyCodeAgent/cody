@@ -56,14 +56,6 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
   const [streamThinking, setStreamThinking] = useState("");
   const [streamToolCalls, setStreamToolCalls] = useState<ToolCallInfo[]>([]);
 
-  // Settings panel state
-  const [showSettings, setShowSettings] = useState(false);
-  const [modelOverride, setModelOverride] = useState("");
-  const [baseUrlOverride, setBaseUrlOverride] = useState("");
-  const [apiKeyOverride, setApiKeyOverride] = useState("");
-  const [enableThinking, setEnableThinking] = useState(false);
-  const [thinkingBudget, setThinkingBudget] = useState("");
-
   // Image upload state
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -320,14 +312,9 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
       content: text,
     };
     if (pendingImages.length > 0) payload.images = pendingImages;
-    if (modelOverride) payload.model = modelOverride;
-    if (baseUrlOverride) payload.model_base_url = baseUrlOverride;
-    if (apiKeyOverride) payload.model_api_key = apiKeyOverride;
-    if (enableThinking) payload.enable_thinking = true;
-    if (thinkingBudget) payload.thinking_budget = parseInt(thinkingBudget, 10) || undefined;
 
     socketRef.current?.send(payload);
-  }, [input, streaming, pendingImages, modelOverride, baseUrlOverride, apiKeyOverride, enableThinking, thinkingBudget, resetBuffer]);
+  }, [input, streaming, pendingImages, resetBuffer]);
 
   const hasStreamActivity = streaming && (streamThinking || streamToolCalls.length > 0 || streamContent);
 
@@ -461,62 +448,6 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
         <div ref={bottomRef} />
       </div>
 
-      {/* Settings panel */}
-      {showSettings && (
-        <div className="chat-settings">
-          <label className="setting-item">
-            <span>Model</span>
-            <input
-              type="text"
-              value={modelOverride}
-              onChange={(e) => setModelOverride(e.target.value)}
-              placeholder="default"
-              className="setting-input"
-            />
-          </label>
-          <label className="setting-item">
-            <span>Base URL</span>
-            <input
-              type="text"
-              value={baseUrlOverride}
-              onChange={(e) => setBaseUrlOverride(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-              className="setting-input"
-            />
-          </label>
-          <label className="setting-item">
-            <span>API Key</span>
-            <input
-              type="password"
-              value={apiKeyOverride}
-              onChange={(e) => setApiKeyOverride(e.target.value)}
-              placeholder="sk-..."
-              className="setting-input"
-            />
-          </label>
-          <label className="setting-item">
-            <span>Thinking</span>
-            <input
-              type="checkbox"
-              checked={enableThinking}
-              onChange={(e) => setEnableThinking(e.target.checked)}
-            />
-          </label>
-          {enableThinking && (
-            <label className="setting-item">
-              <span>Budget</span>
-              <input
-                type="number"
-                value={thinkingBudget}
-                onChange={(e) => setThinkingBudget(e.target.value)}
-                placeholder="10000"
-                className="setting-input setting-input-sm"
-              />
-            </label>
-          )}
-        </div>
-      )}
-
       {/* Pending image previews */}
       {pendingImages.length > 0 && (
         <div className="image-preview-bar">
@@ -546,14 +477,6 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
         }}
         onPaste={handlePaste}
       >
-        <button
-          type="button"
-          className="btn-icon settings-toggle"
-          onClick={() => setShowSettings((v) => !v)}
-          title="Settings"
-        >
-          {showSettings ? "\u25BC" : "\u25B2"}
-        </button>
         <button
           type="button"
           className="btn-icon image-upload-btn"

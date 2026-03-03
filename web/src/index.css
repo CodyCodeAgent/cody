@@ -273,29 +273,37 @@ body {
 
 .chat-settings {
   display: flex;
-  gap: 16px;
-  padding: 8px 20px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px;
   background: #1e1e2e;
   border-top: 1px solid #27272a;
-  flex-wrap: wrap;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .setting-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: 13px;
   color: #a1a1aa;
 }
 
+.setting-item > span {
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
 .setting-input {
-  padding: 4px 8px;
+  padding: 6px 10px;
   background: #27272a;
   border: 1px solid #3f3f46;
   border-radius: 4px;
   color: #e4e4e7;
-  font-size: 12px;
-  width: 160px;
+  font-size: 13px;
+  flex: 1;
+  min-width: 0;
   outline: none;
 }
 
