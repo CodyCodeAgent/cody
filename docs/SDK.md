@@ -69,7 +69,7 @@ client = (
     Cody()
     .workdir("/path/to/project")
     .model("anthropic:claude-sonnet-4-0")
-    .api_key("sk-xxx")
+    .api_key("sk-ant-xxx")
     .thinking(True, budget=10000)
     .allowed_roots(["/path/to/project", "/shared/libs"])
     .enable_metrics()
@@ -81,6 +81,8 @@ client = (
 client = AsyncCodyClient(
     workdir="/path/to/project",
     model="anthropic:claude-sonnet-4-0",
+    api_key="sk-ant-xxx",
+    base_url=None,  # 使用默认 Anthropic API
     db_path="/path/to/sessions.db",
 )
 
@@ -88,12 +90,59 @@ client = AsyncCodyClient(
 cfg = config(
     model="anthropic:claude-sonnet-4-0",
     workdir=".",
+    api_key="sk-ant-xxx",
     enable_thinking=True,
     thinking_budget=10000,
     allowed_roots=["/path/to/project", "/shared/libs"],
 )
 client = AsyncCodyClient(config=cfg)
 ```
+
+### 连接第三方模型提供商
+
+通过 `base_url` + `api_key` 连接任何 OpenAI 兼容 API：
+
+```python
+# 智谱 GLM
+client = (
+    Cody()
+    .workdir("/path/to/project")
+    .model("glm-4")
+    .base_url("https://open.bigmodel.cn/api/paas/v4/")
+    .api_key("your-zhipu-api-key")
+    .build()
+)
+
+# 通义千问（阿里云百炼）
+client = (
+    Cody()
+    .workdir("/path/to/project")
+    .model("qwen-plus")
+    .base_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
+    .api_key("sk-xxx")
+    .build()
+)
+
+# DeepSeek
+client = (
+    Cody()
+    .workdir("/path/to/project")
+    .model("deepseek-chat")
+    .base_url("https://api.deepseek.com/v1")
+    .api_key("sk-xxx")
+    .build()
+)
+
+# 直接构造方式同样支持
+client = AsyncCodyClient(
+    workdir="/path/to/project",
+    model="glm-4",
+    base_url="https://open.bigmodel.cn/api/paas/v4/",
+    api_key="your-zhipu-api-key",
+)
+```
+
+> **说明**：`base_url` 指向 OpenAI 兼容的 API 地址。不设置 `base_url` 时，默认使用 Anthropic API。
 
 ### CodyClient（同步）
 
