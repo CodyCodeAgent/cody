@@ -1,89 +1,89 @@
-# Cody - Architecture Design
+# Cody — Architecture Design
 
-## System Overview
+## Open-source AI Coding Agent Framework
+
+Cody's architecture follows a **framework + reference implementations** pattern. The `core/` package is a reusable AI agent framework — it owns all logic, tools, and orchestration. CLI, TUI, Web Backend, and Python SDK are four independent consumers that import core directly, each demonstrating a different integration surface (command-line, terminal UI, HTTP/WebSocket, programmatic).
+
+**Why this structure?** By keeping every capability inside `core/`, anyone can build a new integration (IDE plugin, CI bot, Slack app, custom agent) without duplicating logic. The four built-in consumers serve as reference implementations and cover the most common use cases.
+
+## 系统总览
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Users / Callers                       │
-│    (CLI / TUI / Web / Clawdbot / CI-CD / Other Agents)      │
-└──┬──────────────┬──────────────┬──────────────────────────────┘
-   │              │              │
-  CLI          TUI          Web Frontend
-  (Click)      (Textual)    (React+Vite)
-  cody/cli.py  cody/tui.py  web/src/
-   │              │              │
-   │              │     Unified Web Backend
-   │              │     (FastAPI:8000)
-   │              │     web/backend/
-   │              │     (Web + RPC endpoints)
-   │              │     ↕ web.db
-   │              │              │
-   └──────────────┴──────────────┘
-                      │
-         ┌────────────▼────────────┐
-         │    Python SDK           │
-         │    cody/client.py       │
-         │    cody/sdk/ (enhanced) │
-         │    (in-process,         │
-         │     no HTTP)            │
-         └────────────┬────────────┘
-                      │ (direct import)
-┌─────────────────────▼───────────────────────────────────────┐
-│                     Cody Core Engine                         │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │          AgentRunner (core/runner.py)                  │  │
-│  │  - Creates Pydantic AI Agent                          │  │
-│  │  - Registers 28 tools                                 │  │
-│  │  - Context compaction (auto)                          │  │
-│  │  - Session-aware run methods                          │  │
-│  │  - Assembles CodyDeps for dependency injection        │  │
-│  └──────────┬────────────────────────────────────────────┘  │
-│             │                                                │
-│  ┌──────────▼────────────────────────────────────────────┐  │
-│  │     Tool & Extension Layer                            │  │
-│  │  ┌──────────┬───────────┬──────────┬──────────────┐  │  │
-│  │  │ Built-in │ Skill     │ MCP      │ LSP          │  │  │
-│  │  │ Tools    │ System    │ Client   │ Client       │  │  │
-│  │  │          │           │          │              │  │  │
-│  │  │ file ops │ .cody/    │ stdio    │ pyright      │  │  │
-│  │  │ search   │ ~/.cody/  │ JSON-RPC │ tsserver     │  │  │
-│  │  │ exec     │ builtin/  │          │ gopls        │  │  │
-│  │  │ web      │ 11 skills │ github   │              │  │  │
-│  │  │ todo     │           │ db, fs   │ diagnostics  │  │  │
-│  │  │ question │           │ etc.     │ definition   │  │  │
-│  │  │ undo/    │           │          │ references   │  │  │
-│  │  │ redo     │           │          │ hover        │  │  │
-│  │  └──────────┴───────────┴──────────┴──────────────┘  │  │
-│  └───────────────────────────────────────────────────────┘  │
-│             │                                                │
-│  ┌──────────▼────────────────────────────────────────────┐  │
-│  │     Infrastructure Layer                              │  │
-│  │  ┌───────────┬───────────┬──────────┬─────────────┐  │  │
-│  │  │ Sub-Agent │ Session   │ Context  │ Security    │  │  │
-│  │  │ Manager   │ Store     │ Manager  │             │  │  │
-│  │  │           │           │          │ Permissions │  │  │
-│  │  │ spawn     │ SQLite    │ compact  │ Auth/OAuth  │  │  │
-│  │  │ kill      │ sessions  │ chunk    │ Audit Log   │  │  │
-│  │  │ wait      │ messages  │ select   │ Rate Limit  │  │  │
-│  │  │ 4 types   │ history   │ tokens   │ FileHistory │  │  │
-│  │  └───────────┴───────────┴──────────┴─────────────┘  │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                         Users / Callers                         │
+│     (CLI / TUI / Web / SDK consumers / CI-CD / Other Agents)   │
+└──┬──────────────┬──────────────┬──────────────┬────────────────┘
+   │              │              │              │
+  CLI           TUI        Web Frontend    Python SDK
+  (Click)       (Textual)  (React+Vite)   (in-process)
+  cody/cli.py   cody/tui.py  web/src/     cody/sdk/
+   │              │              │              │
+   │              │     Unified Web Backend     │
+   │              │     (FastAPI:8000)           │
+   │              │     web/backend/             │
+   │              │     (Web + RPC endpoints)    │
+   │              │     ↕ web.db                 │
+   │              │              │              │
+   │  (direct)    │  (direct)    │  (direct)    │  (direct)
+   │              │              │              │
+┌──▼──────────────▼──────────────▼──────────────▼────────────────┐
+│                     Cody Core — Agent Framework                  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │          AgentRunner (core/runner.py)                      │  │
+│  │  - Creates Pydantic AI Agent                              │  │
+│  │  - Registers 28 tools                                     │  │
+│  │  - Context compaction (auto)                              │  │
+│  │  - Session-aware run methods                              │  │
+│  │  - Assembles CodyDeps for dependency injection            │  │
+│  └──────────┬────────────────────────────────────────────────┘  │
+│             │                                                    │
+│  ┌──────────▼────────────────────────────────────────────────┐  │
+│  │     Tool & Extension Layer                                │  │
+│  │  ┌──────────┬───────────┬──────────┬──────────────┐      │  │
+│  │  │ Built-in │ Skill     │ MCP      │ LSP          │      │  │
+│  │  │ Tools    │ System    │ Client   │ Client       │      │  │
+│  │  │          │           │          │              │      │  │
+│  │  │ file ops │ .cody/    │ stdio    │ pyright      │      │  │
+│  │  │ search   │ ~/.cody/  │ JSON-RPC │ tsserver     │      │  │
+│  │  │ exec     │ builtin/  │          │ gopls        │      │  │
+│  │  │ web      │ 11 skills │ github   │              │      │  │
+│  │  │ todo     │           │ db, fs   │ diagnostics  │      │  │
+│  │  │ question │           │ etc.     │ definition   │      │  │
+│  │  │ undo/    │           │          │ references   │      │  │
+│  │  │ redo     │           │          │ hover        │      │  │
+│  │  └──────────┴───────────┴──────────┴──────────────┘      │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│             │                                                    │
+│  ┌──────────▼────────────────────────────────────────────────┐  │
+│  │     Infrastructure Layer                                  │  │
+│  │  ┌───────────┬───────────┬──────────┬─────────────┐      │  │
+│  │  │ Sub-Agent │ Session   │ Context  │ Security    │      │  │
+│  │  │ Manager   │ Store     │ Manager  │             │      │  │
+│  │  │           │           │          │ Permissions │      │  │
+│  │  │ spawn     │ SQLite    │ compact  │ Audit Log   │      │  │
+│  │  │ kill      │ sessions  │ chunk    │ Rate Limit  │      │  │
+│  │  │ wait      │ messages  │ select   │ FileHistory │      │  │
+│  │  │ 4 types   │ history   │ tokens   │             │      │  │
+│  │  └───────────┴───────────┴──────────┴─────────────┘      │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
               │
-┌─────────────▼───────────────────────────────────────────────┐
-│                  External Services                           │
-│  - Anthropic / OpenAI / Google / DeepSeek APIs              │
-│  - File System                                              │
-│  - Shell / Subprocess                                       │
-│  - MCP Servers (GitHub, DB, FS, etc.)                       │
-│  - Language Servers (pyright, tsserver, gopls)               │
-│  - DuckDuckGo (web search)                                  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────▼────────────────────────────────────────────────────┐
+│                  External Services                                │
+│  - Anthropic / OpenAI / Google / DeepSeek APIs                   │
+│  - File System                                                   │
+│  - Shell / Subprocess                                            │
+│  - MCP Servers (GitHub, DB, FS, etc.)                            │
+│  - Language Servers (pyright, tsserver, gopls)                    │
+│  - DuckDuckGo (web search)                                       │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+All four consumers — CLI, TUI, Web Backend, Python SDK — import `core/` directly as an in-process library. There is no intermediary layer between any consumer and the framework.
 
 ---
 
-## Core Components
+## Framework Core 组件
 
 ### 1. AgentRunner (`core/runner.py`)
 
@@ -105,7 +105,7 @@ ToolCallEvent    — tool call initiated (tool_name, args, tool_call_id)
 ToolResultEvent  — tool call result (tool_name, result)
 DoneEvent        — stream complete, contains full CodyResult
 ```
-Core provides all data; shells (CLI/TUI/Server) decide rendering.
+Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
 
 **CodyResult:** Rich result model returned by `run()` / `run_sync()` and via `DoneEvent`:
 ```
@@ -232,7 +232,7 @@ SQLite-backed persistence:
 - Auto-migration: `ALTER TABLE messages ADD COLUMN images` on first use
 - Default DB: `~/.cody/sessions.db`
 
-### 9. Security Stack
+### 10. Security Stack
 
 | Component | Module | Purpose |
 |-----------|--------|---------|
@@ -245,6 +245,21 @@ SQLite-backed persistence:
 | Cmd Safety | `core/tools.py` | Dangerous command detection (rm -rf, dd, fork bomb) |
 
 Web Backend (`web/backend/middleware.py`) wires these as middleware: auth → rate_limit → audit.
+
+---
+
+## Reference Implementations（参考实现）
+
+The four consumers demonstrate different ways to build on the core framework:
+
+| Consumer | Module | Integration Pattern |
+|----------|--------|---------------------|
+| **CLI** | `cody/cli.py` | Click commands → `AgentRunner.run_stream()` → print events to terminal |
+| **TUI** | `cody/tui.py` | Textual app → `AgentRunner.run_stream()` → render events in TUI widgets |
+| **Web Backend** | `web/backend/` | FastAPI → `AgentRunner.run_with_session()` → JSON/SSE/WebSocket responses |
+| **Python SDK** | `cody/sdk/` | `CodyClient` / `AsyncCodyClient` → wraps core with Builder pattern + typed results |
+
+Each consumer adds its own concerns (CLI adds argument parsing, TUI adds widget rendering, Web adds HTTP auth/middleware, SDK adds Builder API) while delegating all agent logic to core.
 
 ---
 
@@ -324,24 +339,20 @@ Config
 
 ---
 
-## Dependency Direction
+## 依赖方向
 
 ```
-cli.py ──→
-tui.py ──→  core/*
-web/backend/ ──→ core/* (direct import)
-cody/client.py (Python SDK) ──→ core/* (in-process, no HTTP)
-             ↓
-         pydantic-ai, sqlite3, httpx, etc.
+cli.py ──────────→ core/*  (direct import)
+tui.py ──────────→ core/*  (direct import)
+web/backend/ ────→ core/*  (direct import)
+cody/sdk/ ───────→ core/*  (direct import, in-process)
+                     ↓
+              pydantic-ai, sqlite3, httpx, etc.
 ```
 
-**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, or `web/`. All functionality lives in core; shells just expose it.
+**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, `web/`, or `sdk/`. All functionality lives in core; consumers just expose it through their own interface.
 
-**Unified architecture:**
-- `web/backend/` is the unified FastAPI app (port 8000) that serves both Web-specific (projects, chat) and RPC endpoints (run, tool, sessions, skills, agents, ws)
-- `web/backend/` imports core directly (no HTTP intermediary)
-- `web/src/` is a React SPA that talks to the web backend
-- `cody/client.py` (Python SDK) is an in-process wrapper around core (no HTTP, no server needed)
+**Framework design principle:** Any new consumer can import `core/` and get the full agent experience — tools, sessions, sub-agents, skills, MCP, LSP — without depending on or even knowing about the other consumers.
 
 ---
 

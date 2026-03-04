@@ -1,6 +1,6 @@
 # Cody - CLI 使用文档
 
-命令行界面 (CLI) 是 Cody 最常用的交互方式，支持单次任务执行、交互式对话、会话管理等多种模式。
+命令行界面 (CLI) 是 Cody 框架的参考实现之一，提供单次任务执行、交互式对话、会话管理等功能，适合终端中快速使用。
 
 ---
 
@@ -13,7 +13,7 @@
 pip install cody-ai[cli]
 
 # 从源码安装
-git clone https://github.com/SUT-GC/cody.git
+git clone https://github.com/CodyCodeAgent/cody.git
 cd cody
 pip install -e ".[cli]"
 

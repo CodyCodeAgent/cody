@@ -1,6 +1,8 @@
 # Cody - 技能开发指南
 
-技能（Skills）是 Cody 的核心特性之一，遵循 [Agent Skills Open Standard](https://agentskills.io/) 规范。通过技能，你可以为 AI 提供特定领域的专业知识和最佳实践。
+技能（Skills）是 Cody 框架的核心组件之一，遵循 [Agent Skills Open Standard](https://agentskills.io/) 规范（已被 26+ 平台采用，包括 Claude Code、Cursor、GitHub Copilot 等）。通过技能，你可以为 AI Agent 提供特定领域的专业知识和最佳实践。
+
+> **跨平台兼容**：基于 Cody 框架创建的技能可以直接在其他支持 Agent Skills 标准的平台上使用，反之亦然。
 
 ---
 
@@ -603,13 +605,39 @@ Detailed instructions...
 
 ---
 
+## SDK 中使用技能
+
+除了 CLI 管理技能，你也可以通过 Python SDK 程序化管理：
+
+```python
+from cody import AsyncCodyClient
+
+async with AsyncCodyClient(workdir="/path/to/project") as client:
+    # 列出所有技能
+    skills = await client.list_skills()
+    for skill in skills:
+        print(f"[{'on' if skill['enabled'] else 'off'}] {skill['name']}: {skill['description']}")
+
+    # 获取技能文档
+    skill = await client.get_skill("git")
+    print(skill['documentation'])
+
+    # 指定启用的技能执行任务
+    result = await client.run("创建一个用户 API，包含测试")
+    print(result.output)
+```
+
+更多 SDK 用法详见 [SDK 使用文档](SDK.md)。
+
+---
+
 ## 贡献内置技能
 
 欢迎贡献新的内置技能！
 
 ### 提交流程
 
-1. Fork 项目仓库
+1. Fork [项目仓库](https://github.com/CodyCodeAgent/cody)
 2. 在 `cody/skills/` 下创建技能目录
 3. 创建 `SKILL.md` 文件
 4. 运行测试验证
@@ -624,4 +652,4 @@ Detailed instructions...
 
 ---
 
-**最后更新:** 2026-02-28
+**最后更新:** 2026-03-04
