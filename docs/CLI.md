@@ -9,10 +9,13 @@
 ### 安装
 
 ```bash
+# PyPI 安装（CLI 需要 extras）
+pip install cody-ai[cli]
+
 # 从源码安装
 git clone https://github.com/SUT-GC/cody.git
 cd cody
-pip install -e .
+pip install -e ".[cli]"
 
 # 验证安装
 cody --version
@@ -173,7 +176,7 @@ cody run -v "读取并分析 main.py"
 
 **正常输出:**
 - 流式显示 AI 回复内容
-- 工具调用以灰色显示（如 `→ read_file(path='main.py')`）
+- 工具调用以灰色显示（如 `→ read_file(path='main.py')`），参数值超过 120 字符自动截断
 - 思考内容以暗色显示（如果启用）
 
 **Verbose 模式额外显示:**
@@ -919,4 +922,4 @@ uvicorn api.main:app --reload
 
 ---
 
-**最后更新:** 2026-03-03
+**最后更新:** 2026-03-04

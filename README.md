@@ -2,9 +2,9 @@
 
 **AI 编码引擎** — 支持 RPC Server、动态技能、MCP 集成和 LSP 代码智能。
 
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-526%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-566%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **核心理念：引擎做厚，壳子做薄。** CLI、TUI、Web 和 Server 都是基于核心引擎的薄壳。Server + SDK 交付模式是我们的差异化优势 — 让其他人能够将 AI 编码能力嵌入到自己的系统中。
@@ -64,12 +64,19 @@
 ### 安装
 
 ```bash
-# 克隆项目
+# PyPI 安装（仅核心 SDK，4 个依赖）
+pip install cody-ai
+
+# 安装 CLI
+pip install cody-ai[cli]
+
+# 安装全部功能（CLI + TUI + Web）
+pip install cody-ai[all]
+
+# 从源码安装（开发）
 git clone https://github.com/SUT-GC/cody.git
 cd cody
-
-# 安装
-pip install -e .
+pip install -e ".[dev]"
 
 # 验证安装
 cody --version
@@ -177,6 +184,12 @@ cody-web --port 9000                 # 自定义端口
 
 #### Python SDK（in-process，无需启动 Server）
 
+```bash
+pip install cody-ai          # 仅核心 SDK（4 个依赖）
+pip install cody-ai[cli]     # + CLI
+pip install cody-ai[all]     # 全部功能
+```
+
 ```python
 from cody import AsyncCodyClient
 
@@ -198,6 +211,8 @@ async with AsyncCodyClient(workdir="/path/to/project") as client:
 ```
 
 同步版本：`CodyClient`。SDK 直接调用核心引擎，无需 HTTP 连接。
+
+**依赖分层：** `pip install cody-ai` 仅安装 4 个核心依赖（pydantic-ai、anthropic、pydantic、httpx），CLI/TUI/Web 作为可选依赖组按需安装。
 
 详细文档：[🔌 SDK 使用指南](docs/SDK.md)
 
@@ -341,20 +356,20 @@ cody config set model_base_url "https://..."          # 设置 API 地址
 ## 🧪 开发
 
 ```bash
-# 安装开发依赖
+# 安装开发依赖（全部功能 + 测试工具）
 pip install -e ".[dev]"
 
-# 运行核心测试（481 个）
-python3 -m pytest tests/ -v
+# 运行核心测试（481 个）+ SDK 测试（65 个）
+uv run pytest tests/ -v
 
 # 运行 Web 后端测试（45 个）
-PYTHONPATH=. python3 -m pytest web/tests/ -v
+PYTHONPATH=. uv run pytest web/tests/ -v
 
 # Lint
-python3 -m ruff check cody/ tests/ web/
+uv run ruff check cody/ tests/ web/
 
 # 格式化
-python3 -m ruff format cody/ tests/
+uv run ruff format cody/ tests/
 ```
 
 ---
@@ -397,4 +412,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-03-02 | **版本:** 1.3.0
+**最后更新:** 2026-03-04 | **版本:** 1.6.0

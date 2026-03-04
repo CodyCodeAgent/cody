@@ -23,6 +23,7 @@
          ┌────────────▼────────────┐
          │    Python SDK           │
          │    cody/client.py       │
+         │    cody/sdk/ (enhanced) │
          │    (in-process,         │
          │     no HTTP)            │
          └────────────┬────────────┘
@@ -32,7 +33,7 @@
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │          AgentRunner (core/runner.py)                  │  │
 │  │  - Creates Pydantic AI Agent                          │  │
-│  │  - Registers 30+ tools                                │  │
+│  │  - Registers 28 tools                                 │  │
 │  │  - Context compaction (auto)                          │  │
 │  │  - Session-aware run methods                          │  │
 │  │  - Assembles CodyDeps for dependency injection        │  │
@@ -344,4 +345,4 @@ cody/client.py (Python SDK) ──→ core/* (in-process, no HTTP)
 
 ---
 
-**Last updated:** 2026-03-03
+**Last updated:** 2026-03-04

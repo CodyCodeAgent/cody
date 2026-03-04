@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **SDK 增强模块** (`cody/sdk/`) — Builder 模式、事件系统、指标收集、增强错误处理
+  - `Cody()` Builder — 链式配置，`Cody().workdir("/path").model("...").build()`
+  - `EventManager` — 事件钩子系统，支持同步/异步 handler
+  - `MetricsCollector` — Token 使用、工具调用、会话级指标收集
+  - 10 个细粒度错误类（CodyModelError、CodyToolError、CodyPermissionError 等）
+  - 4 个示例文件（basic、streaming、events、tools）
+  - 65 个 SDK 测试
+- **依赖分层** — `pyproject.toml` 拆分为核心依赖 + 可选依赖组
+  - `pip install cody-ai` — 只装核心（pydantic-ai, anthropic, pydantic, httpx）
+  - `pip install cody-ai[cli]` — 加 CLI（click, rich）
+  - `pip install cody-ai[tui]` — 加 TUI（textual）
+  - `pip install cody-ai[web]` — 加 Web（fastapi, uvicorn）
+  - `pip install cody-ai[all]` — 全部
+
+### Changed
+
+- **SDK 合并** — `cody/sdk/` 成为唯一 SDK 实现，直接包装 core（单层），`cody/client.py` 变为向后兼容 re-export shim
+  - 新增 `cody/sdk/types.py` — SDK 响应类型（RunResult、Usage、StreamChunk 等）
+  - `cody/sdk/client.py` 重写 — 不再双层包装（sdk → client → core），改为直接包装 core
+  - 所有导入路径向后兼容：`from cody import ...`、`from cody.client import ...`、`from cody.sdk import ...`
+- **TUI 性能优化** — StreamBubble 改为 30fps 批量渲染 + 滚动节流
+  - 工具参数显示截断（超 120 字符自动截断）
+  - ToolResultEvent 显示摘要行（工具名 + 结果长度）
+  - 长对话消息回收（超 200 条自动移除旧 widget）
+- **CLI 工具参数截断** — 与 TUI 一致的 `_truncate_repr` 截断显示
+
+### Removed
+- `python-dotenv` — 从依赖中移除（代码未使用）
+
+---
+
 ## [1.6.0] - 2026-03-03
 
 ### Added

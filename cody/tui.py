@@ -5,15 +5,32 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from textual import work
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import VerticalScroll
-from textual.css.query import NoMatches
-from textual.reactive import reactive
-from textual.widgets import Header, Input, Static
+try:
+    from textual import work
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import VerticalScroll
+    from textual.css.query import NoMatches
+    from textual.reactive import reactive
+    from textual.widgets import Header, Input, Static
+except ImportError:
+    raise SystemExit(
+        "TUI requires extra dependencies. Install with:\n"
+        "  pip install cody-ai[tui]"
+    )
 
 from .core import AgentRunner, Config, SessionStore
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _truncate_repr(value: object, max_len: int = 120) -> str:
+    """Truncate repr of a value to max_len characters."""
+    s = repr(value)
+    if len(s) <= max_len:
+        return s
+    return s[:max_len] + f"...({len(s)} chars)"
 
 
 # ── Widgets ──────────────────────────────────────────────────────────────────
@@ -37,20 +54,38 @@ class MessageBubble(Static):
 
 
 class StreamBubble(Static):
-    """A message bubble that accumulates streamed text."""
+    """A message bubble that accumulates streamed text with batched rendering."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__("[bold green]Cody[/bold green]\n", **kwargs)
-        self._chunks: list[str] = []
+        self._buffer: str = ""
+        self._dirty: bool = False
+        self._timer = None
+
+    def on_mount(self) -> None:
+        self._timer = self.set_interval(1 / 30, self._flush)
+
+    def _flush(self) -> None:
+        if not self._dirty:
+            return
+        self._dirty = False
+        self.update(f"[bold green]Cody[/bold green]\n{self._buffer}")
+        try:
+            self.parent.scroll_end(animate=False)
+        except Exception:
+            pass
 
     def append(self, text: str) -> None:
-        self._chunks.append(text)
-        full = "".join(self._chunks)
-        self.update(f"[bold green]Cody[/bold green]\n{full}")
+        self._buffer += text
+        self._dirty = True
 
     @property
     def full_text(self) -> str:
-        return "".join(self._chunks)
+        return self._buffer
+
+    def on_unmount(self) -> None:
+        if self._timer:
+            self._timer.stop()
 
 
 class StatusLine(Static):
@@ -204,8 +239,15 @@ class CodyTUI(App):
 
     # ── UI helpers ───────────────────────────────────────────────────────────
 
+    _MAX_BUBBLES = 200
+
     def _add_bubble(self, role: str, content: str) -> MessageBubble:
         scroll = self.query_one("#chat-scroll", VerticalScroll)
+        # Recycle old bubbles to keep widget tree lightweight
+        bubbles = scroll.query(MessageBubble)
+        if len(bubbles) >= self._MAX_BUBBLES:
+            for old in list(bubbles)[: len(bubbles) - self._MAX_BUBBLES + 1]:
+                old.remove()
         bubble = MessageBubble(role, content)
         scroll.mount(bubble)
         scroll.scroll_end(animate=False)
@@ -347,7 +389,6 @@ class CodyTUI(App):
         self._cancel_event = asyncio.Event()
 
         bubble = self._add_stream_bubble()
-        scroll = self.query_one("#chat-scroll", VerticalScroll)
 
         # Start processing indicator on status line
         self._start_processing()
@@ -369,18 +410,22 @@ class CodyTUI(App):
                     )
                 elif isinstance(event, ThinkingEvent):
                     bubble.append(f"[dim]{event.content}[/dim]")
-                    scroll.scroll_end(animate=False)
                 elif isinstance(event, ToolCallEvent):
                     self._set_processing_state(f"Running {event.tool_name}...")
-                    args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+                    args_str = ", ".join(
+                        f"{k}={_truncate_repr(v)}"
+                        for k, v in list(event.args.items())[:3]
+                    )
                     bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
-                    scroll.scroll_end(animate=False)
                 elif isinstance(event, ToolResultEvent):
                     self._set_processing_state("Generating...")
+                    result_len = len(event.result) if event.result else 0
+                    bubble.append(
+                        f"[dim]✓ {event.tool_name} done ({result_len} chars)[/dim]\n"
+                    )
                 elif isinstance(event, TextDeltaEvent):
                     self._set_processing_state("Generating...")
                     bubble.append(event.content)
-                    scroll.scroll_end(animate=False)
                 elif isinstance(event, DoneEvent):
                     # Use real message history from pydantic-ai (includes tool calls)
                     self._message_history = event.result.all_messages()

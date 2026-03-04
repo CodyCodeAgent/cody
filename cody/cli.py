@@ -6,11 +6,17 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import click
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.markup import escape as rich_escape
-from rich.panel import Panel
+try:
+    import click
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.markup import escape as rich_escape
+    from rich.panel import Panel
+except ImportError:
+    raise SystemExit(
+        "CLI requires extra dependencies. Install with:\n"
+        "  pip install cody-ai[cli]"
+    )
 
 from .core import Config, AgentRunner, SessionStore
 from .core.project_instructions import CODY_MD_FILENAME, generate_project_instructions
@@ -21,6 +27,14 @@ from .core.runner import (
 from .core.setup import SetupAnswers, build_config_from_answers
 
 console = Console()
+
+
+def _truncate_repr(value: object, max_len: int = 120) -> str:
+    """Truncate repr of a value to max_len characters."""
+    s = repr(value)
+    if len(s) <= max_len:
+        return s
+    return s[:max_len] + f"...({len(s)} chars)"
 
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -179,7 +193,9 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
                 console.print(rich_escape("".join(thinking_buf)), style="dim")
                 thinking_buf.clear()
                 in_thinking = False
-            args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+            args_str = ", ".join(
+                f"{k}={_truncate_repr(v)}" for k, v in list(event.args.items())[:3]
+            )
             console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
             spinner_task = asyncio.create_task(
                 _status_spinner(

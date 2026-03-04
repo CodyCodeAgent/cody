@@ -1,29 +1,37 @@
 # Cody - SDK 使用文档
 
-Cody 提供 Python SDK，用于在 Python 应用中直接使用 Cody 核心引擎。SDK 是 core 的 in-process 封装，无需 HTTP 服务。
+Cody 提供统一的 Python SDK（`cody.sdk`），用于在 Python 应用中直接使用 Cody 核心引擎。SDK 直接包装 core，无需 HTTP 服务。
+
+> **架构说明**：`cody.sdk` 是唯一的 SDK 实现，直接包装 `cody.core`（单层）。`cody.client` 模块保留为向后兼容 shim，re-export 所有 SDK 符号。
 
 ---
 
 ## 目录
 
-1. [Python SDK](#python-sdk)
-2. [最佳实践](#最佳实践)
+1. [快速开始](#快速开始)
+2. [三种创建方式](#三种创建方式)
+3. [核心方法](#核心方法)
+4. [事件系统](#事件系统)
+5. [指标收集](#指标收集)
+6. [便捷方法](#便捷方法)
+7. [错误处理](#错误处理)
+8. [最佳实践](#最佳实践)
 
 ---
 
-## Python SDK
+## 快速开始
 
 ### 安装
 
 ```bash
-# 安装 cody 包（包含 SDK）
+# 只装核心 SDK（4 个依赖）
 pip install cody-ai
 
-# 或从源码安装
-pip install -e .
+# 完整安装（包含 CLI、TUI、Web）
+pip install cody-ai[all]
 ```
 
-### 快速开始
+### 最简示例
 
 ```python
 from cody import AsyncCodyClient
@@ -34,25 +42,46 @@ async with AsyncCodyClient() as client:
     print(result.output)
 ```
 
-### 客户端类型
+### 导入路径
 
-SDK 是 core 的 in-process 封装，直接导入核心模块，无需启动任何 HTTP 服务。
-
-#### AsyncCodyClient（异步，推荐）
+以下三种导入方式完全等价：
 
 ```python
-from cody import AsyncCodyClient
-
-async with AsyncCodyClient(
-    workdir="/path/to/project",  # 工作目录，默认 cwd
-    model="anthropic:claude-sonnet-4-0",  # 可选模型覆盖
-    db_path="/path/to/sessions.db",  # 可选会话数据库路径
-) as client:
-    # 使用客户端
-    result = await client.run("任务")
+from cody import AsyncCodyClient           # 推荐
+from cody.sdk import AsyncCodyClient       # 完整路径
+from cody.client import AsyncCodyClient    # 向后兼容
 ```
 
-#### CodyClient（同步）
+## 三种创建方式
+
+```python
+from cody.sdk import AsyncCodyClient, Cody, config
+
+# 1. Builder 模式（推荐）
+client = (
+    Cody()
+    .workdir("/path/to/project")
+    .model("anthropic:claude-sonnet-4-0")
+    .api_key("sk-xxx")
+    .thinking(True, budget=10000)
+    .enable_metrics()
+    .enable_events()
+    .build()
+)
+
+# 2. 直接构造
+client = AsyncCodyClient(
+    workdir="/path/to/project",
+    model="anthropic:claude-sonnet-4-0",
+    db_path="/path/to/sessions.db",
+)
+
+# 3. Config 对象
+cfg = config(model="anthropic:claude-sonnet-4-0", workdir=".", enable_thinking=True)
+client = AsyncCodyClient(config=cfg)
+```
+
+### CodyClient（同步）
 
 ```python
 from cody import CodyClient
@@ -216,27 +245,6 @@ print(f"Status: {health['status']}, Version: {health['version']}")
 
 ---
 
-### 错误处理
-
-```python
-from cody import CodyError, CodyNotFoundError
-
-try:
-    result = await client.run("任务")
-except CodyNotFoundError as e:
-    print(f"资源不存在：{e.message}")
-except CodyError as e:
-    print(f"错误：{e.message}")
-```
-
-**错误类型：**
-| 错误 | 说明 |
-|------|------|
-| `CodyError` | 基础错误类 |
-| `CodyNotFoundError` | 资源不存在（会话/工具/技能）|
-
----
-
 ### 完整示例
 
 #### 示例 1：单次任务
@@ -342,6 +350,108 @@ asyncio.run(main())
 
 ---
 
+## 事件系统
+
+```python
+from cody.sdk import Cody, EventType
+
+client = Cody().workdir(".").enable_events().build()
+
+# 注册事件处理器
+client.on(EventType.TOOL_CALL, lambda e: print(f"Tool: {e.tool_name}"))
+client.on(EventType.RUN_END, lambda e: print(f"Done: {e.result[:50]}"))
+
+async with client:
+    await client.run("Read README.md")
+```
+
+**事件类型：**
+
+| 事件 | 说明 |
+|------|------|
+| `RUN_START` / `RUN_END` / `RUN_ERROR` | 任务生命周期 |
+| `TOOL_CALL` / `TOOL_RESULT` / `TOOL_ERROR` | 工具调用 |
+| `THINKING_START` / `THINKING_CHUNK` / `THINKING_END` | 思考过程 |
+| `STREAM_START` / `STREAM_CHUNK` / `STREAM_END` | 流式输出 |
+| `SESSION_CREATE` / `SESSION_CLOSE` | 会话管理 |
+| `CONTEXT_COMPACT` | 上下文压缩 |
+
+## 指标收集
+
+```python
+from cody.sdk import Cody
+
+client = Cody().workdir(".").enable_metrics().build()
+
+async with client:
+    await client.run("Analyze this project")
+
+    metrics = client.get_metrics()
+    print(f"Total tokens: {metrics['total_tokens']}")
+    print(f"Tool calls: {metrics['total_tool_calls']}")
+    print(f"Duration: {metrics['total_duration']:.2f}s")
+```
+
+## 便捷方法
+
+```python
+async with client:
+    # 文件操作
+    content = await client.read_file("main.py")
+    await client.write_file("hello.py", "print('hello')")
+    await client.edit_file("main.py", "old_text", "new_text")
+
+    # 搜索
+    files = await client.glob("**/*.py")
+    matches = await client.grep("def main", include="*.py")
+
+    # 命令执行
+    output = await client.exec_command("ls -la")
+
+    # LSP
+    diags = await client.lsp_diagnostics("main.py")
+    defn = await client.lsp_definition("main.py", line=10, column=5)
+```
+
+## 错误处理
+
+```python
+from cody.sdk import (
+    CodyError,           # 基础错误
+    CodyModelError,      # 模型 API 错误
+    CodyToolError,       # 工具执行错误
+    CodyPermissionError, # 权限不足
+    CodyNotFoundError,   # 资源不存在
+    CodyRateLimitError,  # 速率限制
+    CodyConfigError,     # 配置错误
+    CodyTimeoutError,    # 超时
+    CodyConnectionError, # 连接错误
+    CodySessionError,    # 会话错误
+)
+
+try:
+    result = await client.run("task")
+except CodyToolError as e:
+    print(f"Tool {e.details['tool_name']} failed: {e.message}")
+except CodyRateLimitError as e:
+    print(f"Rate limited, retry after {e.retry_after}s")
+except CodyError as e:
+    print(f"[{e.code}] {e.message}")
+```
+
+## 示例文件
+
+SDK 提供 4 个完整示例（`cody/sdk/examples/`）：
+
+| 文件 | 说明 |
+|------|------|
+| `basic.py` | 三种创建方式 + 多轮会话 |
+| `streaming.py` | 流式输出消费 |
+| `events_demo.py` | 事件钩子 + 指标 |
+| `tools_demo.py` | 直接工具调用 |
+
+---
+
 ## 最佳实践
 
 ### 1. 使用上下文管理器
@@ -408,4 +518,4 @@ async with asyncio.TaskGroup() as tg:
 
 ---
 
-**最后更新:** 2026-03-02
+**最后更新:** 2026-03-04

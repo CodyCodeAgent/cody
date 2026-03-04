@@ -9,7 +9,7 @@ Cody 是一个 AI 编程助手，核心理念是 **引擎做厚，壳子做薄**
 - **TUI** (`cody/tui.py`) — Textual 全屏终端
 - **Web Frontend** (`web/src/`) — React + TypeScript SPA（项目管理 + 实时对话）
 - **Web Backend** (`web/backend/`) — 统一 FastAPI 应用（端口 8000），提供 Web + RPC 端点，直接导入 core
-- **Python SDK** (`cody/client.py`) — CodyClient (同步) + AsyncCodyClient (异步)，in-process 封装 core
+- **Python SDK** (`cody/sdk/`) — CodyClient (同步) + AsyncCodyClient (异步)，直接包装 core（`cody/client.py` 为向后兼容 shim）
 
 当前版本：**v1.6.0**
 
@@ -21,7 +21,7 @@ cli.py / tui.py  →  core/runner.py  →  core/tools.py
                 pydantic-ai, sqlite3, httpx
 
 web/src/ (React) → web/backend/ (FastAPI:8000) → core/
-cody/client.py (Python SDK) → core/（in-process，无 HTTP）
+cody/sdk/ (Python SDK) → core/（in-process，无 HTTP）
 ```
 
 - `core/` **不允许**导入 `cli.py`、`tui.py` 或 `web/`
@@ -43,7 +43,11 @@ cody/client.py (Python SDK) → core/（in-process，无 HTTP）
 | `core/project_instructions.py` | CODY.md 加载逻辑 — 全局 + 项目级合并，注入系统提示 |
 | `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
 | `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |
-| `client.py` | Python SDK — core 的 in-process 封装（CodyClient + AsyncCodyClient） |
+| `client.py` | 向后兼容 shim — re-export `sdk/` 的公开符号 |
+| `sdk/client.py` | 统一 SDK 客户端 — 直接包装 core，Builder/事件/指标 |
+| `sdk/types.py` | SDK 响应类型 — RunResult, Usage, StreamChunk 等 |
+| `sdk/errors.py` | SDK 错误层级 — 10 种细粒度错误类型 |
+| `sdk/config.py` | SDK 配置 — SDKConfig, ModelConfig, config() 工厂 |
 | `web/backend/app.py` | 统一 FastAPI 应用 — Web + RPC 路由、中间件、静态文件 |
 | `web/backend/state.py` | 单例状态管理 — Config 缓存、SessionStore、AuditLogger 等 |
 | `web/backend/routes/` | 所有 HTTP/WS 路由 — run、tool、sessions、skills、agents、ws、projects、chat |
@@ -94,17 +98,17 @@ cody init                                  # 初始化 .cody/ 目录
 # 安装
 pip install -e ".[dev]"
 
-# 核心测试（481 个，不需要真实 API Key）
-python3 -m pytest tests/ -v
+# 核心测试（481 个）+ SDK 测试（65 个），不需要真实 API Key
+uv run pytest tests/ -v
 
 # Web 后端测试（45 个）
-PYTHONPATH=. python3 -m pytest web/tests/ -v
+PYTHONPATH=. uv run pytest web/tests/ -v
 
 # Web 前端测试（33 个）
 cd web && npx vitest run
 
 # Lint（必须零告警）
-python3 -m ruff check cody/ tests/ web/
+uv run ruff check cody/ tests/ web/
 
 # 启动 Web（后端 + 前端）
 cody-web --dev              # 开发模式（含 Vite HMR）
@@ -160,6 +164,7 @@ cody tui
 
 1. **循环依赖** — `sub_agent.py` 的 `_execute()` 使用延迟导入，不能移到模块顶部
 2. **状态缓存** — `web/backend/state.py` 管理所有单例：Config 按 workdir 缓存（deep copy 返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读最新 skill 文件）
+3. **可选依赖** — `pip install cody-ai` 仅安装核心 SDK（4 个依赖），CLI/TUI/Web 需通过 extras 安装（如 `cody-ai[cli]`）。入口模块（cli.py、tui.py、web/backend/app.py）有 try/except 友好报错
 
 ## 文档结构
 
@@ -168,5 +173,6 @@ cody tui
 | `docs/ARCHITECTURE.md` | 架构图、组件说明、数据流 |
 | `docs/API.md` | RPC API 接口文档 |
 | `docs/FEATURES.md` | 功能清单 + 路线图 |
+| `docs/SDK.md` | Python SDK 使用文档 |
 | `CONTRIBUTING.md` | 开发规范 + 快速上手路径 |
 | `CHANGELOG.md` | 版本历史 |

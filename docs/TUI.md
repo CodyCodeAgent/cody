@@ -456,10 +456,22 @@ App (CodyTUI)
 ```
 用户输入 → on_input_submitted() → _run_agent() → AgentRunner.run_stream()
                                             ↓
-StreamEvent → ThinkingEvent/TextDeltaEvent/ToolCallEvent/DoneEvent
+StreamEvent → ThinkingEvent/TextDeltaEvent/ToolCallEvent/ToolResultEvent/DoneEvent
                                             ↓
-StreamBubble.append() → 实时更新 UI
+StreamBubble.append() → 标记 dirty → 30fps 定时器批量刷新 UI + scroll_end
 ```
+
+### 性能优化
+
+TUI 针对大文件读写和高频事件进行了以下优化：
+
+| 优化 | 说明 |
+|------|------|
+| **批量渲染** | StreamBubble 使用 30fps 定时器批量刷新，避免每个 token 触发一次渲染 |
+| **滚动节流** | scroll_end 由定时器统一处理，不再每个事件都触发布局重算 |
+| **参数截断** | 工具调用参数超过 120 字符自动截断显示，避免大段代码刷屏 |
+| **结果摘要** | ToolResultEvent 显示 `✓ tool_name done (N chars)` 摘要行 |
+| **消息回收** | 超过 200 条消息自动移除最早的 widget（历史已存 SQLite，不丢数据） |
 
 ---
 
@@ -508,4 +520,4 @@ cody-web
 
 ---
 
-**最后更新:** 2026-03-02
+**最后更新:** 2026-03-04

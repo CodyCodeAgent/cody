@@ -646,6 +646,23 @@ cody init
 
 ---
 
+## 安装依赖分层
+
+`pip install cody-ai` 仅安装核心 SDK（4 个依赖），CLI/TUI/Web 需通过可选依赖组安装：
+
+| 安装方式 | 说明 |
+|----------|------|
+| `pip install cody-ai` | 核心 SDK（pydantic-ai、anthropic、pydantic、httpx） |
+| `pip install cody-ai[cli]` | + CLI（click、rich） |
+| `pip install cody-ai[tui]` | + TUI（textual） |
+| `pip install cody-ai[web]` | + Web（fastapi、uvicorn） |
+| `pip install cody-ai[all]` | 全部功能 |
+| `pip install cody-ai[dev]` | 全部 + 开发工具（pytest、ruff 等） |
+
+缺少可选依赖时，入口模块会提示安装命令（如 `pip install cody-ai[cli]`）。
+
+---
+
 ## 最佳实践
 
 ### 1. 使用 `cody config setup` 管理 API Key
@@ -769,4 +786,4 @@ ls -la ~/.cody/skills/
 
 ---
 
-**最后更新:** 2026-03-03
+**最后更新:** 2026-03-04

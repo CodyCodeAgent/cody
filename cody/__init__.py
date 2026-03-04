@@ -2,11 +2,9 @@
 
 __version__ = "1.6.0"
 
-from .client import (  # noqa: F401
-    AsyncCodyClient,
-    CodyClient,
-    CodyError,
-    CodyNotFoundError,
+from .sdk.client import AsyncCodyClient, CodyClient, Cody  # noqa: F401
+from .sdk.errors import CodyError, CodyNotFoundError  # noqa: F401
+from .sdk.types import (  # noqa: F401
     RunResult,
     SessionDetail,
     SessionInfo,
@@ -14,3 +12,4 @@ from .client import (  # noqa: F401
     ToolResult,
     Usage,
 )
+from .sdk.config import config  # noqa: F401

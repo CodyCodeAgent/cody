@@ -668,6 +668,36 @@ cody "使用项目 B 的配置"
 
 **v1.1.0 总计：476 个 Python 测试**
 
+### v1.6.0 — SDK 增强 & 性能优化 ✅ 已完成
+
+> **本阶段目标：完善 SDK 发布到 PyPI，优化 TUI/CLI 性能，拆分依赖让 SDK 用户轻量安装。**
+
+**增强 SDK（`cody/sdk/`）**
+- [x] Builder 模式 — `Cody().workdir(...).model(...).build()` 链式创建客户端
+- [x] 事件系统 — `EventManager` 同步/异步事件分发、装饰器注册
+- [x] 指标采集 — `MetricsCollector` 记录 token 使用、工具调用、会话统计
+- [x] 10 种错误类型 — `CodyError` → `CodyAuthError` / `CodyModelError` / `CodyToolError` 等
+- [x] 4 个示例文件 — basic.py、streaming.py、events_demo.py、tools_demo.py
+- [x] 65 个 SDK 测试
+
+**TUI 性能优化**
+- [x] 30fps 批量渲染 — StreamBubble buffer + timer flush，替代逐 chunk update
+- [x] 滚动节流 — 移除事件循环中的手动 scroll_end，改由 flush 统一处理
+- [x] 工具参数截断 — 超过 120 字符的参数值截断显示，防止屏幕溢出
+- [x] 工具结果摘要 — ToolResultEvent 显示摘要行而非完整内容
+- [x] 消息回收 — 超过 200 个 widget 时自动移除最旧的消息
+
+**CLI 工具参数截断**
+- [x] 与 TUI 一致的 120 字符截断策略
+
+**PyPI 依赖分层**
+- [x] 核心依赖仅 4 个 — pydantic-ai、anthropic、pydantic、httpx
+- [x] 可选依赖组 — `[cli]`、`[tui]`、`[web]`、`[repl]`、`[all]`、`[dev]`
+- [x] 入口模块友好报错 — 缺依赖时提示 `pip install cody-ai[xxx]`
+- [x] 移除未使用的 python-dotenv 依赖
+
+**v1.6.0 总计：566 个测试（481 core + 65 sdk + 20 web），ruff 零告警**
+
 ---
 
-**最后更新：** 2026-03-03
+**最后更新：** 2026-03-04
