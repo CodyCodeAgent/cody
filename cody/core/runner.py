@@ -21,6 +21,7 @@ from typing import Any, AsyncGenerator, Literal, Optional, Union
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
+    ImageUrl,
     ModelMessage,
     ModelRequest,
     ModelResponse,
@@ -36,6 +37,7 @@ from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
 from .permissions import PermissionLevel, PermissionManager
+from .prompt import Prompt, prompt_images, prompt_text
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
@@ -360,7 +362,15 @@ class AgentRunner:
         history: list[ModelMessage] = []
         for msg in messages:
             if msg.role == "user":
-                history.append(ModelRequest(parts=[UserPromptPart(content=msg.content)]))
+                if msg.images:
+                    # Reconstruct multimodal prompt for history using data URIs
+                    parts: list = [msg.content]
+                    for img in msg.images:
+                        data_uri = f"data:{img.media_type};base64,{img.data}"
+                        parts.append(ImageUrl(url=data_uri))
+                    history.append(ModelRequest(parts=[UserPromptPart(content=parts)]))
+                else:
+                    history.append(ModelRequest(parts=[UserPromptPart(content=msg.content)]))
             elif msg.role == "assistant":
                 history.append(ModelResponse(parts=[TextPart(content=msg.content)]))
         return history
@@ -459,25 +469,45 @@ class AgentRunner:
 
         return {"extra_body": extra_body}
 
+    # ── Prompt conversion ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _to_pydantic_prompt(prompt: Prompt):
+        """Convert a Prompt to pydantic-ai's user_prompt format.
+
+        str → str (unchanged, backward compatible)
+        MultimodalPrompt → list[str | ImageUrl] using data URIs
+        """
+        if isinstance(prompt, str):
+            return prompt
+        parts: list = []
+        if prompt.text:
+            parts.append(prompt.text)
+        for img in prompt.images:
+            data_uri = f"data:{img.media_type};base64,{img.data}"
+            parts.append(ImageUrl(url=data_uri))
+        return parts if parts else prompt.text
+
     # ── Core run methods ─────────────────────────────────────────────────────
 
     async def run(
         self,
-        prompt: str,
+        prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history"""
         deps = self._create_deps()
         message_history, _compact = self._compact_history_if_needed(message_history)
+        pydantic_prompt = self._to_pydantic_prompt(prompt)
         result = await self.agent.run(
-            prompt, deps=deps, message_history=message_history,
+            pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )
         return CodyResult.from_raw(result)
 
     async def run_stream(
         self,
-        prompt: str,
+        prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """Run agent with streaming, yielding structured StreamEvent objects.
@@ -508,8 +538,9 @@ class AgentRunner:
                 estimated_tokens_saved=compact_result.estimated_tokens_saved,
             )
 
+        pydantic_prompt = self._to_pydantic_prompt(prompt)
         async for event in self.agent.run_stream_events(
-            prompt, deps=deps, message_history=message_history,
+            pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         ):
             if isinstance(event, PartStartEvent):
@@ -562,13 +593,14 @@ class AgentRunner:
 
     def run_sync(
         self,
-        prompt: str,
+        prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
     ) -> CodyResult:
         """Run agent synchronously"""
         deps = self._create_deps()
+        pydantic_prompt = self._to_pydantic_prompt(prompt)
         result = self.agent.run_sync(
-            prompt, deps=deps, message_history=message_history,
+            pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )
         return CodyResult.from_raw(result)
@@ -577,7 +609,7 @@ class AgentRunner:
 
     async def run_with_session(
         self,
-        prompt: str,
+        prompt: Prompt,
         store: SessionStore,
         session_id: Optional[str] = None,
     ) -> tuple[CodyResult, str]:
@@ -587,13 +619,13 @@ class AgentRunner:
         """
         sid, history = self.prepare_session(store, session_id)
         result = await self.run(prompt, message_history=history)
-        store.add_message(sid, "user", prompt)
+        store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
         store.add_message(sid, "assistant", result.output)
         return result, sid
 
     async def run_stream_with_session(
         self,
-        prompt: str,
+        prompt: Prompt,
         store: SessionStore,
         session_id: Optional[str] = None,
     ) -> AsyncGenerator[tuple[StreamEvent, str], None]:
@@ -603,7 +635,7 @@ class AgentRunner:
         Saves user+assistant messages; assistant message saved when DoneEvent arrives.
         """
         sid, history = self.prepare_session(store, session_id)
-        store.add_message(sid, "user", prompt)
+        store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
         async for event in self.run_stream(prompt, message_history=history):
             if isinstance(event, DoneEvent):

@@ -2,7 +2,7 @@
 # Generates tests for changed files in a pull request.
 #
 # Required secrets:
-#   ANTHROPIC_API_KEY — Your Anthropic API key
+#   CODY_MODEL_API_KEY — Your Anthropic API key
 
 name: AI Test Generation
 
@@ -39,7 +39,7 @@ jobs:
       - name: Generate tests
         if: steps.changed.outputs.files != ''
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CODY_MODEL_API_KEY: ${{ secrets.CODY_MODEL_API_KEY }}
         run: |
           cody run "Generate unit tests for these changed files: ${{ steps.changed.outputs.files }}. Write tests that cover edge cases and error paths. Use the project's existing test framework and conventions."
 

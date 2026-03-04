@@ -49,15 +49,21 @@ class DirectoryListResponse(BaseModel):
 # ── RPC models (migrated from server.py) ────────────────────────────────────
 
 
+class ImagePayload(BaseModel):
+    """An image attached to a user message."""
+    data: str  # base64-encoded
+    media_type: str  # "image/png", "image/jpeg", etc.
+    filename: Optional[str] = None
+
+
 class RunRequest(BaseModel):
     prompt: str
+    images: Optional[list[ImagePayload]] = None
     workdir: Optional[str] = None
     allowed_roots: Optional[list[str]] = None
     model: Optional[str] = None
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
-    coding_plan_key: Optional[str] = None
-    coding_plan_protocol: Optional[str] = None
     enable_thinking: Optional[bool] = None
     thinking_budget: Optional[int] = None
     skills: Optional[list[str]] = None

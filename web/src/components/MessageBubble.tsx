@@ -70,6 +70,20 @@ export default function MessageBubble({ message }: { message: Message }) {
         </div>
       )}
 
+      {/* Images (user messages with attachments) */}
+      {isUser && message.images && message.images.length > 0 && (
+        <div className="message-images">
+          {message.images.map((img, i) => (
+            <img
+              key={i}
+              src={`data:${img.media_type};base64,${img.data}`}
+              alt={img.filename || `image-${i}`}
+              className="message-image"
+            />
+          ))}
+        </div>
+      )}
+
       {/* Message content */}
       <div className="message-content">
         {isUser ? (

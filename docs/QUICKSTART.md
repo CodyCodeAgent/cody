@@ -34,11 +34,11 @@ cody --version
 
 Cody 需要访问大模型 API。以下是几种配置方式：
 
-### 方式 1：Anthropic（默认）
+### 方式 1：交互式配置（推荐）
 
 ```bash
-# 获取 API Key: https://console.anthropic.com/
-export ANTHROPIC_API_KEY='sk-ant-...'
+# 首次运行任何命令时自动触发，或手动运行：
+cody config setup
 ```
 
 ### 方式 2：智谱 GLM
@@ -483,9 +483,10 @@ pip install -e .
 
 ### Q: API Key 错误？
 
-检查环境变量：
+检查配置：
 ```bash
-echo $ANTHROPIC_API_KEY
+cody config show
+echo $CODY_MODEL_API_KEY
 ```
 
 确保 Key 正确且未过期。

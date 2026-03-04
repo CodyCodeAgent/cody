@@ -4,40 +4,78 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cody-ai"
-version = "1.4.0"
+version = "1.6.0"
 description = "AI coding assistant with RPC support, dynamic skills, and MCP integration"
 authors = [{name = "GouChao"}]
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.9"
+keywords = ["ai", "coding-assistant", "llm", "cli", "sdk", "mcp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "pydantic-ai>=0.0.14",
     "anthropic>=0.40.0",
-    "click>=8.1.0",
-    "rich>=13.0.0",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-    "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "httpx>=0.27.0",
-    "textual>=0.80.0",
 ]
 
 [project.scripts]
 cody = "cody.cli:main"
-cody-web = "web.backend.app:run"
 cody-tui = "cody.tui:run_tui"
 
+[project.urls]
+Homepage = "https://github.com/CodyCodeAgent/cody"
+Repository = "https://github.com/CodyCodeAgent/cody"
+Documentation = "https://github.com/CodyCodeAgent/cody/tree/main/docs"
+Changelog = "https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md"
+Issues = "https://github.com/CodyCodeAgent/cody/issues"
+
 [project.optional-dependencies]
+cli = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+]
+tui = [
+    "textual>=0.80.0",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
+repl = [
+    "prompt_toolkit>=3.0.0",
+]
+all = [
+    "cody-ai[cli]",
+    "cody-ai[tui]",
+    "cody-ai[web]",
+    "cody-ai[repl]",
+]
 dev = [
+    "cody-ai[all]",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "black>=24.0.0",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
 ]
-repl = [
-    "prompt_toolkit>=3.0.0",
-]
+
+[tool.setuptools.packages.find]
+include = ["cody*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"cody" = ["skills/**/*.md"]
 
 [tool.black]
 line-length = 100

@@ -6,6 +6,89 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **SDK 增强模块** (`cody/sdk/`) — Builder 模式、事件系统、指标收集、增强错误处理
+  - `Cody()` Builder — 链式配置，`Cody().workdir("/path").model("...").build()`
+  - `EventManager` — 事件钩子系统，支持同步/异步 handler
+  - `MetricsCollector` — Token 使用、工具调用、会话级指标收集
+  - 10 个细粒度错误类（CodyModelError、CodyToolError、CodyPermissionError 等）
+  - 4 个示例文件（basic、streaming、events、tools）
+  - 65 个 SDK 测试
+- **依赖分层** — `pyproject.toml` 拆分为核心依赖 + 可选依赖组
+  - `pip install cody-ai` — 只装核心（pydantic-ai, anthropic, pydantic, httpx）
+  - `pip install cody-ai[cli]` — 加 CLI（click, rich）
+  - `pip install cody-ai[tui]` — 加 TUI（textual）
+  - `pip install cody-ai[web]` — 加 Web（fastapi, uvicorn）
+  - `pip install cody-ai[all]` — 全部
+
+### Changed
+
+- **SDK 合并** — `cody/sdk/` 成为唯一 SDK 实现，直接包装 core（单层），`cody/client.py` 变为向后兼容 re-export shim
+  - 新增 `cody/sdk/types.py` — SDK 响应类型（RunResult、Usage、StreamChunk 等）
+  - `cody/sdk/client.py` 重写 — 不再双层包装（sdk → client → core），改为直接包装 core
+  - 所有导入路径向后兼容：`from cody import ...`、`from cody.client import ...`、`from cody.sdk import ...`
+- **TUI 性能优化** — StreamBubble 改为 30fps 批量渲染 + 滚动节流
+  - 工具参数显示截断（超 120 字符自动截断）
+  - ToolResultEvent 显示摘要行（工具名 + 结果长度）
+  - 长对话消息回收（超 200 条自动移除旧 widget）
+- **CLI 工具参数截断** — 与 TUI 一致的 `_truncate_repr` 截断显示
+
+### Removed
+- `python-dotenv` — 从依赖中移除（代码未使用）
+
+---
+
+## [1.6.0] - 2026-03-03
+
+### Added
+- **交互式配置向导** — 新增 `cody config setup` 命令，引导用户选择模型提供商、输入 API Key 等
+  - 首次使用 `cody run`/`chat`/`tui` 时如果未配置会自动触发
+  - `cody init` 完成后也会提示配置
+- **Config.is_ready()** — 配置完整性检查方法，判断是否有足够的 API 凭证
+- **Config.missing_fields()** — 返回缺失配置项的描述列表
+- **model_api_key 持久化** — API Key 现在保存到配置文件，无需环境变量
+- **model_api_key Anthropic 路径** — 配置了 `model_api_key` 但无 `model_base_url` 时，自动使用 Anthropic API
+- **config show 脱敏** — `cody config show` 显示 API Key 时自动脱敏（如 `sk-ant...xyz`）
+- **config set 扩展** — 支持设置 `enable_thinking`、`thinking_budget`
+
+### Removed
+- **claude_oauth_token** — 删除 OAuth 认证路径，统一使用 `model_api_key`
+- **CLI --model-base-url / --model-api-key** — 从 `run`/`chat`/`tui` 命令删除，改用 `cody config setup` 配置
+- **CLAUDE_OAUTH_TOKEN 环境变量** — 不再读取
+- **ANTHROPIC_API_KEY 环境变量** — 不再隐式使用，统一走 `model_api_key`
+
+### Changed
+- `Config.save()` 现在保存 `model_api_key` 到配置文件
+- `model_resolver.py` 简化为 3 条路径：base_url → api_key(Anthropic) → 默认字符串
+- 新增 `cody/core/setup.py` 提供配置向导的数据层
+
+---
+
+## [1.5.0] - 2026-03-03
+
+### Added
+- **Web 图片上传** — Web 前端支持多模态输入，用户可以粘贴截图或选择图片文件随消息一起发送
+  - 支持 Ctrl+V 粘贴剪贴板图片、点击按钮选择文件（`image/*`）
+  - 发送前预览已选图片，支持单独删除
+  - 消息气泡中展示历史图片
+  - 图片以 base64 存储在 SQLite 中，会话恢复时自动加载
+- **多模态 Prompt 类型** — 新增 `cody/core/prompt.py`，定义 `ImageData`、`MultimodalPrompt`、`Prompt` 类型
+  - `Prompt = Union[str, MultimodalPrompt]` — 类型安全的多模态提示，向后兼容纯文本
+  - `prompt_text()` / `prompt_images()` — 类型安全的提取函数
+  - 核心引擎 `AgentRunner` 通过 pydantic-ai `BinaryContent` 将图片传递给支持多模态的模型（如 Qwen3.5-plus）
+- **Session 图片持久化** — `Message` 新增 `images` 字段，SQLite 自动迁移 `ALTER TABLE messages ADD COLUMN images`
+
+### Changed
+- `AgentRunner.run()` / `run_stream()` / `run_sync()` / `run_with_session()` / `run_stream_with_session()` 签名从 `prompt: str` 扩展为 `prompt: Prompt`（纯 `str` 仍然兼容）
+- `CodyClient` / `AsyncCodyClient` SDK 签名同步扩展
+- Web Backend `RunRequest` 新增 `images` 可选字段
+- Web Backend 路由（chat、run、websocket）统一使用 `build_prompt()` 构造多模态提示
+- `messages_to_history()` 支持重建带图片的多模态对话历史
+
+---
+
 ## [1.4.0] - 2026-03-02
 
 ### Added

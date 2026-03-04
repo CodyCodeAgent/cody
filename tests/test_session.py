@@ -1,6 +1,7 @@
 """Tests for session management"""
 
 import pytest
+from cody.core.prompt import ImageData
 from cody.core.session import SessionStore
 
 
@@ -164,3 +165,62 @@ def test_session_updated_at_changes(store):
     updated = store.get_session(session.id)
 
     assert updated.updated_at >= original.updated_at
+
+
+# ── Image storage ────────────────────────────────────────────────────────────
+
+
+def test_add_message_with_images(store):
+    """Messages with images are stored and retrieved correctly."""
+    session = store.create_session(title="Image Test")
+    imgs = [ImageData(data="aGVsbG8=", media_type="image/png", filename="screenshot.png")]
+    store.add_message(session.id, "user", "check this", images=imgs)
+
+    loaded = store.get_session(session.id)
+    assert len(loaded.messages) == 1
+    assert loaded.messages[0].content == "check this"
+    assert len(loaded.messages[0].images) == 1
+    assert loaded.messages[0].images[0].media_type == "image/png"
+    assert loaded.messages[0].images[0].filename == "screenshot.png"
+    assert loaded.messages[0].images[0].data == "aGVsbG8="
+
+
+def test_add_message_without_images_backward_compat(store):
+    """Messages without images still work (backward compat)."""
+    session = store.create_session(title="Text Only")
+    store.add_message(session.id, "user", "just text")
+
+    loaded = store.get_session(session.id)
+    assert loaded.messages[0].content == "just text"
+    assert loaded.messages[0].images == []
+
+
+def test_add_message_multiple_images(store):
+    """Multiple images in a single message."""
+    session = store.create_session(title="Multi Image")
+    imgs = [
+        ImageData(data="aGVsbG8=", media_type="image/png"),
+        ImageData(data="d29ybGQ=", media_type="image/jpeg", filename="photo.jpg"),
+    ]
+    store.add_message(session.id, "user", "compare these", images=imgs)
+
+    loaded = store.get_session(session.id)
+    assert len(loaded.messages[0].images) == 2
+    assert loaded.messages[0].images[0].media_type == "image/png"
+    assert loaded.messages[0].images[1].media_type == "image/jpeg"
+    assert loaded.messages[0].images[1].filename == "photo.jpg"
+
+
+def test_mixed_messages_with_and_without_images(store):
+    """Conversation with both image and text-only messages."""
+    session = store.create_session(title="Mixed")
+    imgs = [ImageData(data="aGVsbG8=", media_type="image/png")]
+    store.add_message(session.id, "user", "look at this", images=imgs)
+    store.add_message(session.id, "assistant", "I see an image")
+    store.add_message(session.id, "user", "thanks")
+
+    loaded = store.get_session(session.id)
+    assert len(loaded.messages) == 3
+    assert len(loaded.messages[0].images) == 1
+    assert loaded.messages[1].images == []
+    assert loaded.messages[2].images == []

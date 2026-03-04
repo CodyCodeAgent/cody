@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from cody.core.config import Config
+from cody.core.prompt import ImageData, MultimodalPrompt
 from cody.core.runner import AgentRunner, _build_allowed_roots
 from cody.core.session import Message, SessionStore
 
@@ -269,14 +270,14 @@ async def test_run_with_session_not_found(tmp_path):
 # ── _resolve_model ──────────────────────────────────────────────────────────
 
 
-def test_resolve_model_default_string():
-    """Without base_url, _resolve_model returns the model string as-is"""
+def test_resolve_model_no_api_key_raises():
+    """Without api_key, _resolve_model raises ValueError"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(model="anthropic:claude-sonnet-4-0")
 
-    result = runner._resolve_model()
-    assert result == "anthropic:claude-sonnet-4-0"
+    with pytest.raises(ValueError, match="model_api_key is required"):
+        runner._resolve_model()
 
 
 def test_resolve_model_with_base_url():
@@ -309,81 +310,43 @@ def test_resolve_model_base_url_without_api_key():
     assert not isinstance(result, str)
 
 
-def test_resolve_model_with_claude_oauth_token():
-    """With claude_oauth_token, _resolve_model returns an AnthropicModel"""
+def test_resolve_model_api_key_anthropic():
+    """With model_api_key (no base_url), _resolve_model returns an AnthropicModel"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="anthropic:claude-sonnet-4-0",
-            claude_oauth_token="oauth-test-token",
+            model_api_key="sk-ant-test-key",
         )
 
     result = runner._resolve_model()
-    # Should be an AnthropicModel, not a string
     assert not isinstance(result, str)
     from pydantic_ai.models.anthropic import AnthropicModel
     assert isinstance(result, AnthropicModel)
 
 
-def test_resolve_model_oauth_strips_prefix():
-    """OAuth path strips 'anthropic:' prefix from model name"""
+def test_resolve_model_api_key_strips_prefix():
+    """Anthropic API key path strips 'anthropic:' prefix from model name"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="anthropic:claude-sonnet-4-0",
-            claude_oauth_token="oauth-test-token",
+            model_api_key="sk-ant-test-key",
         )
 
     result = runner._resolve_model()
     assert not isinstance(result, str)
-    # The model_name passed to AnthropicModel should not have the prefix
     assert "anthropic:" not in str(result.model_name)
 
 
-def test_resolve_model_oauth_without_prefix():
-    """OAuth path works when model name has no 'anthropic:' prefix"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="claude-sonnet-4-0",
-            claude_oauth_token="oauth-test-token",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    from pydantic_ai.models.anthropic import AnthropicModel
-    assert isinstance(result, AnthropicModel)
-
-
-def test_resolve_model_base_url_takes_priority_over_oauth():
-    """model_base_url takes priority over claude_oauth_token"""
+def test_resolve_model_base_url_takes_priority_over_api_key():
+    """model_base_url takes priority over model_api_key for Anthropic"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="glm-4",
             model_base_url="https://open.bigmodel.cn/api/paas/v4/",
             model_api_key="sk-test",
-            claude_oauth_token="oauth-test-token",
-        )
-
-    result = runner._resolve_model()
-    # Should use OpenAI path, not Anthropic OAuth
-    assert not isinstance(result, str)
-    from pydantic_ai.models.openai import OpenAIChatModel
-    assert isinstance(result, OpenAIChatModel)
-
-
-# ── Coding Plan _resolve_model ─────────────────────────────────────────────
-
-
-def test_resolve_model_coding_plan_openai():
-    """Coding Plan with openai protocol returns OpenAIChatModel"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="qwen3.5",
-            coding_plan_key="sk-sp-test123",
-            coding_plan_protocol="openai",
         )
 
     result = runner._resolve_model()
@@ -392,44 +355,17 @@ def test_resolve_model_coding_plan_openai():
     assert isinstance(result, OpenAIChatModel)
 
 
-def test_resolve_model_coding_plan_anthropic():
-    """Coding Plan with anthropic protocol returns AnthropicModel"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="claude-sonnet-4-0",
-            coding_plan_key="sk-sp-test123",
-            coding_plan_protocol="anthropic",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    from pydantic_ai.models.anthropic import AnthropicModel
-    assert isinstance(result, AnthropicModel)
+# ── model_base_url _resolve_model ──────────────────────────────────────────
 
 
-def test_resolve_model_coding_plan_anthropic_strips_prefix():
-    """Coding Plan anthropic protocol strips 'anthropic:' prefix"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="anthropic:claude-sonnet-4-0",
-            coding_plan_key="sk-sp-test123",
-            coding_plan_protocol="anthropic",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    assert "anthropic:" not in str(result.model_name)
-
-
-def test_resolve_model_coding_plan_default_protocol():
-    """Coding Plan defaults to openai protocol"""
+def test_resolve_model_base_url():
+    """model_base_url returns OpenAIChatModel"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
             model="qwen3.5",
-            coding_plan_key="sk-sp-test123",
+            model_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model_api_key="sk-test123",
         )
 
     result = runner._resolve_model()
@@ -438,16 +374,14 @@ def test_resolve_model_coding_plan_default_protocol():
     assert isinstance(result, OpenAIChatModel)
 
 
-def test_resolve_model_coding_plan_takes_priority():
-    """coding_plan_key takes priority over model_base_url and oauth"""
+def test_resolve_model_base_url_deepseek():
+    """model_base_url with DeepSeek returns OpenAIChatModel"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         runner.config = Config(
-            model="qwen3.5",
-            coding_plan_key="sk-sp-test123",
-            model_base_url="https://other.api.com/v1",
-            model_api_key="sk-other",
-            claude_oauth_token="oauth-token",
+            model="deepseek-chat",
+            model_base_url="https://api.deepseek.com/v1",
+            model_api_key="sk-test123",
         )
 
     result = runner._resolve_model()
@@ -501,3 +435,78 @@ def test_build_allowed_roots_rejects_relative_config_path(tmp_path):
     """Relative paths in config roots raise ValueError."""
     with pytest.raises(ValueError, match="absolute paths"):
         _build_allowed_roots(tmp_path, ["../relative"], [])
+
+
+# ── _to_pydantic_prompt ─────────────────────────────────────────────────────
+
+
+def test_to_pydantic_prompt_str():
+    """Plain str prompt passes through unchanged."""
+    result = AgentRunner._to_pydantic_prompt("hello")
+    assert result == "hello"
+
+
+def test_to_pydantic_prompt_multimodal():
+    """MultimodalPrompt converts to list with ImageUrl."""
+    img = ImageData(data="aGVsbG8=", media_type="image/png")
+    prompt = MultimodalPrompt(text="analyze", images=[img])
+    result = AgentRunner._to_pydantic_prompt(prompt)
+    assert isinstance(result, list)
+    assert result[0] == "analyze"
+    assert len(result) == 2
+    # Second item should be ImageUrl with data URI
+    from pydantic_ai.messages import ImageUrl
+    assert isinstance(result[1], ImageUrl)
+    assert result[1].url.startswith("data:image/png;base64,")
+
+
+def test_to_pydantic_prompt_multimodal_multiple_images():
+    """MultimodalPrompt with multiple images produces correct list."""
+    img1 = ImageData(data="aGVsbG8=", media_type="image/png")
+    img2 = ImageData(data="d29ybGQ=", media_type="image/jpeg")
+    prompt = MultimodalPrompt(text="compare", images=[img1, img2])
+    result = AgentRunner._to_pydantic_prompt(prompt)
+    assert isinstance(result, list)
+    assert len(result) == 3  # text + 2 images
+
+
+def test_to_pydantic_prompt_empty_text_multimodal():
+    """MultimodalPrompt with empty text still works."""
+    img = ImageData(data="aGVsbG8=", media_type="image/png")
+    prompt = MultimodalPrompt(text="", images=[img])
+    result = AgentRunner._to_pydantic_prompt(prompt)
+    assert isinstance(result, list)
+    assert len(result) == 1  # only ImageUrl, no empty text
+
+
+# ── messages_to_history with images ──────────────────────────────────────────
+
+
+def test_messages_to_history_with_images():
+    """Messages with images reconstruct multimodal UserPromptPart."""
+    imgs = [ImageData(data="aGVsbG8=", media_type="image/png")]
+    msgs = [Message(role="user", content="look at this", images=imgs)]
+    result = AgentRunner.messages_to_history(msgs)
+    assert len(result) == 1
+    assert isinstance(result[0], ModelRequest)
+    # The content should be a list (multimodal)
+    part = result[0].parts[0]
+    content = part.content
+    assert isinstance(content, list)
+    assert len(content) == 2  # text + ImageUrl
+
+
+def test_messages_to_history_mixed_with_and_without_images():
+    """Mixed messages: some with images, some without."""
+    imgs = [ImageData(data="aGVsbG8=", media_type="image/png")]
+    msgs = [
+        Message(role="user", content="look at this", images=imgs),
+        Message(role="assistant", content="I see it"),
+        Message(role="user", content="thanks"),
+    ]
+    result = AgentRunner.messages_to_history(msgs)
+    assert len(result) == 3
+    # First message: multimodal
+    assert isinstance(result[0].parts[0].content, list)
+    # Third message: plain text
+    assert isinstance(result[2].parts[0].content, str)

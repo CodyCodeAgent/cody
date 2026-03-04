@@ -19,11 +19,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-import uvicorn
+try:
+    from fastapi import Depends, FastAPI, Request, WebSocket
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    from fastapi.staticfiles import StaticFiles
+    import uvicorn
+except ImportError:
+    raise SystemExit(
+        "Web backend requires extra dependencies. Install with:\n"
+        "  pip install cody-ai[web]"
+    )
 
 from cody import __version__
 from cody.core.errors import CodyAPIError

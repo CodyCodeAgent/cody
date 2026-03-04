@@ -6,11 +6,17 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import click
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.markup import escape as rich_escape
-from rich.panel import Panel
+try:
+    import click
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.markup import escape as rich_escape
+    from rich.panel import Panel
+except ImportError:
+    raise SystemExit(
+        "CLI requires extra dependencies. Install with:\n"
+        "  pip install cody-ai[cli]"
+    )
 
 from .core import Config, AgentRunner, SessionStore
 from .core.project_instructions import CODY_MD_FILENAME, generate_project_instructions
@@ -18,10 +24,89 @@ from .core.runner import (
     CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
 )
+from .core.setup import SetupAnswers, build_config_from_answers
 
 console = Console()
 
+
+def _truncate_repr(value: object, max_len: int = 120) -> str:
+    """Truncate repr of a value to max_len characters."""
+    s = repr(value)
+    if len(s) <= max_len:
+        return s
+    return s[:max_len] + f"...({len(s)} chars)"
+
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+def _interactive_setup() -> Config:
+    """Interactive first-time configuration wizard.
+
+    Prompts the user for API key, optional base URL, and model name,
+    then saves the result to ~/.cody/config.json.
+    Returns the newly created Config.
+    """
+    console.print(Panel(
+        "[bold]Welcome to Cody![/bold]\n\n"
+        "Let's configure your model API.",
+        border_style="blue",
+    ))
+
+    # 1. API Key (required)
+    api_key = click.prompt("\nAPI Key", prompt_suffix=": ")
+
+    # 2. Base URL (optional — leave empty for Anthropic)
+    base_url = click.prompt(
+        "API Base URL (leave empty for Anthropic)",
+        default="",
+        prompt_suffix=": ",
+    ).strip() or None
+
+    # 3. Model name
+    default_model = "anthropic:claude-sonnet-4-0" if not base_url else ""
+    model = click.prompt("Model name", default=default_model, prompt_suffix=": ")
+
+    # 4. Thinking mode
+    enable_thinking = click.confirm("Enable thinking mode?", default=False)
+    thinking_budget = None
+    if enable_thinking:
+        thinking_budget = click.prompt(
+            "Thinking budget (tokens)", type=int, default=10000
+        )
+
+    # 5. Save
+    answers = SetupAnswers(
+        model=model,
+        model_api_key=api_key,
+        model_base_url=base_url,
+        enable_thinking=enable_thinking,
+        thinking_budget=thinking_budget,
+    )
+    config_data = build_config_from_answers(answers)
+    cfg = Config(**config_data)
+    config_path = Path.home() / ".cody" / "config.json"
+    cfg.save(config_path)
+
+    console.print(f"\n[green]Configuration saved to {config_path}[/green]")
+    return cfg
+
+
+def _ensure_config_ready(config: Config) -> Config:
+    """Check if config is ready; if not, run interactive setup."""
+    if config.is_ready():
+        return config
+    missing = config.missing_fields()
+    console.print(f"[yellow]Configuration incomplete: {', '.join(missing)}[/yellow]")
+    return _interactive_setup()
+
+
+def _mask_api_key(key: Optional[str]) -> str:
+    """Mask an API key for display: sk-abc...xyz"""
+    if not key:
+        return "(not set)"
+    if len(key) <= 8:
+        return key[:2] + "..." + key[-2:]
+    return key[:6] + "..." + key[-3:]
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -108,7 +193,9 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
                 console.print(rich_escape("".join(thinking_buf)), style="dim")
                 thinking_buf.clear()
                 in_thinking = False
-            args_str = ", ".join(f"{k}={v!r}" for k, v in list(event.args.items())[:3])
+            args_str = ", ".join(
+                f"{k}={_truncate_repr(v)}" for k, v in list(event.args.items())[:3]
+            )
             console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
             spinner_task = asyncio.create_task(
                 _status_spinner(
@@ -157,25 +244,20 @@ def main():
 
 @main.command()
 @click.argument('prompt', required=False)
-@click.option('--model', help='AI model to use')
-@click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
-@click.option('--model-api-key', help='API key for custom model provider')
-@click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
-@click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
+@click.option('--model', help='AI model to use (temporary override)')
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
 @click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
               help='Additional directory to allow file access (repeatable)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, verbose):
+def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose):
     """Run a single task with Cody
 
     Examples:
         cody run "create a hello.py file"
         cody run "refactor main.py to use async"
-        cody run "写个单元测试" --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
-        cody run "写个排序算法" --model qwen3.5 --coding-plan-key sk-sp-xxx
+        cody run --model qwen3.5 "写个排序算法"
         cody run --workdir /proj/frontend --allow-root /proj/backend "sync configs"
     """
     if not prompt:
@@ -184,12 +266,10 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
         return
 
     workdir_path = Path(workdir) if workdir else Path.cwd()
-    config = Config.load(workdir=workdir_path).apply_overrides(
+    config = Config.load(workdir=workdir_path)
+    config = _ensure_config_ready(config)
+    config.apply_overrides(
         model=model,
-        model_base_url=model_base_url,
-        model_api_key=model_api_key,
-        coding_plan_key=coding_plan_key,
-        coding_plan_protocol=coding_plan_protocol,
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
         extra_roots=list(extra_roots) or None,
@@ -223,11 +303,7 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
 
 
 @main.command()
-@click.option('--model', help='AI model to use')
-@click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
-@click.option('--model-api-key', help='API key for custom model provider')
-@click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
-@click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
+@click.option('--model', help='AI model to use (temporary override)')
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
@@ -235,7 +311,7 @@ def run(prompt, model, model_base_url, model_api_key, coding_plan_key, coding_pl
               help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
+def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -243,20 +319,16 @@ def chat(model, model_base_url, model_api_key, coding_plan_key, coding_plan_prot
     Examples:
         cody chat
         cody chat --model anthropic:claude-sonnet-4-0
-        cody chat --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
-        cody chat --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody chat --continue
         cody chat --session abc123
         cody chat --workdir /proj/frontend --allow-root /proj/backend
     """
     workdir_path = Path(workdir) if workdir else Path.cwd()
 
-    config = Config.load(workdir=workdir_path).apply_overrides(
+    config = Config.load(workdir=workdir_path)
+    config = _ensure_config_ready(config)
+    config.apply_overrides(
         model=model,
-        model_base_url=model_base_url,
-        model_api_key=model_api_key,
-        coding_plan_key=coding_plan_key,
-        coding_plan_protocol=coding_plan_protocol,
         enable_thinking=thinking,
         thinking_budget=thinking_budget,
         extra_roots=list(extra_roots) or None,
@@ -544,6 +616,13 @@ def init():
         console.print(f"  Created {item}")
     console.print(f"  {verb} {created[-1]}")
 
+    # Check config readiness and offer setup if needed
+    config = Config.load(workdir=workdir)
+    if not config.is_ready():
+        console.print("\n[yellow]No API key configured yet.[/yellow]")
+        if click.confirm("Run setup now?", default=True):
+            _interactive_setup()
+
 
 # ── Skills commands ──────────────────────────────────────────────────────────
 
@@ -650,18 +729,23 @@ def config():
 def config_show():
     """Show current configuration"""
     cfg = Config.load(workdir=Path.cwd())
-    console.print_json(cfg.model_dump_json(indent=2))
+    data = cfg.model_dump(exclude_none=True)
+    # Mask sensitive fields for display
+    if "model_api_key" in data:
+        data["model_api_key"] = _mask_api_key(data["model_api_key"])
+    if "auth" in data:
+        for key in ("api_key", "token", "refresh_token"):
+            if key in data["auth"]:
+                data["auth"][key] = _mask_api_key(data["auth"][key])
+    import json as _json
+    console.print_json(_json.dumps(data, indent=2, default=str))
 
 
 # ── TUI command ─────────────────────────────────────────────────────────────
 
 
 @main.command()
-@click.option('--model', help='AI model to use')
-@click.option('--model-base-url', help='Custom OpenAI-compatible API base URL')
-@click.option('--model-api-key', help='API key for custom model provider')
-@click.option('--coding-plan-key', help='Aliyun Bailian Coding Plan API key (sk-sp-xxx)')
-@click.option('--coding-plan-protocol', type=click.Choice(['openai', 'anthropic']), help='Coding Plan protocol')
+@click.option('--model', help='AI model to use (temporary override)')
 @click.option('--thinking/--no-thinking', default=None, help='Enable/disable thinking mode')
 @click.option('--thinking-budget', type=int, default=None, help='Max tokens for thinking (e.g. 10000)')
 @click.option('--workdir', type=click.Path(exists=True), help='Working directory')
@@ -669,7 +753,7 @@ def config_show():
               help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_protocol, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
+def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -677,18 +761,17 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
     Examples:
         cody tui
         cody tui --model anthropic:claude-sonnet-4-0
-        cody tui --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
-        cody tui --model qwen3.5 --coding-plan-key sk-sp-xxx
         cody tui --continue
         cody tui --workdir /proj/frontend --allow-root /proj/backend
     """
+    # Check config readiness before launching TUI (still in normal terminal)
+    workdir_path = Path(workdir) if workdir else Path.cwd()
+    config = Config.load(workdir=workdir_path)
+    _ensure_config_ready(config)
+
     from .tui import run_tui
     run_tui(
         model=model,
-        model_base_url=model_base_url,
-        model_api_key=model_api_key,
-        coding_plan_key=coding_plan_key,
-        coding_plan_protocol=coding_plan_protocol,
         thinking=thinking,
         thinking_budget=thinking_budget,
         workdir=workdir,
@@ -702,7 +785,10 @@ def tui(model, model_base_url, model_api_key, coding_plan_key, coding_plan_proto
 @click.argument('key')
 @click.argument('value')
 def config_set(key, value):
-    """Set configuration value"""
+    """Set configuration value
+
+    Supported keys: model, model_base_url, model_api_key, enable_thinking, thinking_budget
+    """
     cfg = Config.load(workdir=Path.cwd())
 
     if key == 'model':
@@ -710,10 +796,14 @@ def config_set(key, value):
     elif key == 'model_base_url':
         cfg.model_base_url = value
     elif key == 'model_api_key':
-        console.print("[yellow]Warning: API keys should be set via CODY_MODEL_API_KEY env var[/yellow]")
         cfg.model_api_key = value
+    elif key == 'enable_thinking':
+        cfg.enable_thinking = value.lower() in ("1", "true", "yes")
+    elif key == 'thinking_budget':
+        cfg.thinking_budget = int(value)
     else:
         console.print(f"[yellow]Unknown config key: {key}[/yellow]")
+        console.print("[dim]Supported: model, model_base_url, model_api_key, enable_thinking, thinking_budget[/dim]")
         return
 
     config_path = Path.cwd() / ".cody" / "config.json"
@@ -722,7 +812,18 @@ def config_set(key, value):
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
     cfg.save(config_path)
-    console.print(f"[green]Set {key} = {value}[/green]")
+    display_value = _mask_api_key(value) if "key" in key else value
+    console.print(f"[green]Set {key} = {display_value}[/green]")
+
+
+@config.command('setup')
+def config_setup():
+    """Interactive configuration wizard
+
+    Set up your AI model provider, API key, and preferences.
+    Configuration is saved to ~/.cody/config.json.
+    """
+    _interactive_setup()
 
 
 if __name__ == '__main__':

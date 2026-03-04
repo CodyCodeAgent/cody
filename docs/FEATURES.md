@@ -29,6 +29,7 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 **基于 Pydantic AI：**
 - 多模型支持（Anthropic、OpenAI、Google、DeepSeek 等）
 - 自定义 OpenAI 兼容 API 支持（智谱 GLM、阿里通义千问/DashScope 等）
+- 多模态输入 — 支持文本+图片混合提示（Web 端），通过 `Prompt` 类型和 pydantic-ai `BinaryContent` 传递
 - 结构化输出
 - 工具调用（Function Calling）
 - 流式响应（结构化 StreamEvent：thinking / tool_call / tool_result / text_delta / done）
@@ -244,6 +245,7 @@ cody-tui
 - 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
 - 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
 - 实时对话 — WebSocket 流式消息显示，通过 SDK 代理到核心服务
+- 图片上传 — 支持粘贴截图（Ctrl+V）和文件选择，图片随消息发送到多模态模型（如 Qwen3.5-plus）
 - 流式状态栏 — 显示处理状态（Thinking/Running/Generating）+ 耗时 + Stop 按钮
 - WebSocket 断连恢复 — 断连时自动重置 streaming 状态并提示用户
 - 空闲超时 — 120 秒无事件自动停止，防止永久卡住
@@ -403,9 +405,9 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 
 | 方式 | 配置 | 说明 |
 |------|------|------|
+| 交互式配置 | `cody config setup` | 推荐方式，引导配置并保存 |
 | OpenAI 兼容 API | `model_base_url` + `model_api_key` | 智谱 GLM、阿里 DashScope 等 |
-| Claude OAuth | `claude_oauth_token` 或 `CLAUDE_OAUTH_TOKEN` 环境变量 | `claude login` 获取的 OAuth token |
-| Anthropic API Key | `ANTHROPIC_API_KEY` 环境变量 | 默认方式 |
+| Anthropic API Key | `model_api_key`（通过 `cody config setup` 配置） | 默认方式 |
 
 ### 8. 安全特性
 
@@ -637,7 +639,7 @@ cody "使用项目 B 的配置"
 - [x] 支持 OpenAI 和 Anthropic 两种协议
 - [x] CLI `--coding-plan-key` / `--coding-plan-protocol` 参数
 - [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
-- [x] Claude OAuth token 认证支持
+- [x] Claude OAuth token 认证支持（v1.6.0 已移除，统一为 model_api_key）
 
 **v1.0.1 总计：446 个 Python 测试，ruff 零告警**
 
@@ -666,6 +668,36 @@ cody "使用项目 B 的配置"
 
 **v1.1.0 总计：476 个 Python 测试**
 
+### v1.6.0 — SDK 增强 & 性能优化 ✅ 已完成
+
+> **本阶段目标：完善 SDK 发布到 PyPI，优化 TUI/CLI 性能，拆分依赖让 SDK 用户轻量安装。**
+
+**增强 SDK（`cody/sdk/`）**
+- [x] Builder 模式 — `Cody().workdir(...).model(...).build()` 链式创建客户端
+- [x] 事件系统 — `EventManager` 同步/异步事件分发、装饰器注册
+- [x] 指标采集 — `MetricsCollector` 记录 token 使用、工具调用、会话统计
+- [x] 10 种错误类型 — `CodyError` → `CodyAuthError` / `CodyModelError` / `CodyToolError` 等
+- [x] 4 个示例文件 — basic.py、streaming.py、events_demo.py、tools_demo.py
+- [x] 65 个 SDK 测试
+
+**TUI 性能优化**
+- [x] 30fps 批量渲染 — StreamBubble buffer + timer flush，替代逐 chunk update
+- [x] 滚动节流 — 移除事件循环中的手动 scroll_end，改由 flush 统一处理
+- [x] 工具参数截断 — 超过 120 字符的参数值截断显示，防止屏幕溢出
+- [x] 工具结果摘要 — ToolResultEvent 显示摘要行而非完整内容
+- [x] 消息回收 — 超过 200 个 widget 时自动移除最旧的消息
+
+**CLI 工具参数截断**
+- [x] 与 TUI 一致的 120 字符截断策略
+
+**PyPI 依赖分层**
+- [x] 核心依赖仅 4 个 — pydantic-ai、anthropic、pydantic、httpx
+- [x] 可选依赖组 — `[cli]`、`[tui]`、`[web]`、`[repl]`、`[all]`、`[dev]`
+- [x] 入口模块友好报错 — 缺依赖时提示 `pip install cody-ai[xxx]`
+- [x] 移除未使用的 python-dotenv 依赖
+
+**v1.6.0 总计：566 个测试（481 core + 65 sdk + 20 web），ruff 零告警**
+
 ---
 
-**最后更新：** 2026-03-02
+**最后更新：** 2026-03-04

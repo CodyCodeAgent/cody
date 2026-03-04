@@ -76,7 +76,12 @@ async def get_session(session_id: str):
         created_at=session.created_at,
         updated_at=session.updated_at,
         messages=[
-            {"role": m.role, "content": m.content, "timestamp": m.timestamp}
+            {
+                "role": m.role,
+                "content": m.content,
+                "timestamp": m.timestamp,
+                "images": [img.to_dict() for img in m.images] if m.images else None,
+            }
             for m in session.messages
         ],
     )

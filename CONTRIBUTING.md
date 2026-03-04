@@ -257,6 +257,7 @@ python3 -m pytest tests/ -v
 | core/auth.py | 23 | 完善 |
 | core/web.py | 22 | 完善 |
 | client.py | 22 | 完善 |
+| sdk/ | 65 | 完善 |
 | core/sub_agent.py | 21 | 完善 |
 | web/backend (WS) | 21 | 完善 |
 | web/backend (projects) | 20 | 完善 |
@@ -271,9 +272,9 @@ python3 -m pytest tests/ -v
 | tui.py | 12 | 基本覆盖 |
 | core/errors.py | 11 | 完善 |
 
-**总计：501 个测试（481 core + 20 web），ruff 零告警**
+**总计：566 个测试（481 core + 65 sdk + 20 web），ruff 零告警**
 
-**当前版本：v1.4.0（见 CHANGELOG.md）**
+**当前版本：v1.6.0（见 CHANGELOG.md）**
 
 ---
 

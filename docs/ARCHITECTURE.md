@@ -23,6 +23,7 @@
          ┌────────────▼────────────┐
          │    Python SDK           │
          │    cody/client.py       │
+         │    cody/sdk/ (enhanced) │
          │    (in-process,         │
          │     no HTTP)            │
          └────────────┬────────────┘
@@ -32,7 +33,7 @@
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │          AgentRunner (core/runner.py)                  │  │
 │  │  - Creates Pydantic AI Agent                          │  │
-│  │  - Registers 30+ tools                                │  │
+│  │  - Registers 28 tools                                 │  │
 │  │  - Context compaction (auto)                          │  │
 │  │  - Session-aware run methods                          │  │
 │  │  - Assembles CodyDeps for dependency injection        │  │
@@ -90,8 +91,9 @@ The central orchestrator. Responsibilities:
 - Create Pydantic AI `Agent` with all tools registered
 - Assemble `CodyDeps` dataclass for dependency injection into tools
 - Auto-compact message history when approaching token limits
-- Provide `run()`, `run_stream()`, `run_sync()` execution methods
+- Provide `run()`, `run_stream()`, `run_sync()` execution methods (accept `Prompt` type — `str` or `MultimodalPrompt`)
 - Session-aware variants: `run_with_session()`, `run_stream_with_session()`
+- Multimodal support: `_to_pydantic_prompt()` converts `Prompt` to pydantic-ai format (`str` or `[text, BinaryContent, ...]`)
 - Manage lifecycle of MCP and LSP clients
 - Optional thinking mode (`enable_thinking` + `thinking_budget` in config)
 
@@ -214,11 +216,20 @@ Manages language server processes with Content-Length framed JSON-RPC:
 
 Auto-compaction is wired into `AgentRunner.run()` and `run_stream()`.
 
-### 8. Session System (`core/session.py`)
+### 8. Prompt Types (`core/prompt.py`)
+
+Multimodal prompt type system:
+- `ImageData` — single image (base64 data, media_type, optional filename) with `to_dict()`/`from_dict()` serialization
+- `MultimodalPrompt` — text + images list
+- `Prompt = Union[str, MultimodalPrompt]` — backward-compatible type alias
+- `prompt_text()` / `prompt_images()` — type-safe extraction helpers
+
+### 9. Session System (`core/session.py`)
 
 SQLite-backed persistence:
 - `create_session()`, `get_session()`, `list_sessions()`, `delete_session()`
-- `add_message(session_id, role, content)` — append to conversation history
+- `add_message(session_id, role, content, images)` — append to conversation history (images stored as JSON in SQLite)
+- Auto-migration: `ALTER TABLE messages ADD COLUMN images` on first use
 - Default DB: `~/.cody/sessions.db`
 
 ### 9. Security Stack
@@ -334,4 +345,4 @@ cody/client.py (Python SDK) ──→ core/* (in-process, no HTTP)
 
 ---
 
-**Last updated:** 2026-03-02
+**Last updated:** 2026-03-04

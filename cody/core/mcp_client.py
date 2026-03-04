@@ -274,7 +274,7 @@ class MCPClient:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "cody", "version": "1.4.0"},
+                "clientInfo": {"name": "cody", "version": "1.6.0"},
             },
         )
         # Send initialized notification (no id, no response expected)
