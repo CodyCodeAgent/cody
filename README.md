@@ -2,8 +2,8 @@
 
 **AI 编码引擎** — 支持 RPC Server、动态技能、MCP 集成和 LSP 代码智能。
 
-[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](CHANGELOG.md)
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
+[![PyPI](https://img.shields.io/pypi/v/cody-ai.svg)](https://pypi.org/project/cody-ai/)
+[![Python](https://img.shields.io/pypi/pyversions/cody-ai.svg)](https://pypi.org/project/cody-ai/)
 [![Tests](https://img.shields.io/badge/tests-566%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -74,7 +74,7 @@ pip install cody-ai[cli]
 pip install cody-ai[all]
 
 # 从源码安装（开发）
-git clone https://github.com/SUT-GC/cody.git
+git clone https://github.com/CodyCodeAgent/cody.git
 cd cody
 pip install -e ".[dev]"
 
