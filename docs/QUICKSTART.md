@@ -1,65 +1,58 @@
-# Cody - 快速入门教程
+# Cody - 快速入门
 
-欢迎使用 Cody！本教程将带你从零开始，快速上手使用 Cody 完成实际开发任务。
+欢迎使用 Cody！本教程带你在 15 分钟内上手，覆盖 SDK 嵌入和 CLI 直接使用两种方式。
 
 ---
 
-## 1. 安装 Cody
+## 1. 安装
 
 ### 系统要求
 
 - Python 3.9+
 - pip 包管理器
-- Git（可选，用于版本控制）
 
-### 安装步骤
+### 选择安装方式
 
 ```bash
-# 克隆项目
-git clone https://github.com/SUT-GC/cody.git
+# 只用 SDK（最轻量，4 个依赖）
+pip install cody-ai
+
+# 用 CLI 交互
+pip install cody-ai[cli]
+
+# 全部功能（CLI + TUI + Web）
+pip install cody-ai[all]
+
+# 从源码安装（开发）
+git clone https://github.com/CodyCodeAgent/cody.git
 cd cody
-
-# 安装
-pip install -e .
-
-# 验证安装
-cody --version
+pip install -e ".[dev]"
 ```
-
-看到版本号表示安装成功！
 
 ---
 
-## 2. 配置 API Key
+## 2. 配置模型
 
-Cody 需要访问大模型 API。以下是几种配置方式：
+Cody 支持多种模型提供商，你需要先配置 API Key。
 
 ### 方式 1：交互式配置（推荐）
 
 ```bash
-# 首次运行任何命令时自动触发，或手动运行：
 cody config setup
 ```
 
-### 方式 2：智谱 GLM
+### 方式 2：环境变量
 
 ```bash
+# Anthropic Claude
+export CODY_MODEL_API_KEY='sk-ant-...'
+
+# 智谱 GLM
 export CODY_MODEL='glm-4'
 export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
 export CODY_MODEL_API_KEY='sk-...'
-```
 
-### 方式 3：阿里云通义千问
-
-```bash
-export CODY_MODEL='qwen-coder-plus'
-export CODY_MODEL_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
-export CODY_MODEL_API_KEY='sk-...'
-```
-
-### 方式 4：阿里云百炼 Coding Plan
-
-```bash
+# 阿里云百炼 Coding Plan
 export CODY_MODEL='qwen3.5'
 export CODY_CODING_PLAN_KEY='sk-sp-...'
 ```
@@ -67,495 +60,253 @@ export CODY_CODING_PLAN_KEY='sk-sp-...'
 ### 验证配置
 
 ```bash
-# 查看当前配置
 cody config show
 ```
 
 ---
 
-## 3. 第一个任务
+## 3. SDK 快速上手
 
-让我们用 Cody 创建第一个文件：
+SDK 是 Cody 框架的核心接入方式，直接调用引擎（in-process），无需启动任何服务。
 
-```bash
-cody run "创建一个 Python 脚本，打印 Hello World"
-```
-
-**输出示例：**
-```
-  → write_file(path='hello.py')
-  → exec_command(command='python3 hello.py')
-
-已创建 hello.py 文件：
+### 3.1 第一个任务
 
 ```python
-print("Hello World!")
+import asyncio
+from cody import AsyncCodyClient
+
+async def main():
+    async with AsyncCodyClient(workdir="/tmp/myproject") as client:
+        result = await client.run("创建一个 Python 脚本，打印 Hello World")
+        print(result.output)
+
+asyncio.run(main())
 ```
 
-运行结果：
-```
-Hello World!
-```
+### 3.2 多轮对话
+
+```python
+async with AsyncCodyClient(workdir="/tmp/myproject") as client:
+    session = await client.create_session(title="Flask 开发")
+
+    r1 = await client.run("创建一个 Flask 应用", session_id=session.id)
+    print(r1.output)
+
+    r2 = await client.run("添加 /health 端点", session_id=session.id)
+    print(r2.output)
+
+    r3 = await client.run("编写 pytest 测试", session_id=session.id)
+    print(r3.output)
 ```
 
-查看创建的文件：
-```bash
-cat hello.py
+### 3.3 流式输出
+
+```python
+async with AsyncCodyClient() as client:
+    async for chunk in client.stream("分析这个项目的架构"):
+        if chunk.type == "text_delta":
+            print(chunk.content, end="", flush=True)
+        elif chunk.type == "tool_call":
+            print(f"\n  → {chunk.content}")
+        elif chunk.type == "done":
+            print("\n完成")
 ```
+
+### 3.4 Builder 模式
+
+```python
+from cody import Cody
+
+client = (
+    Cody()
+    .workdir("/path/to/project")
+    .model("anthropic:claude-sonnet-4-0")
+    .thinking(enabled=True, budget=10000)
+    .enable_metrics()
+    .enable_events()
+    .build()
+)
+
+async with client:
+    result = await client.run("重构 auth 模块")
+    print(client.get_metrics())  # Token 使用统计
+```
+
+### 3.5 同步版本
+
+```python
+from cody import CodyClient
+
+with CodyClient(workdir="/tmp/myproject") as client:
+    result = client.run("创建 hello.py")
+    print(result.output)
+```
+
+更多 SDK 用法：[SDK 使用指南](SDK.md)
 
 ---
 
-## 4. 使用 CLI 完成任务
+## 4. CLI 快速上手
 
-### 任务 1：创建 FastAPI 项目
+CLI 是 Cody 的命令行界面，适合终端中快速执行任务。
 
-```bash
-cody run "创建一个 FastAPI 项目，包含以下功能：
-- / 端点返回欢迎消息
-- /health 端点返回健康状态
-- 使用 uvicorn 运行"
-```
-
-**预期输出：**
-```
-  → write_file(path='main.py')
-  → write_file(path='requirements.txt')
-
-已创建 FastAPI 项目：
-
-main.py:
-```python
-from fastapi import FastAPI
-
-app = FastAPI()
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to FastAPI!"}
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-```
-
-requirements.txt:
-```
-fastapi
-uvicorn
-```
-
-运行：`uvicorn main:app --reload`
-```
-
-### 任务 2：添加功能
+### 4.1 初始化项目
 
 ```bash
-cody run "在 main.py 中添加一个 /users/{user_id} 端点，返回用户信息"
+cd ~/myproject
+cody init    # 创建 .cody/ 配置目录和 CODY.md 项目说明
 ```
 
-### 任务 3：编写测试
+### 4.2 执行任务
 
 ```bash
-cody run "为 main.py 编写 pytest 测试"
+# 基础任务
+cody run "创建一个 FastAPI 项目，包含 / 和 /health 端点"
+
+# 启用思考模式（显示推理过程）
+cody run --thinking "设计一个用户管理 REST API"
+
+# 指定工作目录
+cody run --workdir /path/to/project "修复测试失败"
+
+# 详细输出（显示工具调用结果）
+cody run -v "读取并分析 main.py"
 ```
 
----
-
-## 5. 交互式对话
-
-使用 `chat` 命令进行多轮对话：
+### 4.3 交互式对话
 
 ```bash
+# 启动对话
 cody chat
-```
 
-**对话示例：**
-```
-╭────────────────────────────────────────────────────╮
-│                  Cody Chat                          │
-│  Model: anthropic:claude-sonnet-4-0                │
-│  Workdir: /home/user/myproject                     │
-│  Session: abc123                                   │
-╰────────────────────────────────────────────────────╯
-
-You > 帮我创建一个 Flask 应用
-
-  → write_file(path='app.py')
-  → write_file(path='requirements.txt')
-
-已创建 Flask 应用...
-
-You > 添加一个登录端点
-
-  → edit_file(path='app.py')
-
-已添加 /login 端点...
-
-You > 添加 JWT 认证
-
-  → edit_file(path='app.py')
-  → write_file(path='auth.py')
-
-已添加 JWT 认证...
-
-You > /quit
-Bye!
-```
-
-### 斜杠命令
-
-```
-/sessions    # 列出会话
-/clear       # 清屏
-/help        # 显示帮助
-/quit        # 退出
-```
-
----
-
-## 6. 使用 TUI
-
-启动全屏终端界面：
-
-```bash
-cody tui
-```
-
-**界面：**
-```
-┌─────────────────────────────────────────────────┐
-│  Cody                              [Header]     │
-├─────────────────────────────────────────────────┤
-│  You > 创建项目                                 │
-│  Cody > 已创建...                               │
-│                                                 │
-│  [对话历史 - 可滚动]                             │
-│                                                 │
-├─────────────────────────────────────────────────┤
-│  Session: abc123 | Model: ... | Msgs: 2        │
-├─────────────────────────────────────────────────┤
-│  You > [输入框]                                 │
-├─────────────────────────────────────────────────┤
-│  Ctrl+N New  Ctrl+C Cancel  Ctrl+Q Quit        │
-└─────────────────────────────────────────────────┘
-```
-
-**快捷键：**
-- `Ctrl+N` — 新建会话
-- `Ctrl+C` — 取消/退出
-- `Ctrl+Q` — 退出
-
----
-
-## 7. 使用技能
-
-技能提供特定领域的专业知识。
-
-### 查看可用技能
-
-```bash
-cody skills list
-```
-
-**输出：**
-```
-Available Skills:
-
-  [on] git        (builtin)
-        Git version control operations...
-  [on] github     (builtin)
-        GitHub integration...
-  [on] docker     (builtin)
-        Docker container management...
-  [on] python     (builtin)
-        Python development...
-```
-
-### 使用技能
-
-```bash
-# 查看技能文档
-cody skills show git
-
-# 启用技能
-cody skills enable python
-
-# 使用技能执行任务
-cody run "按照 Python 最佳实践重构这个模块"
-```
-
----
-
-## 8. 会话管理
-
-### 列出会话
-
-```bash
-cody sessions list
-```
-
-**输出：**
-```
-Recent sessions:
-
-  abc123  Flask 应用开发                      4 msgs  2026-02-28
-  def456  代码重构                            8 msgs  2026-02-27
-```
-
-### 查看会话
-
-```bash
-cody sessions show abc123
-```
-
-### 恢复会话
-
-```bash
-# 继续上次会话
+# 继续上次对话
 cody chat --continue
 
 # 恢复指定会话
 cody chat --session abc123
 ```
 
-### 删除会话
+**斜杠命令：** `/quit` 退出, `/sessions` 列出会话, `/clear` 清屏, `/help` 帮助
+
+### 4.4 会话管理
 
 ```bash
-cody sessions delete abc123
+cody sessions list              # 列出会话
+cody sessions show <id>         # 查看会话
+cody sessions delete <id>       # 删除会话
 ```
+
+### 4.5 技能管理
+
+```bash
+cody skills list                # 列出所有技能
+cody skills show git            # 查看技能文档
+cody skills enable github       # 启用技能
+cody skills disable docker      # 禁用技能
+```
+
+更多 CLI 用法：[CLI 使用指南](CLI.md)
 
 ---
 
-## 9. 实战项目
-
-让我们完成一个完整的项目：
-
-### 步骤 1：初始化项目
+## 5. TUI 全屏终端
 
 ```bash
-mkdir myproject
-cd myproject
-cody init
+cody tui                        # 启动全屏界面
+cody tui --continue             # 继续上次会话
+cody tui --workdir /path        # 指定工作目录
 ```
 
-### 步骤 2：创建项目结构
+**快捷键：** `Ctrl+N` 新会话, `Ctrl+C` 取消/退出, `Ctrl+Q` 退出
 
-```bash
-cody run "创建一个 Python 项目结构，包含：
-- src/ 目录放源代码
-- tests/ 目录放测试
-- docs/ 目录放文档
-- pyproject.toml 配置
-- README.md 说明文件"
-```
-
-### 步骤 3：实现功能
-
-```bash
-cody run "在 src/ 下创建一个计算器模块，支持加减乘除"
-```
-
-### 步骤 4：编写测试
-
-```bash
-cody run "为计算器模块编写完整的单元测试"
-```
-
-### 步骤 5：运行测试
-
-```bash
-cody run "运行所有测试并修复失败"
-```
-
-### 步骤 6：添加文档
-
-```bash
-cody run "为计算器模块编写 API 文档"
-```
+更多 TUI 用法：[TUI 使用指南](TUI.md)
 
 ---
 
-## 10. 使用 SDK
+## 6. Web 界面
 
-### Python SDK
-
-SDK 是 in-process 封装，直接调用核心引擎，无需启动 Server。
-
-```python
-from cody import AsyncCodyClient
-
-async with AsyncCodyClient(workdir="/path/to/project") as client:
-    # 单次任务
-    result = await client.run("创建 hello.py")
-    print(result.output)
-
-    # 多轮对话
-    session = await client.create_session()
-    await client.run("创建 Flask 应用", session_id=session.id)
-    await client.run("添加 /health 端点", session_id=session.id)
-
-    # 流式输出
-    async for chunk in client.stream("解释代码"):
-        print(chunk.content, end="")
+```bash
+cody-web --dev                  # 开发模式（Vite HMR + FastAPI）
+cody-web --port 8000            # 生产模式
 ```
+
+**功能：** 项目管理、实时对话、图片上传、深色主题
+
+**API 端点：** `POST /run`, `POST /run/stream` (SSE), `POST /tool`, `GET /skills`, `GET /sessions`, `WS /ws`
+
+更多 Web/API 用法：[API 参考](API.md)
 
 ---
 
-## 11. 启动 Web
+## 7. 定制你的 Agent
+
+### 7.1 自定义 Skills
+
+在 `.cody/skills/` 下创建你自己的技能：
 
 ```bash
-# 启动统一服务器（RPC API + Web 功能）
-cody-web --port 8000
-
-# 访问 API 文档
-open http://localhost:8000/docs
-```
-
-**API 端点：**
-- `POST /run` — 执行任务
-- `POST /run/stream` — 流式执行
-- `GET /skills` — 列出技能
-- `GET /sessions` — 列出会话
-- `GET /health` — 健康检查
-
+mkdir -p .cody/skills/my-skill
+cat > .cody/skills/my-skill/SKILL.md << 'EOF'
+---
+name: my-skill
+description: 我的自定义编码规范
 ---
 
-## 12. 最佳实践
+# 项目编码规范
 
-### 1. 明确工作目录
+- 使用 4 空格缩进
+- 函数名使用 snake_case
+- 所有公开函数必须有 docstring
+EOF
 
-```bash
-# 推荐
-cody run "任务" --workdir /path/to/project
-
-# 不推荐（依赖当前目录）
-cd /path/to/project && cody run "任务"
-```
-
-### 2. 使用会话进行多轮对话
-
-```bash
-# 第一次
-cody chat --workdir /path/to/project
-
-# 继续
-cody chat --continue
-```
-
-### 3. 复杂任务启用思考模式
-
-```bash
-cody run --thinking "分析项目架构问题"
-```
-
-### 4. 查看详细输出
-
-```bash
-cody run -v "任务"  # 显示工具调用结果
-```
-
-### 5. 使用技能
-
-```bash
-# 启用相关技能
-cody skills enable git
-cody skills enable python
-
-# 执行任务
-cody run "按照最佳实践重构代码"
-```
-
----
-
-## 13. 常见问题
-
-### Q: 安装失败怎么办？
-
-```bash
-# 升级 pip
-pip install --upgrade pip
-
-# 使用虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-### Q: API Key 错误？
-
-检查配置：
-```bash
-cody config show
-echo $CODY_MODEL_API_KEY
-```
-
-确保 Key 正确且未过期。
-
-### Q: 任务执行慢？
-
-- 检查网络连接
-- 使用较小的任务
-- 启用思考模式查看进度
-
-### Q: 如何查看日志？
-
-```bash
-# 审计日志
-~/.cody/audit.db
-
-# 会话数据
-~/.cody/sessions.db
-```
-
----
-
-## 14. 下一步
-
-完成本教程后，你可以：
-
-1. **阅读详细文档**
-   - [CLI 使用文档](docs/CLI.md)
-   - [SDK 使用文档](docs/SDK.md)
-   - [TUI 使用文档](docs/TUI.md)
-   - [技能开发指南](docs/SKILLS.md)
-
-2. **探索高级功能**
-   - MCP 集成
-   - LSP 代码智能
-   - 子代理系统
-   - 自定义技能
-
-3. **参与社区**
-   - 提交 Issue
-   - 贡献代码
-   - 分享技能
-
----
-
-## 15. 获取帮助
-
-```bash
-# CLI 帮助
-cody --help
-cody run --help
-cody chat --help
-
-# 查看配置
-cody config show
-
-# 列出技能
+# 验证
 cody skills list
 ```
 
-**文档资源：**
-- README.md — 项目概述
-- docs/CLI.md — CLI 详细用法
-- docs/API.md — RPC API 文档
-- docs/ARCHITECTURE.md — 架构设计
-- CONTRIBUTING.md — 开发规范
+### 7.2 连接 MCP 服务器
+
+在 `.cody/config.json` 中配置：
+
+```json
+{
+  "mcp": {
+    "servers": [
+      {
+        "name": "github",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": { "GITHUB_TOKEN": "..." }
+      }
+    ]
+  }
+}
+```
+
+### 7.3 权限控制
+
+```json
+{
+  "permissions": {
+    "overrides": {
+      "exec_command": "allow",
+      "write_file": "confirm"
+    }
+  }
+}
+```
 
 ---
 
-祝你使用愉快！🎉
+## 8. 下一步
 
-**最后更新:** 2026-02-28
+| 目标 | 文档 |
+|------|------|
+| 深入了解 SDK | [SDK 使用指南](SDK.md) |
+| 创建自定义技能 | [技能开发指南](SKILLS.md) |
+| 理解框架架构 | [架构设计](ARCHITECTURE.md) |
+| 了解全部配置项 | [配置文件详解](CONFIG.md) |
+| 参与贡献 | [开发规范](../CONTRIBUTING.md) |
+
+---
+
+**最后更新:** 2026-03-04

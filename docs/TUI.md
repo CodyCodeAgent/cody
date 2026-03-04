@@ -1,6 +1,8 @@
 # Cody - TUI 使用文档
 
-TUI（Terminal User Interface）是 Cody 的全屏终端界面，提供比 CLI 更丰富的交互体验，支持实时流式输出、多会话管理和键盘快捷键。
+TUI（Terminal User Interface）是 Cody 框架的参考实现之一，提供全屏终端界面。基于 [Textual](https://textual.textualize.io/) 构建，支持实时流式输出、多会话管理和键盘快捷键。
+
+> **定位**：TUI 和 CLI 都是框架的参考实现（dogfooding），展示如何基于 Cody 核心引擎构建交互式工具。如需将 Cody 嵌入你自己的应用，请使用 [Python SDK](SDK.md)。
 
 ---
 
@@ -197,10 +199,6 @@ Shortcuts:
 ```bash
 cody tui \
   --model <模型名称> \
-  --model-base-url <API 地址> \
-  --model-api-key <API Key> \
-  --coding-plan-key <阿里云 Coding Plan Key> \
-  --coding-plan-protocol <openai|anthropic> \
   --thinking/--no-thinking \
   --thinking-budget <token 数> \
   --workdir <工作目录> \
@@ -213,21 +211,19 @@ cody tui \
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--model` | AI 模型名称 | 配置文件中的模型 |
-| `--model-base-url` | 自定义 OpenAI 兼容 API 地址 | - |
-| `--model-api-key` | 自定义模型 API Key | - |
-| `--coding-plan-key` | 阿里云百炼 Coding Plan Key | - |
-| `--coding-plan-protocol` | Coding Plan 协议类型 | `openai` |
 | `--thinking` | 启用思考模式 | 配置文件设置 |
 | `--thinking-budget` | 思考 token 预算 | - |
 | `--workdir` | 工作目录 | 当前目录 |
 | `--session` | 恢复指定会话 | - |
 | `--continue` | 继续上次会话 | `false` |
 
+> **模型和 API Key 配置**：使用 `cody config setup` 交互式配置模型提供商和 API Key，不再通过 CLI 参数传递。详见 [配置文件详解](CONFIG.md)。
+
 ### 使用示例
 
 ```bash
-# 使用不同模型
-cody tui --model glm-4 --model-base-url https://open.bigmodel.cn/api/paas/v4/
+# 使用不同模型（需先通过 cody config setup 配置 API）
+cody tui --model glm-4
 
 # 启用思考模式
 cody tui --thinking --thinking-budget 10000
@@ -506,16 +502,22 @@ cody sessions delete abc123
 
 ---
 
-## 与 Server 的关系
+## 与其他运行方式的关系
 
-TUI 直接使用核心引擎（in-process），不需要启动 Server。Web（`cody-web`）是独立的 Web + RPC 服务，供外部系统通过 HTTP/WebSocket 调用。
+TUI、CLI、Web 都是 Cody 框架的参考实现，直接调用核心引擎（in-process），共享同一个 `cody/core/`。
 
 ```bash
-# TUI — 直接使用核心引擎
+# TUI — 全屏终端（Textual）
 cody tui
 
-# Web — 供外部系统调用（端口 8000）
+# CLI — 命令行（Click）
+cody run "任务"
+
+# Web — 浏览器界面 + HTTP API（FastAPI）
 cody-web
+
+# SDK — 嵌入你的应用（推荐的集成方式）
+from cody import AsyncCodyClient
 ```
 
 ---

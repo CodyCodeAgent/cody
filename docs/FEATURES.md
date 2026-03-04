@@ -1,24 +1,26 @@
-# Cody - Product Features
+# Cody - 功能与特性
 
 ## 概述
 
-Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动态 Skill 系统和 MCP 集成。
+Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程代理所需的完整基础设施：多模型支持、28 个内置工具、Agent Skills 开放标准、子 Agent 编排、MCP 集成，以及 CLI/TUI/Web/SDK 四种运行方式。
+
+开源地址：[https://github.com/CodyCodeAgent/cody](https://github.com/CodyCodeAgent/cody.git)
 
 ## 核心定位
 
-> **Cody 的核心是 AI 编程引擎（core），CLI、Web 和 Server 都只是引擎的壳子。**
-> 引擎做厚，壳子做薄。Server/SDK 是我们的差异化交付方式——让别人把 AI 编程能力嵌入到自己的系统中。
+> **Cody 是一个完整的 AI Coding Agent 框架——核心引擎（core）实现所有功能逻辑，CLI、Web、TUI 是参考实现，SDK 让你用几行代码构建自己的 AI 编程工具。**
+> 引擎做厚，壳子做薄。框架完整度是核心竞争力。
 
 **目标用户：**
-- **AI 系统/平台** — 通过 RPC Server / SDK 嵌入 Cody 引擎（**差异化优势**）
-- **自动化系统** — 集成到 CI/CD、代码审查、自动修复流程
-- **程序员** — 通过 CLI/TUI 直接使用（保证可用，也是最好的 dogfooding 方式）
+- **团队/公司构建 AI 编程工具** — 通过 Python SDK 或 HTTP API 将 Cody 框架集成到自己的产品中（**核心场景**）
+- **开发者定制 AI Agent** — 通过 Agent Skills 标准和 MCP 集成，快速定制专属 AI 编程代理
+- **个人程序员** — 通过 CLI/TUI/Web 直接使用，同时也是框架最好的 dogfooding 方式
 
 **核心价值：**
-- 高质量的 AI 编程引擎（工具准确、Agent 可靠）
-- 多种接入方式（Server/SDK/CLI/TUI/Web 共享同一引擎）
-- 可扩展的 Skill 系统
-- 子 Agent 编排（任务分解、并行执行）
+- **框架完整度** — 从工具调用到子 Agent 编排，从会话管理到安全审计，开箱即用
+- **Agent Skills 开放标准** — 兼容 Anthropic 发布的 Agent Skills 标准，已被 26+ 平台采纳
+- **多模型支持** — Anthropic、OpenAI、Google、DeepSeek、阿里通义千问、智谱 GLM 等
+- **开源可控** — 完整源码，自由定制，数据留在本地
 
 ---
 
@@ -26,22 +28,22 @@ Cody 是一个 AI 编程助手，类似 Claude Code，但支持 RPC 调用、动
 
 ### 1. 核心 AI 能力
 
-**基于 Pydantic AI：**
+**基于 Pydantic AI 构建：**
 - 多模型支持（Anthropic、OpenAI、Google、DeepSeek 等）
 - 自定义 OpenAI 兼容 API 支持（智谱 GLM、阿里通义千问/DashScope 等）
 - 多模态输入 — 支持文本+图片混合提示（Web 端），通过 `Prompt` 类型和 pydantic-ai `BinaryContent` 传递
 - 结构化输出
 - 工具调用（Function Calling）
 - 流式响应（结构化 StreamEvent：thinking / tool_call / tool_result / text_delta / done）
-- 会话管理
+- 会话管理（SQLite 持久化）
 - Thinking 模式（`--thinking` 开启，`--thinking-budget` 控制 token 预算）
 
 **认证方式：**
-- OAuth 2.0（推荐）
-- API Key（备选）
-- 多账号支持
+- API Key（通过交互式配置向导 `cody config setup` 设置）
+- 支持 OpenAI 兼容 API（`model_base_url` + `model_api_key`）
+- 多模型配置
 
-### 2. 内置工具集
+### 2. 内置工具集（28 个）
 
 **文件操作：**
 - `read_file(path)` - 读取文件
@@ -183,115 +185,87 @@ cody skills disable <name>        # 禁用 Skill
 - 并行处理多个子任务
 - 专门化处理（编码/研究/测试分离）
 
-### 6. 四模式运行 + SDK
+### 6. 框架能力：四种运行方式 + SDK
 
-#### CLI 模式
+Cody 框架提供同一核心引擎的多种接入方式，适用于不同场景：
+
+#### Python SDK（框架核心接入方式）
+
+**安装：**
+```bash
+pip install cody-ai            # 仅安装核心 SDK（4 个依赖）
+pip install cody-ai[cli]       # 含 CLI
+pip install cody-ai[all]       # 全部功能
+```
 
 **基本使用：**
-```bash
-# 初始化项目
-cody init
+```python
+from cody import Cody
 
-# 直接对话
-cody "创建一个 FastAPI 项目"
+# Builder 模式创建客户端
+client = Cody().workdir("/path/to/project").model("anthropic:claude-sonnet-4-0").build()
 
-# 交互模式
-cody chat
+# 同步执行
+result = client.run("重构 auth.py，提取通用逻辑到 utils.py")
+print(result.output)
+print(result.usage)
 
-# 指定模型
-cody --model opus "复杂任务"
+# 流式执行
+for event in client.stream("创建一个 FastAPI 项目"):
+    if event.type == "text_delta":
+        print(event.content, end="")
 
-# 继续上次对话
-cody --continue "继续刚才的任务"
+# 会话管理
+session = client.create_session()
+result = client.run("第一步：分析代码", session_id=session.id)
+result = client.run("第二步：重构", session_id=session.id)
+
+# 直接调用工具
+result = client.tool("read_file", {"path": "README.md"})
 ```
 
-**配置管理：**
-```bash
-cody config show                  # 查看配置
-cody config set model <value>     # 设置模型
+**异步客户端：**
+```python
+from cody import AsyncCodyClient
+
+async def main():
+    client = AsyncCodyClient(workdir="/path/to/project")
+    result = await client.run("分析代码质量")
+    async for event in client.stream("修复所有 lint 警告"):
+        print(event)
 ```
 
-#### TUI 模式
+**事件系统：**
+```python
+from cody import Cody
 
-**全屏交互终端（基于 Textual）：**
-```bash
-# 启动 TUI
-cody tui
+client = Cody().build()
 
-# 继续上次会话
-cody tui --continue
+@client.events.on("tool_call")
+def on_tool(event):
+    print(f"调用工具: {event.tool_name}")
 
-# 恢复指定会话
-cody tui --session <id>
-
-# 直接启动
-cody-tui
+@client.events.on("done")
+def on_done(event):
+    print(f"Token 使用: {event.usage}")
 ```
 
-**功能：**
-- 流式响应实时显示
-- 多会话管理（新建/恢复/列出/切换）
-- 斜杠命令（/help, /new, /sessions, /clear, /quit）
-- 键盘快捷键（Ctrl+N 新会话, Ctrl+C 取消/退出, Ctrl+Q 退出）
-- 状态栏处理状态指示器 — 显示 "Thinking..." → "Running {tool}..." → "Generating..." + 实时耗时
+**SDK 特性：**
+- `CodyClient`（同步）+ `AsyncCodyClient`（异步）双客户端
+- Builder 模式 — 链式配置创建客户端
+- 事件系统 — `EventManager` 同步/异步事件分发
+- 指标采集 — `MetricsCollector` 记录 token 使用、工具调用统计
+- 10 种错误类型 — `CodyError` → `CodyAuthError` / `CodyModelError` / `CodyToolError` 等
+- In-process 调用 — 直接包装核心引擎，无需 HTTP，零额外延迟
 
-#### Web 前端
+#### HTTP API（远程集成）
 
-独立 Web 应用，遵循"引擎做厚，壳子做薄"理念。
-
-**架构：** `React (Vite:5173) → Web Backend (FastAPI:8000, web.db) → Core Engine`
-
-**功能：**
-- 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
-- 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
-- 实时对话 — WebSocket 流式消息显示，通过 SDK 代理到核心服务
-- 图片上传 — 支持粘贴截图（Ctrl+V）和文件选择，图片随消息发送到多模态模型（如 Qwen3.5-plus）
-- 流式状态栏 — 显示处理状态（Thinking/Running/Generating）+ 耗时 + Stop 按钮
-- WebSocket 断连恢复 — 断连时自动重置 streaming 状态并提示用户
-- 空闲超时 — 120 秒无事件自动停止，防止永久卡住
-- GFM Markdown 渲染 — 支持表格、任务列表、删除线等（`remark-gfm`）
-- 项目侧边栏 — 快速切换/删除项目
-- 深色主题 UI
-
-**Web Backend（`web/backend/`）：**
-- 统一 FastAPI 应用（端口 8000），同时提供 RPC API 和 Web 功能
-- 自有 SQLite 数据库（`~/.cody/web.db`）管理项目数据
-- 直接调用核心引擎（in-process）
-- WebSocket `/ws/chat/{project_id}` 代理聊天
-
-**开发：**
+启动 HTTP 服务：
 ```bash
-# 启动 Web 后端
-PYTHONPATH=. python -m web.backend
-
-# 启动前端开发服务器
-cd web && npm install && npm run dev
+cody-web                  # 生产模式
+cody-web --dev            # 开发模式（含 Vite HMR）
+cody-web --port 9000      # 指定端口
 ```
-
-**生产构建：**
-```bash
-cd web && npm run build
-# dist/ 由 Web Backend 自动托管
-```
-
-#### Server 模式
-
-**启动服务：**
-```bash
-# 生产模式（托管 dist/ 静态文件）
-cody-web
-
-# 开发模式（同时启动 Vite dev server）
-cody-web --dev
-
-# 指定端口
-cody-web --port 9000
-
-# 指定主机
-cody-web --host 0.0.0.0
-```
-
-Server 由 `web/backend/` 统一提供（单一 FastAPI 应用，端口 8000），同时包含 RPC API 和 Web 功能。
 
 **API 接口：**
 
@@ -360,9 +334,65 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 ```json
 {
   "status": "ok",
-  "version": "1.3.0"
+  "version": "1.6.0"
 }
 ```
+
+#### CLI 模式（参考实现）
+
+```bash
+# 初始化项目
+cody init
+
+# 单次执行
+cody run "创建一个 FastAPI 项目"
+cody run --thinking "复杂分析任务"
+cody run -v "调试这个问题"
+
+# 交互对话
+cody chat
+cody chat --continue
+cody chat --session <id>
+
+# 配置管理
+cody config setup                  # 交互式配置向导
+cody config show                   # 查看配置
+cody config set model <value>      # 设置模型
+```
+
+#### TUI 模式（参考实现）
+
+**全屏交互终端（基于 Textual）：**
+```bash
+cody tui                     # 启动 TUI
+cody tui --continue          # 继续上次会话
+cody tui --session <id>      # 恢复指定会话
+```
+
+**功能：**
+- 流式响应实时显示
+- 多会话管理（新建/恢复/列出/切换）
+- 斜杠命令（/help, /new, /sessions, /clear, /quit）
+- 键盘快捷键（Ctrl+N 新会话, Ctrl+C 取消/退出, Ctrl+Q 退出）
+- 状态栏处理状态指示器 — 显示 "Thinking..." -> "Running {tool}..." -> "Generating..." + 实时耗时
+
+#### Web 前端（参考实现）
+
+独立 Web 应用，遵循"引擎做厚，壳子做薄"理念。
+
+**架构：** `React (Vite:5173) -> Web Backend (FastAPI:8000, web.db) -> Core Engine`
+
+**功能：**
+- 项目管理 — 创建/编辑/删除项目（名称、描述、工作目录）
+- 项目向导 — 目录浏览器选择 workdir，自动初始化 `.cody/`
+- 实时对话 — WebSocket 流式消息显示
+- 图片上传 — 支持粘贴截图（Ctrl+V）和文件选择，图片随消息发送到多模态模型
+- 流式状态栏 — 显示处理状态（Thinking/Running/Generating）+ 耗时 + Stop 按钮
+- WebSocket 断连恢复 — 断连时自动重置 streaming 状态并提示用户
+- 空闲超时 — 120 秒无事件自动停止，防止永久卡住
+- GFM Markdown 渲染 — 支持表格、任务列表、删除线等（`remark-gfm`）
+- 项目侧边栏 — 快速切换/删除项目
+- 深色主题 UI
 
 ### 7. 项目配置
 
@@ -388,12 +418,7 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 **`~/.cody/config.json`（全局）：**
 ```json
 {
-  "auth": {
-    "type": "oauth",
-    "token": "...",
-    "refresh_token": "...",
-    "expires_at": "2026-02-01T00:00:00Z"
-  },
+  "model_api_key": "sk-...",
   "default_model": "anthropic:claude-sonnet-4-0",
   "skills": {
     "enabled": ["git"]
@@ -432,8 +457,8 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 
 **核心技术栈：**
 - Python 3.9+
-- Pydantic AI
-- FastAPI（Web Backend + RPC API）
+- Pydantic AI（Agent 框架）
+- FastAPI（HTTP API + Web Backend）
 - Click（CLI）
 - Textual（TUI）
 - Rich（终端渲染）
@@ -443,81 +468,105 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 - OpenAI GPT
 - Google Gemini
 - DeepSeek
+- 阿里通义千问（DashScope）
+- 智谱 GLM
 - 其他兼容 OpenAI API 的模型
 
 ---
 
 ## 使用场景
 
-### 1. 独立使用（程序员）
-```bash
-cd ~/myproject
-cody init
-cody "帮我重构 auth.py，提取通用逻辑到 utils.py"
+### 1. 通过 SDK 构建 AI 编程工具
+
+```python
+from cody import Cody
+
+# 构建自己的 AI 代码审查系统
+client = Cody().workdir(repo_path).model("anthropic:claude-sonnet-4-0").build()
+
+# 自动代码审查
+diff = get_pr_diff()
+result = client.run(f"审查以下代码变更，给出改进建议：\n{diff}")
+post_review_comment(result.output)
+
+# 自动修复 Issue
+issue = get_github_issue(issue_id)
+result = client.run(f"修复这个问题：{issue.title}\n{issue.body}")
+create_pr(result.output)
 ```
 
-### 2. 集成到 Clawdbot
+### 2. HTTP API 集成
+
 ```javascript
-// Clawdbot 调用 Cody
+// 在你的应用中集成 Cody
 const response = await fetch('http://localhost:8000/run', {
   method: 'POST',
   body: JSON.stringify({
     prompt: '创建一个 API 路由',
-    workdir: process.cwd()
+    workdir: '/path/to/project'
   })
 });
 ```
 
-### 3. CI/CD 集成
+### 3. CI/CD 自动化
+
 ```yaml
 # .github/workflows/ai-review.yml
 - name: AI Code Review
   run: |
-    cody "检查代码质量并生成报告" > review.md
+    cody run "检查代码质量并生成报告" > review.md
+```
+
+### 4. CLI 直接使用
+
+```bash
+cd ~/myproject
+cody init
+cody run "帮我重构 auth.py，提取通用逻辑到 utils.py"
 ```
 
 ### 5. 多项目管理
+
 ```bash
 # 项目 A 有自己的 skills
 cd ~/project-a
-cody "使用项目 A 的配置"
+cody run "使用项目 A 的配置"
 
 # 项目 B 有不同的 skills
 cd ~/project-b
-cody "使用项目 B 的配置"
+cody run "使用项目 B 的配置"
 ```
 
 ---
 
 ## 路线图
 
-### v0.1.0（MVP）✅ 已完成
+### v0.1.0 — 框架原型 ✅ 已完成
 - [x] 基础 Agent 框架（Pydantic AI）
 - [x] 核心工具（read_file, write_file, edit_file, list_directory, exec_command）
-- [x] CLI 基本功能（run, init, skills, config）
+- [x] CLI 参考实现（run, init, skills, config）
 - [x] 项目配置支持（全局/项目级 config.json）
 - [x] Skill 系统基础（三层加载、SKILL.md、enable/disable）
-- [x] RPC Server 骨架（FastAPI, /run, /run/stream, /tool, /skills, /health）
+- [x] HTTP API 骨架（FastAPI, /run, /run/stream, /tool, /skills, /health）
 
-### v0.2.0（工具与会话）✅ 已完成
+### v0.2.0 — 工具与会话 ✅ 已完成
 - [x] 搜索工具（grep, glob, search_files）— 正则搜索、模式匹配、模糊文件名搜索
 - [x] patch 工具 — 应用 unified diff 补丁
 - [x] 搜索准确度对齐 ripgrep — 二进制文件检测、.gitignore 支持、默认忽略目录
 - [x] 路径遍历安全修复 — resolve() 防止 symlink 逃逸
 - [x] SQLite 会话持久化 — 对话历史存储、多会话管理
 - [x] CLI 交互模式 — `cody chat`、`--continue`、`--session`
-- [x] 81 个单元测试，ruff 零告警（现 144 个）
+- [x] 81 个单元测试，ruff 零告警
 
-### v0.3.0 — 引擎化 ✅ 已完成
+### v0.3.0 — 框架化 ✅ 已完成
 
-> **本阶段目标：把 Cody 从一个 CLI 工具变成一个可嵌入的 AI 编程引擎。**
-> Server 和 SDK 是重点，CLI 功能冻结。
+> **本阶段目标：把 Cody 从原型变成可集成的 AI Coding Agent 框架。**
 
-**P0：Server API 完善**
+**P0：HTTP API 完善**
 - [x] Session API — `POST /sessions`, `GET /sessions`, `GET /sessions/:id`, `DELETE /sessions/:id`
 - [x] 带会话的对话 — `POST /run` 支持 `session_id` 参数，自动持久化对话历史
 - [x] SSE 结构化 JSON 事件 — `{type: text/done/error}`
-- [x] Server 完整测试 — 32+ 个端点测试
+- [x] API 完整测试 — 32+ 个端点测试
 - [x] Runner + Session 打通 — `run_with_session` / `run_stream_with_session`
 - [x] 结构化错误响应 — 统一 `ErrorCode` 枚举、`CodyAPIError`、`{"error": {"code", "message", "details"}}` 格式
 - [x] WebSocket 双向通信 — `WS /ws` 端点，支持 run/cancel/ping，实时流式推送
@@ -551,7 +600,7 @@ cody "使用项目 B 的配置"
 
 ### v0.4.0 — 智能化 ✅ 已完成
 
-> **本阶段目标：让 Cody 拥有代码智能（LSP）、Web 能力和上下文管理能力。**
+> **本阶段目标：为框架增加代码智能（LSP）、Web 能力和上下文管理能力。**
 
 **P2：LSP 集成**
 - [x] LSP Client 框架 — `LSPClient` 管理语言服务器进程，Content-Length 帧 JSON-RPC
@@ -560,7 +609,7 @@ cody "使用项目 B 的配置"
 - [x] go-to-definition、find-references、hover 工具 — `lsp_definition()`, `lsp_references()`, `lsp_hover()`
 
 **P2：Web 能力**
-- [x] `webfetch(url)` — 抓取网页，HTML→Markdown 转换，支持 JSON/纯文本
+- [x] `webfetch(url)` — 抓取网页，HTML->Markdown 转换，支持 JSON/纯文本
 - [x] `websearch(query)` — DuckDuckGo HTML 搜索，无需 API Key
 
 **P2：上下文管理**
@@ -570,19 +619,18 @@ cody "使用项目 B 的配置"
 
 ### v0.5.0 — 安全与可靠性 ✅ 已完成
 
-> **本阶段目标：为生产环境夯实安全基础——认证、权限、审计、限流、可撤销。**
+> **本阶段目标：为生产环境夯实安全基础——权限、审计、限流、可撤销。**
 
 **P3：安全与可靠性**
-- [x] OAuth 2.0 认证 — `AuthManager` 支持 API Key 验证 + HMAC-SHA256 签名 token 签发/校验/刷新
 - [x] 工具级权限系统 — `PermissionManager` per-tool allow/deny/confirm，内置默认规则，支持用户覆盖
 - [x] 文件修改 undo/redo — `FileHistory` 记录 write/edit/patch 快照，undo/redo 栈
 - [x] 审计日志 — `AuditLogger` SQLite 持久化，8 种事件类型，query/count/clear
 - [x] 速率限制 — `RateLimiter` 滑动窗口算法，per-key 限流
-- [x] Server 三层中间件 — auth → rate_limit → audit，所有非公开端点自动拦截
+- [x] API 三层中间件 — auth -> rate_limit -> audit，所有非公开端点自动拦截
 - [x] 新 API — `GET /audit` 查询审计日志
 - [x] 新工具 — `undo_file`, `redo_file`, `list_file_changes`
 
-**TUI 交互终端**
+**TUI 参考实现**
 - [x] Textual 全屏终端 UI — `CodyTUI` App，MessageBubble/StreamBubble/StatusLine 组件
 - [x] 流式响应 — 异步 `run_stream()` 实时输出
 - [x] 会话管理 — 新建/恢复/列出会话，Ctrl+N 快捷键
@@ -591,9 +639,9 @@ cody "使用项目 B 的配置"
 
 **v0.5.0 总计：418 个测试，ruff 零告警**
 
-### v1.0.0 — 生产就绪 ✅ 已完成
+### v1.0.0 — 框架成熟 ✅ 已完成
 
-> **本阶段目标：扩展生态——CI/CD 模板、更多内置 Skills，完成核心功能闭环。**
+> **本阶段目标：扩展框架生态——CI/CD 模板、更多内置 Skills，完成核心功能闭环。**
 
 **CI/CD 模板**
 - [x] GitHub Actions 模板 — `templates/github-actions/` 目录
@@ -602,7 +650,7 @@ cody "使用项目 B 的配置"
   - `ai-test-gen.yml` — 自动为变更文件生成测试
 - [x] CI/CD Skill — `cicd` 技能文档，覆盖 GitHub Actions / GitLab CI 用法
 
-**更多内置 Skills（5 → 11）**
+**更多内置 Skills（5 -> 11）**
 - [x] `web` — 网页搜索和抓取（websearch/webfetch 工具使用指南）
 - [x] `rust` — Rust/Cargo 项目管理（构建、测试、Clippy、工作空间）
 - [x] `go` — Go 项目管理（模块、测试、golangci-lint、交叉编译）
@@ -612,13 +660,13 @@ cody "使用项目 B 的配置"
 
 **v1.0.0 总计：418 个 Python 测试，ruff 零告警，11 个内置 Skills，3 个 CI/CD 模板**
 
-### v1.0.1 — Agent Skills 开放标准 & 阿里云百炼 ✅ 已完成
+### v1.0.1 — Agent Skills 开放标准 & 多模型生态 ✅ 已完成
 
-> **本阶段目标：Skill 系统对齐 [Agent Skills 开放标准](https://agentskills.io/)，集成阿里云百炼 Coding Plan。**
+> **本阶段目标：Skill 系统对齐 [Agent Skills 开放标准](https://agentskills.io/)，扩展多模型生态。**
 
 **Skill 格式迁移**
 - [x] 11 个 SKILL.md 全部迁移到 YAML frontmatter + Markdown 标准格式
-- [x] 必填字段：`name`（≤64 字符，小写+连字符）、`description`（≤1024 字符）
+- [x] 必填字段：`name`（<=64 字符，小写+连字符）、`description`（<=1024 字符）
 - [x] 可选字段：`license`、`compatibility`、`metadata`、`allowed-tools`
 - [x] `name` 必须与目录名一致
 
@@ -639,44 +687,43 @@ cody "使用项目 B 的配置"
 - [x] 支持 OpenAI 和 Anthropic 两种协议
 - [x] CLI `--coding-plan-key` / `--coding-plan-protocol` 参数
 - [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
-- [x] Claude OAuth token 认证支持（v1.6.0 已移除，统一为 model_api_key）
 
 **v1.0.1 总计：446 个 Python 测试，ruff 零告警**
 
 ### v1.1.0 — Thinking Mode & StreamEvent ✅ 已完成
 
-> **本阶段目标：统一流式事件系统，支持 thinking 模式，所有端获得完整的 AI 执行过程信息。**
+> **本阶段目标：统一流式事件系统，支持 thinking 模式，框架所有接入方式获得完整的 AI 执行过程信息。**
 
 **Thinking Mode**
 - [x] `enable_thinking` + `thinking_budget` 配置字段
 - [x] CLI `--thinking/--no-thinking` 和 `--thinking-budget` 参数（run/chat/tui）
-- [x] Server 请求参数支持 `enable_thinking` 和 `thinking_budget`
+- [x] HTTP API 请求参数支持 `enable_thinking` 和 `thinking_budget`
 - [x] 环境变量 `CODY_ENABLE_THINKING` / `CODY_THINKING_BUDGET`
 
 **CodyResult 架构**
 - [x] `CodyResult` 数据模型 — output + thinking + tool_traces + usage
 - [x] `ToolTrace` — 记录每次工具调用的 tool_name、args、result
-- [x] 内核给出全部信息，上层（CLI/TUI/Server）选择怎么展示
+- [x] 核心引擎给出全部信息，上层（CLI/TUI/Web/SDK）选择怎么展示
 
 **StreamEvent 统一流式事件系统**
 - [x] 5 种结构化事件类型：`ThinkingEvent`、`TextDeltaEvent`、`ToolCallEvent`、`ToolResultEvent`、`DoneEvent`
 - [x] `run_stream()` 基于 pydantic-ai `run_stream_events()` API，实时 yield 结构化事件
 - [x] CLI run/chat 从同步 `run_sync()` 改为异步流式 `run_stream()`，打字机效果输出
 - [x] TUI 消费 StreamEvent，修复 message history 重建 bug
-- [x] Server SSE/WebSocket 发送结构化事件（thinking/tool_call/tool_result/text_delta/done）
+- [x] HTTP SSE/WebSocket 发送结构化事件（thinking/tool_call/tool_result/text_delta/done）
 - [x] `_serialize_stream_event()` 统一 SSE 和 WebSocket 的序列化
 
 **v1.1.0 总计：476 个 Python 测试**
 
-### v1.6.0 — SDK 增强 & 性能优化 ✅ 已完成
+### v1.6.0 — SDK 增强 & 框架优化 ✅ 已完成
 
-> **本阶段目标：完善 SDK 发布到 PyPI，优化 TUI/CLI 性能，拆分依赖让 SDK 用户轻量安装。**
+> **本阶段目标：完善 Python SDK，优化框架性能，拆分依赖让 SDK 用户轻量安装。**
 
 **增强 SDK（`cody/sdk/`）**
 - [x] Builder 模式 — `Cody().workdir(...).model(...).build()` 链式创建客户端
 - [x] 事件系统 — `EventManager` 同步/异步事件分发、装饰器注册
 - [x] 指标采集 — `MetricsCollector` 记录 token 使用、工具调用、会话统计
-- [x] 10 种错误类型 — `CodyError` → `CodyAuthError` / `CodyModelError` / `CodyToolError` 等
+- [x] 10 种错误类型 — `CodyError` -> `CodyAuthError` / `CodyModelError` / `CodyToolError` 等
 - [x] 4 个示例文件 — basic.py、streaming.py、events_demo.py、tools_demo.py
 - [x] 65 个 SDK 测试
 
@@ -695,6 +742,7 @@ cody "使用项目 B 的配置"
 - [x] 可选依赖组 — `[cli]`、`[tui]`、`[web]`、`[repl]`、`[all]`、`[dev]`
 - [x] 入口模块友好报错 — 缺依赖时提示 `pip install cody-ai[xxx]`
 - [x] 移除未使用的 python-dotenv 依赖
+- [x] 移除 OAuth 认证模块，统一为 `model_api_key` 方式
 
 **v1.6.0 总计：566 个测试（481 core + 65 sdk + 20 web），ruff 零告警**
 

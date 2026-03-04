@@ -42,10 +42,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "thinking_budget": null,
   "auth": {
     "type": "api_key",
-    "token": null,
-    "refresh_token": null,
-    "api_key": null,
-    "expires_at": null
+    "api_key": null
   },
   "skills": {
     "enabled": ["git", "github"],
@@ -168,10 +165,12 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ### 认证配置 (`auth`)
 
+用于 Web Backend（HTTP API）的访问控制。
+
 #### `auth.type`
 
-**类型:** `"api_key" | "oauth"`  
-**默认:** `"api_key"`  
+**类型:** `"api_key"`
+**默认:** `"api_key"`
 **说明:** 认证类型
 
 ```json
@@ -186,35 +185,11 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `auth.api_key`
 
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** API Key（用于 Server 认证）
+**类型:** `string | null`
+**默认:** `null`
+**说明:** API Key（用于 HTTP API 认证）
 
 ⚠️ **安全提示:** 建议使用环境变量。
-
----
-
-#### `auth.token`
-
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** OAuth Token
-
----
-
-#### `auth.refresh_token`
-
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** OAuth 刷新 Token
-
----
-
-#### `auth.expires_at`
-
-**类型:** `string | null`  
-**默认:** `null`  
-**说明:** Token 过期时间（ISO 8601）
 
 ---
 
@@ -417,7 +392,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ### 速率限制配置 (`rate_limit`)
 
-用于 RPC Server 的限流。
+用于 Web Backend（HTTP API）的限流。
 
 #### `rate_limit.enabled`
 

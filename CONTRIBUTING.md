@@ -1,8 +1,10 @@
 # Cody 开发规范
 
+> Open-source AI Coding Agent Framework
+
 ## 核心原则
 
-1. **Core 做厚，壳子做薄** — CLI、TUI 和 Web Backend 都只是 core 引擎的接入层。所有功能先在 core/ 实现，然后各 shell 都能用。
+1. **框架核心为先** — Core 是框架的核心引擎，CLI、TUI、SDK 和 Web Backend 都是接入层。所有功能先在 core/ 实现，再由各层暴露给用户。
 2. **测试必须有** — 没有测试的代码不合并。不只是"能跑"，要验证行为正确。
 3. **准确度 > 性能** — 工具的结果准确性是底线。宁可慢一点也不能出错。
 4. **简单直接** — 不过度设计，不提前抽象。三行重复代码好过一个过早的抽象。
@@ -15,7 +17,7 @@
 
 ```
 cody/
-├── core/           # 引擎核心（不依赖 CLI 或 Server）
+├── core/           # 框架核心引擎（不依赖任何接入层）
 │   ├── config.py       # 配置管理
 │   ├── runner.py       # Agent 执行引擎 + CodyDeps
 │   ├── tools.py        # 内置工具（文件、搜索、命令、todo、question）
@@ -28,12 +30,17 @@ cody/
 │   ├── web.py          # Web 搜索 + 抓取
 │   ├── errors.py       # 结构化错误（ErrorCode, CodyAPIError）
 │   ├── audit.py        # 审计日志（SQLite）
-│   ├── auth.py         # OAuth 认证（HMAC-SHA256 token）
+│   ├── auth.py         # 认证管理（HMAC-SHA256 token）
 │   ├── permissions.py  # 工具级权限（allow/deny/confirm）
 │   ├── file_history.py # 文件 undo/redo 快照
 │   └── rate_limiter.py # 滑动窗口限流
+├── sdk/            # Python SDK（一等公民模块，直接包装 core）
+│   ├── client.py       # CodyClient (同步) + AsyncCodyClient (异步)
+│   ├── types.py        # SDK 响应类型 — RunResult, Usage, StreamChunk 等
+│   ├── errors.py       # SDK 错误层级 — 10 种细粒度错误类型
+│   └── config.py       # SDK 配置 — SDKConfig, ModelConfig, config() 工厂
 ├── skills/         # 内置 Skills（git, github, docker, npm, python, rust, go, java, web, cicd, testing）
-├── client.py       # Python SDK（in-process 封装 core）
+├── client.py       # 向后兼容 shim — re-export sdk/ 的公开符号
 ├── tui.py          # TUI 界面（Textual），调用 core
 └── cli.py          # CLI 界面（Click），调用 core
 
@@ -41,16 +48,19 @@ web/backend/        # 统一 Web Backend（FastAPI:8000），直接导入 core
 ```
 
 **关键约束：**
-- `core/` 内的代码 **不允许** 导入 `cli.py`、`tui.py` 或 `web/`
-- 所有 shell 都通过 `core/` 提供的接口工作
-- 新功能应该加在 `core/`，然后在各 shell 层暴露
+- `core/` 内的代码 **不允许** 导入 `cli.py`、`tui.py`、`sdk/` 或 `web/`
+- 所有接入层都通过 `core/` 提供的接口工作
+- `cody/sdk/` 是一等公民模块，直接包装 core，提供 Builder 模式、事件流、指标等高级 API
+- `cody/client.py` 是向后兼容 shim，仅 re-export `sdk/` 的公开符号，新代码应直接使用 `cody.sdk`
+- 新功能应该加在 `core/`，然后在各接入层暴露
 
 ### 依赖方向
 
 ```
 cli.py ──→
 tui.py ──→  core/*
-web/backend/ ──→ core/* (直接 import)
+sdk/   ──→  core/*（in-process，无 HTTP）
+web/backend/ ──→ core/*（直接 import）
 ```
 
 禁止反向依赖。禁止 `core/` 依赖任何 CLI（click, rich）或 Web（fastapi）的库。
@@ -200,11 +210,12 @@ python3 -m pytest tests/ -v
 
 1. **先写测试** — 或至少同时写测试。不接受"先实现后面再补测试"
 2. **先在 core/ 实现** — 功能逻辑放在 `core/`
-3. **Web Backend 端点** — 在 `web/backend/routes/` 暴露 API（如果需要）
-4. **CLI 命令** — 在 `cli.py` 提供界面（如果需要）
-5. **更新文档** — 同步更新所有相关的 `.md` 文档（见下方"文档更新规范"）
-6. **运行测试** — 全部通过
-7. **运行 lint** — 零告警
+3. **SDK 暴露** — 在 `cody/sdk/` 包装 core 接口，提供 SDK 级别的 API（如果需要）
+4. **Web Backend 端点** — 在 `web/backend/routes/` 暴露 API（如果需要）
+5. **CLI 命令** — 在 `cli.py` 提供界面（如果需要）
+6. **更新文档** — 同步更新所有相关的 `.md` 文档（见下方"文档更新规范"）
+7. **运行测试** — 全部通过
+8. **运行 lint** — 零告警
 
 ### 示例：添加新工具
 
@@ -240,7 +251,7 @@ python3 -m pytest tests/ -v
 - [ ] docs/ 目录文档 — CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等
 
 > **原则**：文档是代码的一部分，不是事后补充。代码合并前，文档必须先更新。
-> 
+>
 > **提示**：使用 `find . -name "*.md"` 列出所有 Markdown 文档，逐一检查是否需要更新。
 
 ---
@@ -290,10 +301,11 @@ python3 -m pytest tests/ -v
 如果你刚接手项目，建议按这个顺序：
 
 1. **跑通测试** — `pip install -e ".[dev]" && python3 -m pytest tests/ -v`
-2. **看 `core/runner.py`** — 理解引擎中枢（模块 docstring 有架构概览）
+2. **看 `core/runner.py`** — 理解框架核心引擎（模块 docstring 有架构概览）
 3. **看 `core/tools.py`** — 理解工具注册模式（底部 TOOL_REGISTRY 区域）
-4. **看 `web/backend/app.py`** — 理解 Web Backend 如何调用 core
-5. **看本文件** — 了解代码规范
-6. **看 `docs/API.md`** — 了解对外 API
+4. **看 `cody/sdk/client.py`** — 理解 SDK 如何包装 core（Builder 模式、事件流、指标）
+5. **看 `web/backend/app.py`** — 理解 Web Backend 如何调用 core
+6. **看本文件** — 了解代码规范
+7. **看 `docs/API.md`** — 了解对外 API
 
 有问题看测试——每个模块都有对应的测试文件，是最好的"活文档"。
