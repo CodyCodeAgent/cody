@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.7.0] - 2026-03-05
+
 ### Added
 - **SDK 增强模块** (`cody/sdk/`) — Builder 模式、事件系统、指标收集、增强错误处理
   - `Cody()` Builder — 链式配置，`Cody().workdir("/path").model("...").build()`
@@ -24,6 +28,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   - `pip install cody-ai[all]` — 全部
 - **Web 中间件测试** — 新增 `web/tests/test_middleware.py`（9 个测试覆盖认证、限流、审计）
 - **CLI/TUI 补充测试** — CLI 新增 9 个测试（参数传递、流式渲染、会话恢复），TUI 新增 5 个测试（批量刷新、状态栏、命令处理）
+- **WebSocket 鉴权** — WebSocket `/ws` 和 `/ws/chat` 端点现需认证 token（S3）
+- **CLI/TUI 共享工具库** — 新增 `cody/shared.py`，提取 CLI/TUI 重复工具函数（R1）
+- **ToolContext 依赖注入** — 新增 `core/deps.py:ToolContext`，统一工具直接调用上下文（R3）
+- **可扩展命令黑名单** — `SecurityConfig.blocked_commands` 允许用户自定义禁用命令模式（S5）
+- **Web 路由测试补充** — 新增 21 个 Web 路由测试覆盖 config/agent/audit/skills 端点（R9）
+- **目录浏览路径限制** — `/api/directories` 限制在用户 home 目录内（R10）
 
 ### Changed
 
@@ -49,14 +59,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Token 估算改进** — CJK 字符按 1.5 token 估算（原为 0.25）
 - **MCP 启动失败清理** — `start_all()` 返回失败列表，失败时清理残留进程和 reader task
 - **目录浏览安全** — 跳过符号链接，防止目录遍历
+- **Config 缓存 TTL** — Web Backend 的 Config 缓存增加 60 秒 TTL，自动刷新（R7）
+- **AuditEvent 枚举化** — `AuditEvent` 从普通类改为 `str, Enum`（O4）
+- **API Key 占位改进** — 未设置 API Key 时使用空字符串代替 `"not-set"`（O2）
+- **文件操作 UTF-8** — `FileHistory.undo()/redo()` 写入时指定 `encoding="utf-8"`（O3）
+- **Refresh Token 权限校验** — `AuthManager.refresh()` 增加 scope 验证（R8）
+- **client.py 导出清理** — 移除私有符号 `_event_to_chunk`/`_usage_from_result` 的 re-export（O8）
 
 ### Fixed
 - **子代理循环依赖** — `sub_agent.py` 延迟导入处添加注释说明
+- **run_sync 上下文压缩缺失** — `run_sync()` 现在与 `run()` 一致调用 `_compact_history_if_needed()`（S1）
+- **HTML 解析器嵌套 skip 标签 bug** — `_HTMLToMarkdown` 将 `_skip` 布尔值改为 `_skip_depth` 计数器（S2）
+- **exec_command 白名单绕过** — 管道/链式命令现在逐段检查白名单（S5）
+- **CodyBuilder _permissions 默认值** — 改为 `field(default_factory=dict)` 避免共享可变对象（O6）
 
 ### Removed
 - `python-dotenv` — 从依赖中移除（代码未使用）
+- `pylint.yml` — 删除过时的 Pylint CI 工作流，统一使用 ruff（S4）
+- **SDK apply_env()** — 移除环境变量自动覆盖配置的方法（R4）
 
 ### Refactored
+
+- **CLI Skills 命令** — 使用 `SkillManager` 直接管理 Skills，不再经过 `AgentRunner`（R2）
+- **CLI Chat REPL** — 单 event loop 重构，消除重复 `asyncio.run()` 调用（R6）
+- **CI 工作流重写** — Python 版本矩阵（3.9-3.13）、PR 触发、Web 测试覆盖（S4）
 - **前端 summarizeArgs 去重** — 提取到 `web/src/utils/summarizeArgs.ts`，ChatWindow 和 MessageBubble 共享
 - **前端项目状态管理** — 新增 `useProjects` hook，HomePage 和 Sidebar 共享项目列表
 - **ChatWindow 拆分** — 提取 `useStreamBuffer` hook 和 `StreamingBubble` 组件，主文件从 510 行缩减到 ~300 行

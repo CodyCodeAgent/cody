@@ -20,7 +20,11 @@ except ImportError:
     )
 
 from ..core import AgentRunner, Config, SessionStore
-from .widgets import MessageBubble, StreamBubble, StatusLine, _truncate_repr
+from ..shared import (
+    SPINNER_FRAMES, compact_message, auto_title,
+    format_elapsed, format_session_line, truncate_repr as _truncate_repr,
+)
+from .widgets import MessageBubble, StreamBubble, StatusLine
 
 
 class CodyTUI(App):
@@ -246,10 +250,7 @@ class CodyTUI(App):
 
         # Auto-title
         if self._store and self._store.get_message_count(self._session_id) == 0:
-            title = text[:60].strip()
-            if len(text) > 60:
-                title += "..."
-            self._store.update_title(self._session_id, title)
+            self._store.update_title(self._session_id, auto_title(text))
 
         # Save user message
         if self._store:
@@ -258,7 +259,7 @@ class CodyTUI(App):
         # Run agent
         self._run_agent(text)
 
-    _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    _SPINNER_FRAMES = SPINNER_FRAMES
 
     # ── Processing status indicator ──────────────────────────────────────────
 
@@ -274,12 +275,8 @@ class CodyTUI(App):
         elapsed = time.monotonic() - self._processing_start
         frame = self._SPINNER_FRAMES[self._processing_idx % len(self._SPINNER_FRAMES)]
         self._processing_idx += 1
-        if elapsed < 60:
-            time_str = f"{int(elapsed)}s"
-        else:
-            time_str = f"{int(elapsed) // 60}m {int(elapsed) % 60}s"
         self.query_one("#status-line", StatusLine).update(
-            f" {frame} {self._processing_state} ({time_str})"
+            f" {frame} {self._processing_state} ({format_elapsed(elapsed)})"
         )
 
     def _set_processing_state(self, state: str) -> None:
@@ -321,9 +318,7 @@ class CodyTUI(App):
                 if isinstance(event, CompactEvent):
                     self._add_bubble(
                         "system",
-                        f"[yellow]⚡ 上下文已压缩："
-                        f"{event.original_messages} → {event.compacted_messages} 条消息，"
-                        f"节省约 ~{event.estimated_tokens_saved} tokens[/yellow]",
+                        f"[yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]",
                     )
                 elif isinstance(event, ThinkingEvent):
                     bubble.append(f"[dim]{event.content}[/dim]")
@@ -414,11 +409,10 @@ class CodyTUI(App):
         lines = ["[bold]Recent sessions:[/bold]"]
         for s in sessions:
             count = self._store.get_message_count(s.id)
-            marker = " [green]<< current[/green]" if s.id == self._session_id else ""
-            lines.append(
-                f"  {s.id}  {s.title[:40]:<40}  "
-                f"[dim]{count} msgs  {s.updated_at[:10]}[/dim]{marker}"
+            line = format_session_line(
+                s.id, s.title, count, s.updated_at, self._session_id or ""
             )
+            lines.append(f"[dim]{line}[/dim]")
         self._add_bubble("system", "\n".join(lines))
 
     # ── Actions ──────────────────────────────────────────────────────────────

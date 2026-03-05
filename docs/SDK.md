@@ -611,6 +611,11 @@ cfg = SDKConfig(
             "/workspace/frontend",
             "/workspace/shared-libs",
         ],
+        # 自定义命令黑名单（框架内置 rm -rf /、dd if=、:(){）
+        blocked_commands=[
+            "rm -rf", "git push --force",
+            "chmod -R 777", "| bash", "| sh",
+        ],
     ),
 )
 async with AsyncCodyClient(config=cfg) as client:
@@ -988,7 +993,7 @@ async with client:
 | `SDKConfig` | 完整 SDK 配置 |
 | `ModelConfig` | 模型配置（模型名、API Key、思考模式等） |
 | `PermissionConfig` | 工具权限配置 |
-| `SecurityConfig` | 安全配置（`allowed_roots` 等） |
+| `SecurityConfig` | 安全配置（`allowed_roots`、`blocked_commands` 等） |
 | `MCPConfig` | MCP 服务器配置 |
 | `LSPConfig` | LSP 语言配置 |
 

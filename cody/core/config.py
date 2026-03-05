@@ -52,6 +52,7 @@ class RateLimitConfig(BaseModel):
 class SecurityConfig(BaseModel):
     """Security configuration"""
     allowed_commands: Optional[list[str]] = None
+    blocked_commands: list[str] = Field(default_factory=list)
     restricted_paths: list[str] = Field(default_factory=list)
     allowed_roots: list[str] = Field(default_factory=list)
     require_confirmation: bool = True

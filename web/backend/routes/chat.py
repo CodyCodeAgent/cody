@@ -11,9 +11,11 @@ from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 
 from cody.core import AgentRunner
+from cody.core.auth import AuthError
 
 from ..db import ProjectStore
 from ..helpers import build_prompt, serialize_stream_event
+from ..middleware import validate_credential
 from ..state import get_config, get_session_store
 
 logger = logging.getLogger("cody.web.chat")
@@ -25,6 +27,16 @@ async def chat_websocket(
     store: ProjectStore = None,
 ):
     """WebSocket endpoint that streams AI responses for a project."""
+    # Authenticate before accepting
+    try:
+        token = ws.query_params.get("token", "") or ws.headers.get("authorization", "")
+        if token.startswith("Bearer "):
+            token = token[7:]
+        validate_credential(token)
+    except AuthError as e:
+        await ws.close(code=4001, reason=str(e))
+        return
+
     await ws.accept()
     logger.info("Chat WS connected: project=%s", project_id)
 

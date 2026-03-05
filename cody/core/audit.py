@@ -4,12 +4,13 @@ import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
 
-class AuditEvent:
-    """Constants for auditable event types."""
+class AuditEvent(str, Enum):
+    """Auditable event types."""
     TOOL_CALL = "tool_call"
     FILE_WRITE = "file_write"
     FILE_EDIT = "file_edit"

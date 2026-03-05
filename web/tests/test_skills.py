@@ -52,3 +52,42 @@ def test_skill_not_found():
     data = resp.json()
     assert data["error"]["code"] == "SKILL_NOT_FOUND"
     assert "not found" in data["error"]["message"].lower()
+
+
+# ── Enable / Disable ─────────────────────────────────────────────────────────
+
+
+def test_enable_skill():
+    """POST /skills/git/enable enables the skill."""
+    client = TestClient(app)
+    resp = client.post("/skills/git/enable")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "git"
+    assert data["enabled"] is True
+
+
+def test_disable_skill():
+    """POST /skills/git/disable disables the skill."""
+    client = TestClient(app)
+    resp = client.post("/skills/git/disable")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["name"] == "git"
+    assert data["enabled"] is False
+
+
+def test_enable_skill_not_found():
+    """POST /skills/nonexistent/enable returns 404."""
+    client = TestClient(app)
+    resp = client.post("/skills/nonexistent_skill_xyz/enable")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "SKILL_NOT_FOUND"
+
+
+def test_disable_skill_not_found():
+    """POST /skills/nonexistent/disable returns 404."""
+    client = TestClient(app)
+    resp = client.post("/skills/nonexistent_skill_xyz/disable")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "SKILL_NOT_FOUND"

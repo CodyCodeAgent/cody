@@ -11,9 +11,11 @@ from typing import Any, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from cody.core import AgentRunner
+from cody.core.auth import AuthError
 from cody.core.errors import ErrorCode
 
 from ..helpers import build_prompt, serialize_stream_event
+from ..middleware import validate_credential
 from ..state import get_config, get_session_store
 
 logger = logging.getLogger("cody.web.ws")
@@ -138,6 +140,16 @@ class _WSConnection:
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     """WebSocket endpoint for real-time bidirectional interaction."""
+    # Authenticate before accepting
+    try:
+        token = ws.query_params.get("token", "") or ws.headers.get("authorization", "")
+        if token.startswith("Bearer "):
+            token = token[7:]
+        validate_credential(token)
+    except AuthError as e:
+        await ws.close(code=4001, reason=str(e))
+        return
+
     conn = _WSConnection(ws)
     await conn.accept()
     await conn.handle()

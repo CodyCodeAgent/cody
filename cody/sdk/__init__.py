@@ -60,7 +60,7 @@ Example with events and metrics:
         print(f"Tokens used: {metrics['total_tokens']}")
 """
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 # Core client
 from .client import AsyncCodyClient, CodyClient, Cody

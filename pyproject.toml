@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cody-ai"
-version = "1.6.0"
+version = "1.7.0"
 description = "Open-source AI Coding Agent framework with SDK, Skills, and MCP integration"
 authors = [{name = "GouChao"}]
 readme = "README.md"

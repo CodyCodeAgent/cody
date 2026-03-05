@@ -6,7 +6,9 @@ import click
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from ...core import Config, AgentRunner
+from ...core import Config
+from ...core.skill_manager import SkillManager
+from ...shared import resolve_config_path
 from ..utils import console
 
 
@@ -19,10 +21,10 @@ def skills():
 def skills_list():
     """List all available skills"""
     workdir = Path.cwd()
-    config = Config.load(workdir=workdir)
-    runner = AgentRunner(config=config, workdir=workdir)
+    cfg = Config.load(workdir=workdir)
+    sm = SkillManager(config=cfg, workdir=workdir)
 
-    all_skills = runner.skill_manager.list_skills()
+    all_skills = sm.list_skills()
 
     if not all_skills:
         console.print("[yellow]No skills found[/yellow]")
@@ -42,10 +44,10 @@ def skills_list():
 def skills_show(skill_name):
     """Show skill documentation"""
     workdir = Path.cwd()
-    config = Config.load(workdir=workdir)
-    runner = AgentRunner(config=config, workdir=workdir)
+    cfg = Config.load(workdir=workdir)
+    sm = SkillManager(config=cfg, workdir=workdir)
 
-    skill = runner.skill_manager.get_skill(skill_name)
+    skill = sm.get_skill(skill_name)
     if not skill:
         console.print(f"[red]Skill not found: {skill_name}[/red]")
         return
@@ -59,20 +61,16 @@ def skills_show(skill_name):
 def skills_enable(skill_name):
     """Enable a skill"""
     workdir = Path.cwd()
-    config = Config.load(workdir=workdir)
-    runner = AgentRunner(config=config, workdir=workdir)
+    cfg = Config.load(workdir=workdir)
+    sm = SkillManager(config=cfg, workdir=workdir)
 
-    skill = runner.skill_manager.get_skill(skill_name)
+    skill = sm.get_skill(skill_name)
     if not skill:
         console.print(f"[red]Skill not found: {skill_name}[/red]")
         return
 
-    runner.skill_manager.enable_skill(skill_name)
-
-    config_path = Path.cwd() / ".cody" / "config.json"
-    if not config_path.exists():
-        config_path = Path.home() / ".cody" / "config.json"
-    config.save(config_path)
+    sm.enable_skill(skill_name)
+    cfg.save(resolve_config_path())
 
     console.print(f"[green]Enabled skill: {skill_name}[/green]")
 
@@ -82,19 +80,15 @@ def skills_enable(skill_name):
 def skills_disable(skill_name):
     """Disable a skill"""
     workdir = Path.cwd()
-    config = Config.load(workdir=workdir)
-    runner = AgentRunner(config=config, workdir=workdir)
+    cfg = Config.load(workdir=workdir)
+    sm = SkillManager(config=cfg, workdir=workdir)
 
-    skill = runner.skill_manager.get_skill(skill_name)
+    skill = sm.get_skill(skill_name)
     if not skill:
         console.print(f"[red]Skill not found: {skill_name}[/red]")
         return
 
-    runner.skill_manager.disable_skill(skill_name)
-
-    config_path = Path.cwd() / ".cody" / "config.json"
-    if not config_path.exists():
-        config_path = Path.home() / ".cody" / "config.json"
-    config.save(config_path)
+    sm.disable_skill(skill_name)
+    cfg.save(resolve_config_path())
 
     console.print(f"[green]Disabled skill: {skill_name}[/green]")

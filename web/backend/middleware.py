@@ -23,6 +23,27 @@ logger = logging.getLogger("cody.web.middleware")
 PUBLIC_PATHS: Set[str] = {"/health", "/api/health", "/docs", "/openapi.json", "/redoc"}
 
 
+def validate_credential(credential: str) -> bool:
+    """Validate a credential string (token or API key).
+
+    Returns True if auth is not configured or credential is valid.
+    Raises AuthError if credential is invalid.
+    """
+    try:
+        auth_mgr = get_auth_manager()
+    except Exception:
+        return True
+
+    if auth_mgr is None or not auth_mgr.is_configured:
+        return True
+
+    if not credential:
+        raise AuthError("Missing credential", code="AUTH_FAILED")
+
+    auth_mgr.validate(credential)
+    return True
+
+
 async def auth_middleware(request: Request, call_next):
     """Authenticate requests using Bearer token or API key."""
     path = request.url.path

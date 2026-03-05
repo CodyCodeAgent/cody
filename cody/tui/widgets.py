@@ -9,13 +9,6 @@ except ImportError:
     )
 
 
-def _truncate_repr(value: object, max_len: int = 120) -> str:
-    """Truncate repr of a value to max_len characters."""
-    s = repr(value)
-    if len(s) <= max_len:
-        return s
-    return s[:max_len] + f"...({len(s)} chars)"
-
 
 class MessageBubble(Static):
     """A single chat message displayed in the conversation."""

@@ -117,10 +117,15 @@ CodyResult
 ```
 
 **CodyDeps carries:**
-```
+
+```text
 Config, workdir, SkillManager, MCPClient, SubAgentManager,
 LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list
 ```
+
+**ToolContext** (`core/deps.py`): Lightweight context for direct tool invocation outside of agent runs (e.g., SDK `tool()` calls, Web `/tool` endpoint). Wraps `CodyDeps` in a `RunContext`-compatible interface.
+
+**Shared utilities** (`cody/shared.py`): CLI and TUI share common helper functions (spinner frames, elapsed formatting, session display, config path resolution) via this module, avoiding code duplication.
 
 ### 2. Tool System (`core/tools.py`)
 

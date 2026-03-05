@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from ...core import Config
+from ...shared import resolve_config_path
 from ..utils import console, _mask_api_key, _interactive_setup
 
 
@@ -54,12 +55,7 @@ def config_set(key, value):
         console.print("[dim]Supported: model, model_base_url, model_api_key, enable_thinking, thinking_budget[/dim]")
         return
 
-    config_path = Path.cwd() / ".cody" / "config.json"
-    if not config_path.exists():
-        config_path = Path.home() / ".cody" / "config.json"
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    cfg.save(config_path)
+    cfg.save(resolve_config_path())
     display_value = _mask_api_key(value) if "key" in key else value
     console.print(f"[green]Set {key} = {display_value}[/green]")
 

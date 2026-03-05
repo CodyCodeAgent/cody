@@ -14,6 +14,12 @@ from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
 
 
+class ToolContext:
+    """Lightweight RunContext stand-in for direct tool invocation."""
+    def __init__(self, deps: 'CodyDeps'):
+        self.deps = deps
+
+
 @dataclass
 class CodyDeps:
     """Dependencies for Cody Agent"""

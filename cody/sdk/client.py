@@ -9,7 +9,7 @@ This module wraps core directly (AgentRunner + SessionStore) and adds:
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
@@ -61,7 +61,7 @@ class CodyBuilder:
     _base_url: Optional[str] = None
     _enable_thinking: bool = False
     _thinking_budget: Optional[int] = None
-    _permissions: dict = None
+    _permissions: dict = field(default_factory=dict)
     _allowed_roots: list[str] = None
     _db_path: Optional[str] = None
     _enable_metrics: bool = False
@@ -70,8 +70,6 @@ class CodyBuilder:
     _lsp_languages: list[str] = None
 
     def __post_init__(self):
-        if self._permissions is None:
-            self._permissions = {}
         if self._allowed_roots is None:
             self._allowed_roots = []
         if self._mcp_servers is None:
@@ -222,8 +220,6 @@ class AsyncCodyClient:
                 enable_metrics=enable_metrics,
                 enable_events=enable_events,
             )
-
-        self._config.apply_env()
 
         self.workdir = Path(self._config.workdir) if self._config.workdir else Path.cwd()
         self._model_override = self._config.model.model if self._config.model.model else None
@@ -436,7 +432,7 @@ class AsyncCodyClient:
         """Call a tool directly."""
         from ..core import tools
         from ..core.config import Config
-        from ..core.deps import CodyDeps
+        from ..core.deps import CodyDeps, ToolContext
         from ..core.skill_manager import SkillManager
 
         tool_func = getattr(tools, tool_name, None)
@@ -463,13 +459,9 @@ class AsyncCodyClient:
             allowed_roots=[effective_workdir],
         )
 
-        class _ToolCtx:
-            def __init__(self, d):
-                self.deps = d
-
         start_time = time.time()
         try:
-            result_str = await tool_func(_ToolCtx(deps), **(params or {}))
+            result_str = await tool_func(ToolContext(deps), **(params or {}))
             duration = time.time() - start_time
 
             if self._metrics:

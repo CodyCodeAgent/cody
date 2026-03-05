@@ -14,6 +14,7 @@ from .utils import (
     _handle_command, _build_history_from_session,
 )
 from .rendering import _render_stream
+from ..shared import auto_title
 from .commands.sessions import sessions
 from .commands.skills import skills
 from .commands.config import config
@@ -173,63 +174,60 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
     # Build message history from session
     message_history = _build_history_from_session(session)
 
-    # Start MCP servers before REPL
-    asyncio.run(runner.start_mcp())
-
-    # REPL loop
-    try:
-        while True:
-            try:
-                user_input = _get_input()
-            except (EOFError, KeyboardInterrupt):
-                console.print("\n[dim]Bye![/dim]")
-                break
-
-            if not user_input.strip():
-                continue
-
-            # Handle commands
-            if user_input.startswith("/"):
-                should_continue = _handle_command(
-                    user_input, session, store, console
-                )
-                if not should_continue:
+    async def _chat_loop():
+        nonlocal message_history
+        await runner.start_mcp()
+        try:
+            while True:
+                try:
+                    loop = asyncio.get_event_loop()
+                    user_input = await loop.run_in_executor(None, _get_input)
+                except (EOFError, KeyboardInterrupt):
+                    console.print("\n[dim]Bye![/dim]")
                     break
-                continue
 
-            # Auto-title from first message
-            if store.get_message_count(session.id) == 0:
-                title = user_input[:60].strip()
-                if len(user_input) > 60:
-                    title += "..."
-                store.update_title(session.id, title)
+                if not user_input.strip():
+                    continue
 
-            # Save user message
-            store.add_message(session.id, "user", user_input)
+                # Handle commands
+                if user_input.startswith("/"):
+                    should_continue = _handle_command(
+                        user_input, session, store, console
+                    )
+                    if not should_continue:
+                        break
+                    continue
 
-            # Run agent with streaming
-            try:
-                async def _stream_chat():
-                    return await _render_stream(
+                # Auto-title from first message
+                if store.get_message_count(session.id) == 0:
+                    store.update_title(session.id, auto_title(user_input))
+
+                # Save user message
+                store.add_message(session.id, "user", user_input)
+
+                # Run agent with streaming
+                try:
+                    result = await _render_stream(
                         runner.run_stream(user_input, message_history=message_history),
                     )
 
-                result = asyncio.run(_stream_chat())
+                    # Update history for next turn
+                    if result:
+                        message_history = result.all_messages()
+                        store.add_message(session.id, "assistant", result.output)
 
-                # Update history for next turn
-                if result:
-                    message_history = result.all_messages()
-                    store.add_message(session.id, "assistant", result.output)
+                except Exception as e:
+                    console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
 
-            except Exception as e:
-                console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
+        finally:
+            await runner.stop_mcp()
+            await runner.stop_lsp()
 
+    try:
+        asyncio.run(_chat_loop())
     except Exception as e:
         console.print(f"[red]Fatal error: {rich_escape(str(e))}[/red]")
         sys.exit(1)
-    finally:
-        asyncio.run(runner.stop_mcp())
-        asyncio.run(runner.stop_lsp())
 
 
 # ── TUI command ─────────────────────────────────────────────────────────────

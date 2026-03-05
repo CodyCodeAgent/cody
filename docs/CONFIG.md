@@ -319,14 +319,32 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `security.allowed_commands`
 
-**类型:** `string[] | null`  
-**默认:** `null`  
-**说明:** 允许执行的命令白名单（null 表示不限制）
+**类型:** `string[] | null`
+**默认:** `null`
+**说明:** 允许执行的命令白名单（null 表示不限制）。当设置后，管道和链式命令中的每个命令都会逐一检查白名单。
 
 ```json
 {
   "security": {
     "allowed_commands": ["ls", "cat", "grep", "python3", "npm", "git"]
+  }
+}
+```
+
+---
+
+#### `security.blocked_commands`
+
+**类型:** `string[]`
+**默认:** `[]`
+**说明:** 用户自定义的危险命令模式黑名单。框架内置拦截 `rm -rf /`、`dd if=`、`:(){` 等极端破坏性模式，此字段供 SDK 用户按需扩展。
+
+> **设计原则：** 框架提供机制，不提供策略。Cody 不会默认禁用 `curl`、`python` 等常用命令，用户可根据实际场景配置。
+
+```json
+{
+  "security": {
+    "blocked_commands": ["rm -rf", "mkfs", "shutdown", "reboot"]
   }
 }
 ```

@@ -1,6 +1,7 @@
 """Tests for directory browsing endpoint."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 
 def test_list_directories(test_client, tmp_path):
@@ -8,7 +9,8 @@ def test_list_directories(test_client, tmp_path):
     (tmp_path / "subdir").mkdir()
     (tmp_path / "file.txt").write_text("hello")
 
-    resp = test_client.get("/api/directories", params={"path": str(tmp_path)})
+    with patch.object(Path, "home", return_value=tmp_path.parent):
+        resp = test_client.get("/api/directories", params={"path": str(tmp_path)})
     assert resp.status_code == 200
     data = resp.json()
     assert data["path"] == str(tmp_path)
@@ -25,7 +27,8 @@ def test_list_directories_hides_dotfiles(test_client, tmp_path):
     (tmp_path / ".hidden").mkdir()
     (tmp_path / "visible").mkdir()
 
-    resp = test_client.get("/api/directories", params={"path": str(tmp_path)})
+    with patch.object(Path, "home", return_value=tmp_path.parent):
+        resp = test_client.get("/api/directories", params={"path": str(tmp_path)})
     assert resp.status_code == 200
     names = [e["name"] for e in resp.json()["entries"]]
     assert "visible" in names
@@ -40,8 +43,17 @@ def test_list_directories_default_path(test_client):
 
 
 def test_list_directories_not_found(test_client):
-    """GET /api/directories with nonexistent path returns 404"""
+    """GET /api/directories with nonexistent path under home returns 404"""
+    nonexistent = str(Path.home() / "nonexistent_xyz_test_dir_12345")
+    resp = test_client.get(
+        "/api/directories", params={"path": nonexistent}
+    )
+    assert resp.status_code == 404
+
+
+def test_list_directories_outside_home(test_client):
+    """GET /api/directories with path outside home returns 403"""
     resp = test_client.get(
         "/api/directories", params={"path": "/nonexistent/path/xyz"}
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 403

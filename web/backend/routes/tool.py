@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter
 
+from cody.core.deps import ToolContext
 from cody.core.errors import (
     CodyAPIError, ErrorCode,
     ToolError, ToolPermissionDenied, ToolPathDenied, ToolInvalidParams,
@@ -36,10 +37,6 @@ async def call_tool(request: ToolRequest):
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
         config = get_config(workdir)
         deps = create_full_deps(config, workdir)
-
-        class ToolContext:
-            def __init__(self, deps):
-                self.deps = deps
 
         ctx = ToolContext(deps)
         result = await tool_func(ctx, **request.params)

@@ -13,6 +13,4 @@ from .sdk.types import (  # noqa: F401
     StreamChunk,
     ToolResult,
     Usage,
-    _event_to_chunk,
-    _usage_from_result,
 )

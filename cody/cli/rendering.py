@@ -10,7 +10,13 @@ from ..core.runner import (
     CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
 )
-from .utils import console, _truncate_repr, _format_elapsed, _SPINNER_FRAMES
+from .utils import console
+from ..shared import (
+    SPINNER_FRAMES as _SPINNER_FRAMES,
+    truncate_repr as _truncate_repr,
+    format_elapsed as _format_elapsed,
+    compact_message,
+)
 
 
 async def _status_spinner(label: str, start: float, *, done_label: str = "") -> None:
@@ -78,9 +84,7 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
 
         if isinstance(event, CompactEvent):
             console.print(
-                f"  [yellow]⚡ 上下文已压缩：{event.original_messages} → "
-                f"{event.compacted_messages} 条消息，"
-                f"节省约 ~{event.estimated_tokens_saved} tokens[/yellow]"
+                f"  [yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]"
             )
         elif isinstance(event, ThinkingEvent):
             in_thinking = True

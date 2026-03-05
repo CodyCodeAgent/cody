@@ -13,9 +13,8 @@ from cody.client import (
     RunResult,
     SessionInfo,
     SessionDetail,
-    _event_to_chunk,
-    _usage_from_result,
 )
+from cody.sdk.client import _event_to_chunk, _usage_from_result
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

@@ -16,7 +16,18 @@ router = APIRouter(tags=["directories"])
 @router.get("/api/directories", response_model=DirectoryListResponse)
 async def list_directories(path: Optional[str] = Query(default=None)):
     """List directories and files under the given path."""
-    target = Path(path) if path else Path.home()
+    home = Path.home()
+    if path is not None:
+        target = Path(path).resolve()
+        # Prevent traversal outside the home directory
+        if target != home and not str(target).startswith(str(home) + "/"):
+            raise_structured(
+                ErrorCode.PERMISSION_DENIED,
+                f"Access denied: path is outside home directory: {target}",
+                status_code=403,
+            )
+    else:
+        target = home
     if not target.is_dir():
         raise_structured(
             ErrorCode.NOT_FOUND,

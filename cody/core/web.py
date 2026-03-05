@@ -22,7 +22,7 @@ class _HTMLToMarkdown(HTMLParser):
     def __init__(self):
         super().__init__()
         self._result: list[str] = []
-        self._skip = False
+        self._skip_depth = 0
         self._in_pre = False
         self._in_code = False
         self._link_href: Optional[str] = None
@@ -32,7 +32,10 @@ class _HTMLToMarkdown(HTMLParser):
         tag = tag.lower()
 
         if tag in ("script", "style", "nav", "footer", "header", "noscript"):
-            self._skip = True
+            self._skip_depth += 1
+            return
+
+        if self._skip_depth > 0:
             return
 
         if tag == "h1":
@@ -69,7 +72,10 @@ class _HTMLToMarkdown(HTMLParser):
         tag = tag.lower()
 
         if tag in ("script", "style", "nav", "footer", "header", "noscript"):
-            self._skip = False
+            self._skip_depth = max(0, self._skip_depth - 1)
+            return
+
+        if self._skip_depth > 0:
             return
 
         if tag == "pre":
@@ -92,7 +98,7 @@ class _HTMLToMarkdown(HTMLParser):
             self._result.append("\n")
 
     def handle_data(self, data: str) -> None:
-        if self._skip:
+        if self._skip_depth > 0:
             return
         self._result.append(data)
 

@@ -23,7 +23,7 @@ def resolve_model(config: Config):
 
         provider = OpenAIProvider(
             base_url=config.model_base_url,
-            api_key=config.model_api_key or "not-set",
+            api_key=config.model_api_key or "",  # some providers don't require an API key
         )
         return OpenAIChatModel(config.model, provider=provider)
 

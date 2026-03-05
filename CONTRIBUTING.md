@@ -292,16 +292,16 @@ python3 -m pytest tests/ -v
 | core/errors.py | 11 | 完善 |
 | web/backend (middleware) | 9 | 完善 |
 
-**总计：689 个测试（570 core + 65 sdk + 54 web），ruff 零告警**
+**总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
 
-**当前版本：v1.6.0（见 CHANGELOG.md）**
+**当前版本：v1.7.0（见 CHANGELOG.md）**
 
 ---
 
 ## 已知架构注意事项
 
 1. **循环依赖** — `sub_agent.py` 的 `_execute()` 用延迟导入打破 `runner → sub_agent → runner` 循环，不要移到模块顶部
-2. **状态缓存策略** — `web/backend/state.py` 管理：Config 按 workdir 缓存（deep copy 后返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读到最新 skill 文件）
+2. **状态缓存策略** — `web/backend/state.py` 管理：Config 按 workdir 缓存（60s TTL，deep copy 后返回），SessionStore 全局单例，SkillManager 每次请求新建（保证读到最新 skill 文件）
 
 ---
 

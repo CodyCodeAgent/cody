@@ -15,18 +15,9 @@ except ImportError:
 
 from ..core import Config, AgentRunner
 from ..core.setup import SetupAnswers, build_config_from_answers
+from ..shared import format_session_line
 
 console = Console()
-
-_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-
-
-def _truncate_repr(value: object, max_len: int = 120) -> str:
-    """Truncate repr of a value to max_len characters."""
-    s = repr(value)
-    if len(s) <= max_len:
-        return s
-    return s[:max_len] + f"...({len(s)} chars)"
 
 
 def _mask_api_key(key: Optional[str]) -> str:
@@ -36,14 +27,6 @@ def _mask_api_key(key: Optional[str]) -> str:
     if len(key) <= 8:
         return key[:2] + "..." + key[-2:]
     return key[:6] + "..." + key[-3:]
-
-
-def _format_elapsed(seconds: float) -> str:
-    """Format elapsed seconds as e.g. '5s' or '1m 23s'."""
-    s = int(seconds)
-    if s < 60:
-        return f"{s}s"
-    return f"{s // 60}m {s % 60}s"
 
 
 def _interactive_setup() -> Config:
@@ -147,11 +130,10 @@ def _handle_command(cmd: str, session, store, console: Console) -> bool:
             console.print("[bold]Recent sessions:[/bold]")
             for s in sessions:
                 count = store.get_message_count(s.id)
-                marker = " [green]<< current[/green]" if s.id == session.id else ""
-                console.print(
-                    f"  {s.id}  {s.title[:40]:<40}  "
-                    f"[dim]{count} msgs  {s.updated_at[:10]}[/dim]{marker}"
+                line = format_session_line(
+                    s.id, s.title, count, s.updated_at, session.id
                 )
+                console.print(f"[dim]{line}[/dim]")
         console.print()
         return True
 

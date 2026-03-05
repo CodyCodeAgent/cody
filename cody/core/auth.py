@@ -64,16 +64,25 @@ class AuthManager:
         self,
         expires_in: int = 3600,
         scopes: Optional[list[str]] = None,
+        *,
+        is_refresh_token: bool = False,
     ) -> str:
         """Create a signed token.
 
         Args:
             expires_in: Seconds until expiration (default 1 hour).
             scopes: Optional list of permission scopes.
+            is_refresh_token: When True, "refresh" is always added to the scopes
+                so the token is accepted by refresh().
 
         Returns:
             Signed token string in format: <base64-payload>.<hex-signature>
         """
+        if is_refresh_token:
+            base_scopes = list(scopes) if scopes else ["*"]
+            if "refresh" not in base_scopes:
+                base_scopes.append("refresh")
+            scopes = base_scopes
         now = datetime.now(timezone.utc)
         payload = {
             "tid": secrets.token_hex(8),
@@ -155,9 +164,17 @@ class AuthManager:
     def refresh(self, refresh_token_str: str, expires_in: int = 3600) -> str:
         """Refresh a token using a refresh token.
 
-        Validates the refresh token, then issues a new token.
+        Validates the refresh token, checks that it carries the "refresh" scope,
+        then issues a new access token.
+
+        Raises AuthError if the token is invalid, expired, or lacks "refresh" scope.
         """
-        self.validate_token(refresh_token_str)
+        auth_token = self.validate_token(refresh_token_str)
+        scopes = auth_token.scopes
+        if "*" not in scopes and "refresh" not in scopes:
+            raise AuthError(
+                "Token does not have refresh scope", code="insufficient_scope"
+            )
         return self.create_token(expires_in=expires_in)
 
     def _sign(self, data: str) -> str:
