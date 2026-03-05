@@ -32,6 +32,7 @@ dependencies = [
 [project.scripts]
 cody = "cody.cli:main"
 cody-tui = "cody.tui:run_tui"
+cody-web = "web.backend.app:run"
 
 [project.urls]
 Homepage = "https://github.com/CodyCodeAgent/cody"
@@ -74,8 +75,8 @@ dev = [
 version = {attr = "cody._version.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["cody*"]
-exclude = ["tests*"]
+include = ["cody*", "web*"]
+exclude = ["tests*", "web.tests*", "web.__tests__*"]
 
 [tool.setuptools.package-data]
 "cody" = ["skills/**/*.md"]

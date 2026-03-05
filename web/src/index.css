@@ -587,22 +587,6 @@ body {
   color: #71717a;
 }
 
-.stream-stop-btn {
-  padding: 2px 10px;
-  font-size: 12px;
-  border: 1px solid #52525b;
-  border-radius: 4px;
-  background: transparent;
-  color: #a1a1aa;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.stream-stop-btn:hover {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: #fff;
-}
 
 /* ── Message usage ──────────────────────────────── */
 

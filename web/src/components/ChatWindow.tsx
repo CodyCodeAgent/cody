@@ -398,25 +398,6 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
                   : "Generating..."}
             </span>
             <span className="stream-status-time">{formatElapsed(elapsed)}</span>
-            <button
-              type="button"
-              className="stream-stop-btn"
-              onClick={() => {
-                resetBuffer();
-                setStreaming(false);
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    role: "system" as const,
-                    content: "Stopped by user.",
-                    timestamp: new Date().toISOString(),
-                  },
-                ]);
-              }}
-              title="Stop generating"
-            >
-              Stop
-            </button>
           </div>
         )}
 
