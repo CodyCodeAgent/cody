@@ -3,7 +3,7 @@
 **开源 AI Coding Agent 框架** — 构建、定制和部署你自己的 AI 编程 Agent。
 
 [![PyPI](https://img.shields.io/pypi/v/cody-ai.svg)](https://pypi.org/project/cody-ai/)
-[![Python](https://img.shields.io/pypi/pyversions/cody-ai.svg)](https://pypi.org/project/cody-ai/)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://pypi.org/project/cody-ai/)
 [![Tests](https://img.shields.io/badge/tests-652%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
