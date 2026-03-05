@@ -85,9 +85,10 @@ async def test_async_run():
     client = AsyncCodyClient()
     mock_result = _make_result("async result")
 
-    with patch.object(client, "_get_runner") as mock_get_runner:
+    with patch.object(client, "_get_runner") as mock_get_runner, \
+         patch.object(client, "_get_session_store"):
         mock_runner = MagicMock()
-        mock_runner.run = AsyncMock(return_value=mock_result)
+        mock_runner.run_with_session = AsyncMock(return_value=(mock_result, "sid123"))
         mock_get_runner.return_value = mock_runner
 
         result = await client.run("test")
@@ -95,7 +96,7 @@ async def test_async_run():
     assert isinstance(result, RunResult)
     assert result.output == "async result"
     assert result.usage.total_tokens == 15
-    assert result.session_id is None
+    assert result.session_id == "sid123"
     await client.close()
 
 

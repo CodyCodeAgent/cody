@@ -68,6 +68,7 @@ class CodyBuilder:
     _enable_events: bool = False
     _mcp_servers: list[dict] = None
     _lsp_languages: list[str] = None
+    _event_handlers: list[tuple] = None  # [(event_type_str, handler), ...]
 
     def __post_init__(self):
         if self._allowed_roots is None:
@@ -76,6 +77,8 @@ class CodyBuilder:
             self._mcp_servers = []
         if self._lsp_languages is None:
             self._lsp_languages = ["python", "typescript", "go"]
+        if self._event_handlers is None:
+            self._event_handlers = []
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -144,6 +147,17 @@ class CodyBuilder:
         self._lsp_languages = languages
         return self
 
+    def on(self, event_type: str, handler) -> "CodyBuilder":
+        """Register event handler. Implicitly enables events.
+
+        Args:
+            event_type: Event type string, e.g. "tool_call", "tool_result".
+            handler: Callback function that receives the event.
+        """
+        self._enable_events = True
+        self._event_handlers.append((event_type, handler))
+        return self
+
     def build(self) -> "AsyncCodyClient":
         """Build and return the client instance."""
         cfg = make_config(
@@ -161,7 +175,11 @@ class CodyBuilder:
         )
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
-        return AsyncCodyClient(config=cfg)
+        client = AsyncCodyClient(config=cfg)
+        # Apply deferred event handlers
+        for event_type_str, handler in self._event_handlers:
+            client.on(event_type_str, handler)
+        return client
 
 
 def Cody() -> CodyBuilder:
@@ -336,17 +354,15 @@ class AsyncCodyClient:
                 return self._stream_run(prompt, session_id)
 
             runner = self._get_runner()
-            if session_id:
-                store = self._get_session_store()
-                result, sid = await runner.run_with_session(prompt, store, session_id)
-            else:
-                result = await runner.run(prompt)
-                sid = None
+            # Always use session to enable multi-turn by default
+            store = self._get_session_store()
+            result, sid = await runner.run_with_session(prompt, store, session_id)
 
             run_result = RunResult(
                 output=result.output,
                 session_id=sid,
                 usage=_usage_from_result(result),
+                thinking=result.thinking,
             )
 
             # Record metrics
@@ -360,7 +376,21 @@ class AsyncCodyClient:
                     ),
                 )
 
-            # Fire event
+            # Fire tool events from traces
+            if self._events and result.tool_traces:
+                for trace in result.tool_traces:
+                    await self._events.dispatch_async(ToolEvent(
+                        event_type=EventType.TOOL_CALL,
+                        tool_name=trace.tool_name,
+                        args=trace.args,
+                    ))
+                    await self._events.dispatch_async(ToolEvent(
+                        event_type=EventType.TOOL_RESULT,
+                        tool_name=trace.tool_name,
+                        result=trace.result,
+                    ))
+
+            # Fire run end event
             if self._events:
                 await self._events.dispatch_async(RunEvent(
                     event_type=EventType.RUN_END,
@@ -404,6 +434,9 @@ class AsyncCodyClient:
             async for event in runner.run_stream(prompt):
                 yield _event_to_chunk(event)
 
+    # Alias for stream() — matches the name used in demos/docs
+    run_stream = stream
+
     async def _stream_run(self, prompt, session_id: Optional[str] = None):
         """Internal streaming run (called when run(stream=True))."""
         async for chunk in self.stream(prompt, session_id=session_id):
@@ -416,7 +449,14 @@ class AsyncCodyClient:
                 elif chunk.type == "tool_call":
                     await self._events.dispatch_async(ToolEvent(
                         event_type=EventType.TOOL_CALL,
+                        tool_name=chunk.tool_name or chunk.content,
+                        args=chunk.args or {},
+                    ))
+                elif chunk.type == "tool_result":
+                    await self._events.dispatch_async(ToolEvent(
+                        event_type=EventType.TOOL_RESULT,
                         tool_name=chunk.content,
+                        result=chunk.content,
                     ))
                 elif chunk.type == "text_delta":
                     await self._events.dispatch_async(SDKStreamEvent(
@@ -691,16 +731,30 @@ class AsyncCodyClient:
 
     # ── Event Methods ────────────────────────────────────────────────────
 
-    def on(self, event_type: EventType, handler):
-        """Register event handler."""
+    def on(self, event_type, handler):
+        """Register event handler.
+
+        Args:
+            event_type: EventType enum or string (e.g. "tool_call").
+            handler: Callback function.
+        """
         if not self._events:
             raise CodyConfigError("Events not enabled. Use enable_events() in config.")
+        if isinstance(event_type, str):
+            event_type = EventType(event_type)
         self._events.register(event_type, handler)
 
-    def on_async(self, event_type: EventType, handler):
-        """Register async event handler."""
+    def on_async(self, event_type, handler):
+        """Register async event handler.
+
+        Args:
+            event_type: EventType enum or string (e.g. "tool_call").
+            handler: Callback function.
+        """
         if not self._events:
             raise CodyConfigError("Events not enabled. Use enable_events() in config.")
+        if isinstance(event_type, str):
+            event_type = EventType(event_type)
         self._events.register_async(event_type, handler)
 
     # ── Metrics Methods ──────────────────────────────────────────────────
@@ -764,6 +818,9 @@ class CodyClient:
                 chunks.append(chunk)
             return chunks
         return _run_async(_collect())
+
+    # Alias
+    run_stream = stream
 
     def tool(self, tool_name: str, params: Optional[dict] = None, **kwargs):
         return _run_async(self._async.tool(tool_name, params, **kwargs))
