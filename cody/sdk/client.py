@@ -378,6 +378,10 @@ class AsyncCodyClient:
                     error=str(e),
                 ))
             raise
+        finally:
+            # Ensure metrics run is closed even on exception
+            if self._metrics and self._metrics._current_run is not None:
+                self._metrics.end_run("", TokenUsage(0, 0, 0))
 
     async def stream(
         self,

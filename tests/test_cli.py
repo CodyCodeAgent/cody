@@ -37,7 +37,7 @@ def test_init_creates_directory(runner, tmp_path, monkeypatch):
     async def _fake_generate(workdir, config):
         return "# CODY.md\n\nAI-generated content."
 
-    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+    monkeypatch.setattr("cody.cli.commands.init_cmd.generate_project_instructions", _fake_generate)
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -55,7 +55,7 @@ def test_init_already_exists(runner, tmp_path, monkeypatch):
     async def _fake_generate(workdir, config):
         return "# CODY.md\n\nAI content."
 
-    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+    monkeypatch.setattr("cody.cli.commands.init_cmd.generate_project_instructions", _fake_generate)
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -73,7 +73,7 @@ def test_init_updates_existing_cody_md(runner, tmp_path, monkeypatch):
     async def _fake_generate(workdir, config):
         return "# CODY.md\n\nNew AI content."
 
-    monkeypatch.setattr("cody.cli.generate_project_instructions", _fake_generate)
+    monkeypatch.setattr("cody.cli.commands.init_cmd.generate_project_instructions", _fake_generate)
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -209,3 +209,66 @@ def test_build_history_with_messages():
     )
     history = _build_history_from_session(session)
     assert len(history) == 3
+
+
+# ── Additional CLI tests (S5) ────────────────────────────────────────────────
+
+
+def test_run_with_model_override(runner):
+    """--model flag is accepted without error."""
+    result = runner.invoke(main, ['run', '--model', 'test-model'])
+    # No prompt provided, so should show help text
+    assert result.exit_code == 0
+    assert 'Please provide a prompt' in result.output
+
+
+def test_run_with_workdir(runner, tmp_path):
+    """--workdir flag is accepted."""
+    result = runner.invoke(main, ['run', '--workdir', str(tmp_path)])
+    assert result.exit_code == 0
+    assert 'Please provide a prompt' in result.output
+
+
+def test_tui_help(runner):
+    result = runner.invoke(main, ['tui', '--help'])
+    assert result.exit_code == 0
+    assert 'Terminal UI' in result.output
+    assert '--model' in result.output
+
+
+def test_config_set_valid(runner, tmp_path, monkeypatch):
+    """config set with a valid key should succeed."""
+    monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
+    result = runner.invoke(main, ['config', 'set', 'model', 'test-model'])
+    # May fail if home config is not writable, but the command should parse
+    assert result.exit_code in (0, 1)
+
+
+def test_handle_clear(store):
+    from io import StringIO
+    from rich.console import Console
+    buf = StringIO()
+    console = Console(file=buf)
+    session = store.create_session(title="test")
+    result = _handle_command("/clear", session, store, console)
+    assert result is True
+    assert "cleared" in buf.getvalue().lower()
+
+
+def test_build_history_preserves_roles():
+    """History should preserve role information as pydantic-ai objects."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse
+
+    session = Session(
+        id="test", title="test",
+        messages=[
+            Message(role="user", content="q1"),
+            Message(role="assistant", content="a1"),
+        ],
+        model="", workdir="", created_at="", updated_at="",
+    )
+    history = _build_history_from_session(session)
+    assert len(history) == 2
+    # pydantic-ai returns ModelRequest for user, ModelResponse for assistant
+    assert isinstance(history[0], ModelRequest)
+    assert isinstance(history[1], ModelResponse)

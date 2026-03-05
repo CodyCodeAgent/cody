@@ -3,6 +3,8 @@
 Migrated from cody/server.py.
 """
 
+import asyncio
+
 from fastapi import APIRouter
 
 from cody.core.errors import ErrorCode
@@ -22,7 +24,9 @@ async def create_session(
 ):
     """Create a new session."""
     store = get_session_store()
-    session = store.create_session(title=title, model=model, workdir=workdir)
+    session = await asyncio.to_thread(
+        store.create_session, title=title, model=model, workdir=workdir,
+    )
     return SessionResponse(
         id=session.id,
         title=session.title,
@@ -38,28 +42,27 @@ async def create_session(
 async def list_sessions(limit: int = 20):
     """List recent sessions."""
     store = get_session_store()
-    sessions = store.list_sessions(limit=limit)
-    return {
-        "sessions": [
-            {
-                "id": s.id,
-                "title": s.title,
-                "model": s.model,
-                "workdir": s.workdir,
-                "message_count": store.get_message_count(s.id),
-                "created_at": s.created_at,
-                "updated_at": s.updated_at,
-            }
-            for s in sessions
-        ]
-    }
+    sessions = await asyncio.to_thread(store.list_sessions, limit=limit)
+    result = []
+    for s in sessions:
+        count = await asyncio.to_thread(store.get_message_count, s.id)
+        result.append({
+            "id": s.id,
+            "title": s.title,
+            "model": s.model,
+            "workdir": s.workdir,
+            "message_count": count,
+            "created_at": s.created_at,
+            "updated_at": s.updated_at,
+        })
+    return {"sessions": result}
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
 async def get_session(session_id: str):
     """Get session with messages."""
     store = get_session_store()
-    session = store.get_session(session_id)
+    session = await asyncio.to_thread(store.get_session, session_id)
     if not session:
         raise_structured(
             ErrorCode.SESSION_NOT_FOUND,
@@ -91,7 +94,7 @@ async def get_session(session_id: str):
 async def delete_session(session_id: str):
     """Delete a session."""
     store = get_session_store()
-    deleted = store.delete_session(session_id)
+    deleted = await asyncio.to_thread(store.delete_session, session_id)
     if not deleted:
         raise_structured(
             ErrorCode.SESSION_NOT_FOUND,

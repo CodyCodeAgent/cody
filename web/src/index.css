@@ -905,3 +905,35 @@ body {
   font-size: 18px;
   padding: 6px 10px;
 }
+
+/* ── Responsive ──────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .chat-page {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid #27272a;
+  }
+
+  .chat-window {
+    width: 100%;
+  }
+
+  .message {
+    max-width: 95%;
+  }
+
+  .home-page {
+    margin: 40px auto;
+  }
+
+  .home-header h1 {
+    font-size: 36px;
+  }
+}

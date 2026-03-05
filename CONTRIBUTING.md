@@ -41,14 +41,22 @@ cody/
 │   └── config.py       # SDK 配置 — SDKConfig, ModelConfig, config() 工厂
 ├── skills/         # 内置 Skills（git, github, docker, npm, python, rust, go, java, web, cicd, testing）
 ├── client.py       # 向后兼容 shim — re-export sdk/ 的公开符号
-├── tui.py          # TUI 界面（Textual），调用 core
-└── cli.py          # CLI 界面（Click），调用 core
+├── tui/            # TUI 界面（Textual），调用 core
+│   ├── __init__.py    # 重导出 run_tui, CodyTUI, MessageBubble, StreamBubble
+│   ├── app.py         # CodyTUI 主应用 + run_tui() 入口
+│   └── widgets.py     # MessageBubble, StreamBubble, StatusLine
+└── cli/            # CLI 界面（Click），调用 core
+    ├── __init__.py    # 重导出 main, _handle_command, _build_history_from_session
+    ├── main.py        # Click group + run/chat/tui 核心命令
+    ├── commands/      # 子命令模块（init, sessions, skills, config）
+    ├── rendering.py   # 流式渲染 + spinner
+    └── utils.py       # 辅助函数 + console 单例
 
 web/backend/        # 统一 Web Backend（FastAPI:8000），直接导入 core
 ```
 
 **关键约束：**
-- `core/` 内的代码 **不允许** 导入 `cli.py`、`tui.py`、`sdk/` 或 `web/`
+- `core/` 内的代码 **不允许** 导入 `cli/`、`tui/`、`sdk/` 或 `web/`
 - 所有接入层都通过 `core/` 提供的接口工作
 - `cody/sdk/` 是一等公民模块，直接包装 core，提供 Builder 模式、事件流、指标等高级 API
 - `cody/client.py` 是向后兼容 shim，仅 re-export `sdk/` 的公开符号，新代码应直接使用 `cody.sdk`
@@ -57,13 +65,13 @@ web/backend/        # 统一 Web Backend（FastAPI:8000），直接导入 core
 ### 依赖方向
 
 ```
-cli.py ──→
-tui.py ──→  core/*
+cli/ ────→
+tui/ ────→  core/*
 sdk/   ──→  core/*（in-process，无 HTTP）
 web/backend/ ──→ core/*（直接 import）
 ```
 
-禁止反向依赖。禁止 `core/` 依赖任何 CLI（click, rich）或 Web（fastapi）的库。
+禁止反向依赖。禁止 `core/` 依赖任何 CLI（click, rich）、TUI（textual）或 Web（fastapi）的库。
 
 ---
 
@@ -75,7 +83,7 @@ web/backend/ ──→ core/*（直接 import）
 |----------|----------|
 | 新工具（tools.py） | 至少 3 个测试：正常路径、边界情况、错误处理 |
 | 新 API 端点（web/backend/） | 至少 2 个测试：正常响应、错误响应 |
-| 新 CLI 命令（cli.py） | 至少 1 个测试：基本调用 |
+| 新 CLI 命令（cli/） | 至少 1 个测试：基本调用 |
 | Bug 修复 | 必须附带回归测试（先写测试复现 bug，再修） |
 | 核心逻辑变更 | 覆盖所有受影响路径 |
 
@@ -212,7 +220,7 @@ python3 -m pytest tests/ -v
 2. **先在 core/ 实现** — 功能逻辑放在 `core/`
 3. **SDK 暴露** — 在 `cody/sdk/` 包装 core 接口，提供 SDK 级别的 API（如果需要）
 4. **Web Backend 端点** — 在 `web/backend/routes/` 暴露 API（如果需要）
-5. **CLI 命令** — 在 `cli.py` 提供界面（如果需要）
+5. **CLI 命令** — 在 `cli/` 提供界面（如果需要）
 6. **更新文档** — 同步更新所有相关的 `.md` 文档（见下方"文档更新规范"）
 7. **运行测试** — 全部通过
 8. **运行 lint** — 零告警
@@ -275,15 +283,16 @@ python3 -m pytest tests/ -v
 | core/audit.py | 19 | 完善 |
 | core/permissions.py | 18 | 完善 |
 | core/context.py | 16 | 完善 |
-| cli.py | 16 | 基本覆盖 |
+| cli/ | 25 | 完善 |
 | core/rate_limiter.py | 16 | 完善 |
 | core/file_history.py | 15 | 完善 |
 | core/session.py | 14 | 完善 |
 | core/mcp_client.py | 14 | 完善 |
-| tui.py | 12 | 基本覆盖 |
+| tui/ | 17 | 完善 |
 | core/errors.py | 11 | 完善 |
+| web/backend (middleware) | 9 | 完善 |
 
-**总计：566 个测试（481 core + 65 sdk + 20 web），ruff 零告警**
+**总计：689 个测试（570 core + 65 sdk + 54 web），ruff 零告警**
 
 **当前版本：v1.6.0（见 CHANGELOG.md）**
 

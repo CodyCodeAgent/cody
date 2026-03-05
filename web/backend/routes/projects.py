@@ -4,15 +4,16 @@ Uses core SessionStore directly (no HTTP SDK). These are plain async
 functions called by app.py with injected dependencies.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import HTTPException
-
 from cody.core import Config
+from cody.core.errors import ErrorCode
 from cody.core.project_instructions import generate_project_instructions
 
 from ..db import ProjectStore
+from ..helpers import raise_structured
 from ..models import ProjectCreate, ProjectUpdate, ProjectResponse
 from ..state import get_session_store
 
@@ -33,7 +34,7 @@ def _project_response(p) -> ProjectResponse:
 
 async def list_projects(store: ProjectStore):
     """List all projects."""
-    projects = store.list_projects()
+    projects = await asyncio.to_thread(store.list_projects)
     logger.info("List projects: count=%d", len(projects))
     return [_project_response(p) for p in projects]
 
@@ -47,8 +48,10 @@ async def create_project(body: ProjectCreate, store: ProjectStore):
     workdir = Path(body.workdir)
     if not workdir.is_dir():
         logger.warning("Create project: workdir not found: %s", workdir)
-        raise HTTPException(
-            status_code=404, detail=f"Directory not found: {workdir}"
+        raise_structured(
+            ErrorCode.NOT_FOUND,
+            f"Directory not found: {workdir}",
+            status_code=404,
         )
 
     # Init .cody/ directory
@@ -59,7 +62,8 @@ async def create_project(body: ProjectCreate, store: ProjectStore):
         config_path.write_text("{}\n")
 
     # Create project in web DB
-    project = store.create_project(
+    project = await asyncio.to_thread(
+        store.create_project,
         name=body.name,
         description=body.description,
         workdir=str(workdir),
@@ -68,11 +72,12 @@ async def create_project(body: ProjectCreate, store: ProjectStore):
     # Create a cody session directly via SessionStore
     try:
         session_store = get_session_store()
-        session = session_store.create_session(
-            title=body.name, workdir=str(workdir)
+        session = await asyncio.to_thread(
+            session_store.create_session,
+            title=body.name, workdir=str(workdir),
         )
-        store.set_session_id(project.id, session.id)
-        project = store.get_project(project.id)
+        await asyncio.to_thread(store.set_session_id, project.id, session.id)
+        project = await asyncio.to_thread(store.get_project, project.id)
         logger.info(
             "Project created: id=%s session=%s", project.id, session.id,
         )
@@ -87,52 +92,63 @@ async def create_project(body: ProjectCreate, store: ProjectStore):
 
 async def get_project(project_id: str, store: ProjectStore):
     """Get a project by ID."""
-    project = store.get_project(project_id)
+    project = await asyncio.to_thread(store.get_project, project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise_structured(
+            ErrorCode.NOT_FOUND, "Project not found", status_code=404,
+        )
     return _project_response(project)
 
 
 async def update_project(project_id: str, body: ProjectUpdate,
                          store: ProjectStore):
     """Update project name and/or description."""
-    project = store.update_project(
-        project_id, name=body.name, description=body.description
+    project = await asyncio.to_thread(
+        store.update_project,
+        project_id, name=body.name, description=body.description,
     )
     if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise_structured(
+            ErrorCode.NOT_FOUND, "Project not found", status_code=404,
+        )
     return _project_response(project)
 
 
 async def delete_project(project_id: str, store: ProjectStore):
     """Delete a project."""
     logger.info("Delete project: id=%s", project_id)
-    project = store.get_project(project_id)
+    project = await asyncio.to_thread(store.get_project, project_id)
     if project is None:
         logger.warning("Delete project: not found: %s", project_id)
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise_structured(
+            ErrorCode.NOT_FOUND, "Project not found", status_code=404,
+        )
 
     # Try to delete linked cody session
     if project.session_id:
         try:
             session_store = get_session_store()
-            session_store.delete_session(project.session_id)
+            await asyncio.to_thread(
+                session_store.delete_session, project.session_id,
+            )
             logger.info("Deleted linked session: %s", project.session_id)
         except Exception as e:
             logger.warning(
                 "Failed to delete session %s: %s", project.session_id, e,
             )
 
-    store.delete_project(project_id)
+    await asyncio.to_thread(store.delete_project, project_id)
     return {"status": "deleted", "id": project_id}
 
 
 async def init_project_cody_md(project_id: str, store: ProjectStore):
     """Generate CODY.md for a project using AI analysis (like `cody init`)."""
     logger.info("Init CODY.md: project=%s", project_id)
-    project = store.get_project(project_id)
+    project = await asyncio.to_thread(store.get_project, project_id)
     if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise_structured(
+            ErrorCode.NOT_FOUND, "Project not found", status_code=404,
+        )
 
     workdir = Path(project.workdir)
     config = Config.load(workdir=workdir)
@@ -151,7 +167,8 @@ async def init_project_cody_md(project_id: str, store: ProjectStore):
             "CODY.md generation failed: project=%s error=%s",
             project_id, e, exc_info=True,
         )
-        raise HTTPException(
+        raise_structured(
+            ErrorCode.SERVER_ERROR,
+            f"Failed to generate CODY.md: {e}",
             status_code=500,
-            detail=f"Failed to generate CODY.md: {e}",
         )

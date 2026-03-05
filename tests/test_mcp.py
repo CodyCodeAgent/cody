@@ -180,24 +180,42 @@ async def test_start_server_with_mock_process():
     mock_process.stdout = MagicMock()
     mock_process.stderr = MagicMock()
 
-    # Build a response queue
+    # Build a response queue — responses are enqueued by mock stdin.write
+    # so the reader loop only sees them after the request is sent.
     responses = asyncio.Queue()
-    # Response to initialize
-    await responses.put(json.dumps({
-        "jsonrpc": "2.0", "id": 1, "result": {"capabilities": {}}
-    }).encode() + b"\n")
-    # Response to tools/list
-    await responses.put(json.dumps({
-        "jsonrpc": "2.0", "id": 2, "result": {
-            "tools": [
-                {"name": "hello", "description": "Say hello", "inputSchema": {}},
-            ]
-        }
-    }).encode() + b"\n")
+
+    # Map request id → response
+    _response_map = {
+        1: json.dumps({
+            "jsonrpc": "2.0", "id": 1, "result": {"capabilities": {}}
+        }).encode() + b"\n",
+        2: json.dumps({
+            "jsonrpc": "2.0", "id": 2, "result": {
+                "tools": [
+                    {"name": "hello", "description": "Say hello", "inputSchema": {}},
+                ]
+            }
+        }).encode() + b"\n",
+    }
+
+    _original_write = mock_process.stdin.write
+
+    def _mock_write(data):
+        """When a request is written, enqueue the corresponding response."""
+        _original_write(data)
+        try:
+            msg = json.loads(data)
+            req_id = msg.get("id")
+            if req_id in _response_map:
+                responses.put_nowait(_response_map[req_id])
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    mock_process.stdin.write = _mock_write
 
     async def mock_readline():
         try:
-            return await asyncio.wait_for(responses.get(), timeout=1.0)
+            return await asyncio.wait_for(responses.get(), timeout=2.0)
         except asyncio.TimeoutError:
             return b""
 

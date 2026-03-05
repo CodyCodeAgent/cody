@@ -56,13 +56,17 @@ class MCPClient:
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
-    async def start_all(self) -> None:
-        """Start all configured MCP servers."""
+    async def start_all(self) -> list[str]:
+        """Start all configured MCP servers. Returns list of failure messages."""
+        failures: list[str] = []
         for server_cfg in self.config.servers:
             try:
                 await self.start_server(server_cfg)
             except Exception as e:
-                logger.error("Failed to start MCP server %s: %s", server_cfg.name, e)
+                msg = f"MCP server '{server_cfg.name}' failed to start: {e}"
+                logger.error(msg)
+                failures.append(msg)
+        return failures
 
     async def start_server(self, cfg: MCPServerConfig) -> None:
         """Start a single MCP server subprocess."""
@@ -82,11 +86,21 @@ class MCPClient:
         # Start background reader for responses
         sp._reader_task = asyncio.create_task(self._reader_loop(cfg.name))
 
-        # Initialize the server
-        await self._send_initialize(cfg.name)
+        try:
+            # Initialize the server
+            await self._send_initialize(cfg.name)
 
-        # Discover tools
-        await self._discover_tools(cfg.name)
+            # Discover tools
+            await self._discover_tools(cfg.name)
+        except Exception:
+            # Cleanup orphaned process and reader task on init failure
+            orphan = self._servers.pop(cfg.name, None)
+            if orphan:
+                if orphan._reader_task and not orphan._reader_task.done():
+                    orphan._reader_task.cancel()
+                if orphan.process and orphan.process.returncode is None:
+                    orphan.process.kill()
+            raise
 
         logger.info(
             "MCP server '%s' started (pid=%s, tools=%d)",

@@ -19,8 +19,13 @@ _CHARS_PER_TOKEN = 4
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token count estimate (no tokenizer dependency)."""
-    return max(1, len(text) // _CHARS_PER_TOKEN)
+    """Rough token count estimate. CJK characters count as ~1.5 tokens each."""
+    if not text:
+        return 1
+    # Count CJK characters (roughly Unicode CJK Unified Ideographs range)
+    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    non_cjk_len = len(text) - cjk_count
+    return max(1, non_cjk_len // _CHARS_PER_TOKEN + int(cjk_count * 1.5))
 
 
 # ── Auto-compact ─────────────────────────────────────────────────────────────

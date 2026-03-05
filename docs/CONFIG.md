@@ -456,8 +456,14 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 | `CODY_CODING_PLAN_KEY` | `model_api_key`（兼容旧配置） | `sk-sp-...` |
 | `CODY_ENABLE_THINKING` | `enable_thinking` | `true` |
 | `CODY_THINKING_BUDGET` | `thinking_budget` | `10000` |
+| `CODY_CORS_ORIGINS` | Web CORS 允许的源（逗号分隔） | `http://localhost:5173,http://localhost:3000` |
 
 **优先级：** 环境变量 > 配置文件 > 默认值
+
+> **`CODY_CORS_ORIGINS`** 仅影响 Web Backend。未设置时默认允许 `localhost:5173`、`localhost:3000`（及对应 127.0.0.1）。生产部署时设置为实际域名：
+> ```bash
+> export CODY_CORS_ORIGINS="https://cody.example.com,https://app.example.com"
+> ```
 
 ---
 
@@ -761,4 +767,4 @@ ls -la ~/.cody/skills/
 
 ---
 
-**最后更新:** 2026-03-04
+**最后更新:** 2026-03-05

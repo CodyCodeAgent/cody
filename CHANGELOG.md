@@ -22,9 +22,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   - `pip install cody-ai[tui]` — 加 TUI（textual）
   - `pip install cody-ai[web]` — 加 Web（fastapi, uvicorn）
   - `pip install cody-ai[all]` — 全部
+- **Web 中间件测试** — 新增 `web/tests/test_middleware.py`（9 个测试覆盖认证、限流、审计）
+- **CLI/TUI 补充测试** — CLI 新增 9 个测试（参数传递、流式渲染、会话恢复），TUI 新增 5 个测试（批量刷新、状态栏、命令处理）
 
 ### Changed
 
+- **CLI/TUI 拆分为 Python 包** — `cody/cli.py`（830 行）拆为 `cody/cli/` 包（main.py + commands/ + rendering.py + utils.py），`cody/tui.py`（566 行）拆为 `cody/tui/` 包（app.py + widgets.py）。所有导入路径向后兼容。
 - **SDK 合并** — `cody/sdk/` 成为唯一 SDK 实现，直接包装 core（单层），`cody/client.py` 变为向后兼容 re-export shim
   - 新增 `cody/sdk/types.py` — SDK 响应类型（RunResult、Usage、StreamChunk 等）
   - `cody/sdk/client.py` 重写 — 不再双层包装（sdk → client → core），改为直接包装 core
@@ -34,9 +37,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   - ToolResultEvent 显示摘要行（工具名 + 结果长度）
   - 长对话消息回收（超 200 条自动移除旧 widget）
 - **CLI 工具参数截断** — 与 TUI 一致的 `_truncate_repr` 截断显示
+- **Web 前端版本同步** — `web/package.json` 版本号从 1.3.0 → 1.6.0
+- **pyproject.toml 描述更新** — 对齐框架定位
+- **Web CORS 白名单可配置** — 支持 `CODY_CORS_ORIGINS` 环境变量覆盖（默认仍为 localhost 开发地址）
+- **Web 后端异步化 SQLite** — 路由层使用 `asyncio.to_thread()` 包装阻塞式 ProjectStore/SessionStore 调用
+- **Web 后端异常处理统一** — `projects.py`、`directories.py` 中的 `HTTPException` 统一改为 `raise_structured()`
+- **Web 后端密钥遮蔽加强** — Config 端点 API Key 显示从部分展示改为全量遮蔽 `***`
+- **WebSocket 指数退避重连** — 前端 WebSocket 断线重连从固定 2s 改为指数退避（2s → 60s 上限）
+- **SDK 指标异常安全** — `MetricsCollector.end_run()` 移至 `finally` 块，异常时不丢失指标
+- **前端删除确认** — Sidebar 删除项目前增加 `window.confirm()` 确认
+- **Token 估算改进** — CJK 字符按 1.5 token 估算（原为 0.25）
+- **MCP 启动失败清理** — `start_all()` 返回失败列表，失败时清理残留进程和 reader task
+- **目录浏览安全** — 跳过符号链接，防止目录遍历
+
+### Fixed
+- **子代理循环依赖** — `sub_agent.py` 延迟导入处添加注释说明
 
 ### Removed
 - `python-dotenv` — 从依赖中移除（代码未使用）
+
+### Refactored
+- **前端 summarizeArgs 去重** — 提取到 `web/src/utils/summarizeArgs.ts`，ChatWindow 和 MessageBubble 共享
+- **前端项目状态管理** — 新增 `useProjects` hook，HomePage 和 Sidebar 共享项目列表
+- **ChatWindow 拆分** — 提取 `useStreamBuffer` hook 和 `StreamingBubble` 组件，主文件从 510 行缩减到 ~300 行
+- **前端响应式布局** — `index.css` 添加 768px 断点移动端适配
+- **文件历史持久化** — FileHistory 支持可选 SQLite 持久化（Web 模式启用）
 
 ---
 

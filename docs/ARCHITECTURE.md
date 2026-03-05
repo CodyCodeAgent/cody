@@ -16,7 +16,7 @@ Cody's architecture follows a **framework + reference implementations** pattern.
    │              │              │              │
   CLI           TUI        Web Frontend    Python SDK
   (Click)       (Textual)  (React+Vite)   (in-process)
-  cody/cli.py   cody/tui.py  web/src/     cody/sdk/
+  cody/cli/    cody/tui/   web/src/     cody/sdk/
    │              │              │              │
    │              │     Unified Web Backend     │
    │              │     (FastAPI:8000)           │
@@ -254,8 +254,8 @@ The four consumers demonstrate different ways to build on the core framework:
 
 | Consumer | Module | Integration Pattern |
 |----------|--------|---------------------|
-| **CLI** | `cody/cli.py` | Click commands → `AgentRunner.run_stream()` → print events to terminal |
-| **TUI** | `cody/tui.py` | Textual app → `AgentRunner.run_stream()` → render events in TUI widgets |
+| **CLI** | `cody/cli/` | Click commands → `AgentRunner.run_stream()` → print events to terminal |
+| **TUI** | `cody/tui/` | Textual app → `AgentRunner.run_stream()` → render events in TUI widgets |
 | **Web Backend** | `web/backend/` | FastAPI → `AgentRunner.run_with_session()` → JSON/SSE/WebSocket responses |
 | **Python SDK** | `cody/sdk/` | `CodyClient` / `AsyncCodyClient` → wraps core with Builder pattern + typed results |
 
@@ -268,7 +268,7 @@ Each consumer adds its own concerns (CLI adds argument parsing, TUI adds widget 
 ### CLI Mode
 
 ```
-User Input → Click CLI (cli.py) → AgentRunner.run_stream(prompt)
+User Input → Click CLI (cli/) → AgentRunner.run_stream(prompt)
   → Pydantic AI run_stream_events() → StreamEvent objects
   → ThinkingEvent → dim text
   → ToolCallEvent → "→ tool(args)"
@@ -279,7 +279,7 @@ User Input → Click CLI (cli.py) → AgentRunner.run_stream(prompt)
 ### TUI Mode
 
 ```
-User Input → Textual App (tui.py) → AgentRunner.run_stream()
+User Input → Textual App (tui/) → AgentRunner.run_stream()
   → StreamEvent objects → TUI StreamBubble
   → TextDeltaEvent → real-time text display
   → ToolCallEvent → tool call indicator
@@ -342,18 +342,18 @@ Config
 ## 依赖方向
 
 ```
-cli.py ──────────→ core/*  (direct import)
-tui.py ──────────→ core/*  (direct import)
+cli/ ────────────→ core/*  (direct import)
+tui/ ────────────→ core/*  (direct import)
 web/backend/ ────→ core/*  (direct import)
 cody/sdk/ ───────→ core/*  (direct import, in-process)
                      ↓
               pydantic-ai, sqlite3, httpx, etc.
 ```
 
-**Rule:** `core/` must NEVER import from `cli.py`, `tui.py`, `web/`, or `sdk/`. All functionality lives in core; consumers just expose it through their own interface.
+**Rule:** `core/` must NEVER import from `cli/`, `tui/`, `web/`, or `sdk/`. All functionality lives in core; consumers just expose it through their own interface.
 
 **Framework design principle:** Any new consumer can import `core/` and get the full agent experience — tools, sessions, sub-agents, skills, MCP, LSP — without depending on or even knowing about the other consumers.
 
 ---
 
-**Last updated:** 2026-03-04
+**Last updated:** 2026-03-05

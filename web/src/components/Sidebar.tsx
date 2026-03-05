@@ -1,25 +1,28 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { listProjects, deleteProject } from "../api/client";
-import type { Project } from "../types";
+import { useProjects } from "../hooks/useProjects";
 
 export default function Sidebar({
   currentProjectId,
 }: {
   currentProjectId?: string;
 }) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { projects, refresh, remove } = useProjects();
   const navigate = useNavigate();
 
   useEffect(() => {
-    listProjects().then(setProjects).catch(console.error);
-  }, [currentProjectId]);
+    refresh();
+  }, [currentProjectId, refresh]);
 
   async function handleDelete(id: string) {
-    await deleteProject(id);
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-    if (id === currentProjectId) {
-      navigate("/");
+    if (!window.confirm("Are you sure you want to delete this project?")) return;
+    try {
+      await remove(id);
+      if (id === currentProjectId) {
+        navigate("/");
+      }
+    } catch (e) {
+      console.error("Delete failed:", e);
     }
   }
 

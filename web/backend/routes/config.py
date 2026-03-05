@@ -41,7 +41,7 @@ async def get_config(workdir: Optional[str] = None):
         # Strip secrets from response
         if "model_api_key" in data:
             key = data["model_api_key"]
-            data["model_api_key"] = (key[:6] + "..." + key[-3:]) if len(key) > 8 else "***"
+            data["model_api_key"] = "***" if key else ""
         if "auth" in data:
             data["auth"].pop("api_key", None)
             data["auth"].pop("token", None)
