@@ -10,13 +10,12 @@ from pathlib import Path
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from cody.core import AgentRunner
 from cody.core.auth import AuthError
 
 from ..db import ProjectStore
 from ..helpers import build_prompt, serialize_stream_event
 from ..middleware import validate_credential
-from ..state import get_config, get_session_store
+from ..state import get_config, get_runner, get_session_store
 
 logger = logging.getLogger("cody.web.chat")
 
@@ -69,20 +68,22 @@ async def chat_websocket(
 
                 try:
                     workdir = Path(project.workdir)
-                    config = get_config(workdir)
+                    runner = get_runner(workdir)
 
                     # Apply per-message overrides from frontend
-                    config.apply_overrides(
-                        model=data.get("model"),
-                        model_base_url=data.get("model_base_url"),
-                        model_api_key=data.get("model_api_key"),
-                        enable_thinking=data.get("enable_thinking"),
-                        thinking_budget=data.get("thinking_budget"),
-                    )
-                    if data.get("model"):
-                        logger.info("Chat override: model=%s", data["model"])
-
-                    runner = AgentRunner(config=config, workdir=workdir)
+                    if any(data.get(k) for k in ("model", "model_base_url", "model_api_key",
+                                                   "enable_thinking", "thinking_budget")):
+                        config = get_config(workdir)
+                        config.apply_overrides(
+                            model=data.get("model"),
+                            model_base_url=data.get("model_base_url"),
+                            model_api_key=data.get("model_api_key"),
+                            enable_thinking=data.get("enable_thinking"),
+                            thinking_budget=data.get("thinking_budget"),
+                        )
+                        runner.config = config
+                        if data.get("model"):
+                            logger.info("Chat override: model=%s", data["model"])
                     session_store = get_session_store()
 
                     event_count = 0

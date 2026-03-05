@@ -18,8 +18,11 @@ from typing import Optional
 _CHARS_PER_TOKEN = 4
 
 
-def estimate_tokens(text: str) -> int:
+def estimate_tokens(text) -> int:
     """Rough token count estimate. CJK characters count as ~1.5 tokens each."""
+    if not isinstance(text, str):
+        # Non-string content (e.g. ImageUrl, list of parts) — use a flat estimate
+        return 100
     if not text:
         return 1
     # Count CJK characters (roughly Unicode CJK Unified Ideographs range)

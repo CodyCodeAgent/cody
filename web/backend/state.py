@@ -41,6 +41,8 @@ _CONFIG_CACHE_TTL = 60.0  # seconds
 _sub_agent_manager = None
 _sub_agent_lock = asyncio.Lock()
 _project_store: Optional[ProjectStore] = None
+_runner_cache: dict[str, tuple] = {}  # key -> (AgentRunner, created_at)
+_RUNNER_CACHE_TTL = 300.0  # 5 minutes
 
 
 def get_audit_logger() -> AuditLogger:
@@ -121,6 +123,26 @@ def create_full_deps(config: Config, workdir: Path) -> CodyDeps:
     )
 
 
+def get_runner(workdir: Path):
+    """Get or create a cached AgentRunner for the given workdir.
+
+    Avoids re-creating the agent, tools, skill manager, etc. on every message.
+    Cache entries expire after _RUNNER_CACHE_TTL seconds.
+    """
+    from cody.core import AgentRunner
+
+    key = str(workdir)
+    now = time.monotonic()
+    if key in _runner_cache:
+        runner, created_at = _runner_cache[key]
+        if now - created_at < _RUNNER_CACHE_TTL:
+            return runner
+    config = get_config(workdir)
+    runner = AgentRunner(config=config, workdir=workdir)
+    _runner_cache[key] = (runner, now)
+    return runner
+
+
 def get_project_store() -> ProjectStore:
     global _project_store
     if _project_store is None:
@@ -143,7 +165,7 @@ async def get_sub_agent_manager(workdir: Optional[Path] = None):
 def reset_state():
     """Reset all singletons for testing."""
     global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked
-    global _session_store, _config_cache, _sub_agent_manager, _project_store
+    global _session_store, _config_cache, _sub_agent_manager, _project_store, _runner_cache
     _audit_logger = None
     _auth_manager = None
     _rate_limiter = None
@@ -152,3 +174,4 @@ def reset_state():
     _config_cache.clear()
     _sub_agent_manager = None
     _project_store = None
+    _runner_cache.clear()
