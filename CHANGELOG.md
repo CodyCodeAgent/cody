@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.3] - 2026-03-05
+
+### Fixed
+- **CI Trusted Publisher** — 修正 PyPI trusted publisher workflow 名称配置
+
+---
+
 ## [1.7.2] - 2026-03-05
 
 ### Fixed
