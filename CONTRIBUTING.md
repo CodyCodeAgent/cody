@@ -294,7 +294,7 @@ python3 -m pytest tests/ -v
 
 **总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
 
-**当前版本：v1.7.0（见 CHANGELOG.md）**
+**当前版本：v1.7.1（见 CHANGELOG.md）**
 
 ---
 

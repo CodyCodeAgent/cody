@@ -35,6 +35,7 @@ class RunResult:
     output: str
     session_id: Optional[str] = None
     usage: Usage = field(default_factory=Usage)
+    thinking: Optional[str] = None
 
 
 @dataclass
@@ -42,6 +43,11 @@ class StreamChunk:
     type: str  # "text_delta", "thinking", "tool_call", "tool_result", "done", "compact"
     content: str = ""
     session_id: Optional[str] = None
+    # Tool call details (populated when type="tool_call")
+    tool_name: Optional[str] = None
+    args: Optional[dict] = None
+    # Usage info (populated when type="done")
+    usage: Optional[Usage] = None
 
 
 @dataclass
@@ -77,13 +83,19 @@ def _event_to_chunk(
     elif isinstance(event, ThinkingEvent):
         return StreamChunk(type="thinking", content=event.content, session_id=session_id)
     elif isinstance(event, ToolCallEvent):
-        return StreamChunk(type="tool_call", content=event.tool_name, session_id=session_id)
+        return StreamChunk(
+            type="tool_call", content=event.tool_name, session_id=session_id,
+            tool_name=event.tool_name, args=event.args,
+        )
     elif isinstance(event, ToolResultEvent):
         return StreamChunk(type="tool_result", content=event.result, session_id=session_id)
     elif isinstance(event, CompactEvent):
         return StreamChunk(type="compact", session_id=session_id)
     elif isinstance(event, DoneEvent):
-        return StreamChunk(type="done", content=event.result.output, session_id=session_id)
+        return StreamChunk(
+            type="done", content=event.result.output, session_id=session_id,
+            usage=_usage_from_result(event.result),
+        )
     return StreamChunk(type="unknown", session_id=session_id)
 
 

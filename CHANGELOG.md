@@ -10,6 +10,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.1] - 2026-03-05
+
+### Added
+- **SDK `run_stream()` 方法** — `stream()` 的别名，提供更直观的 API 命名
+- **SDK `RunResult.thinking`** — 非流式模式下也可获取模型思考内容
+- **SDK `StreamChunk` 增强字段** — `tool_name`、`args`（tool_call 事件）、`usage`（done 事件）
+- **SDK Builder `.on()` 方法** — 在 Builder 链中直接注册事件处理器，自动启用 events
+- **SDK `on()` 字符串支持** — `client.on("tool_call", handler)` 等效于 `client.on(EventType.TOOL_CALL, handler)`
+- **SDK 自动 Session** — `run()` 自动创建 session，首次调用即返回 `session_id`，无需手动 `create_session()`
+- **SDK 非流式工具事件** — 非流式 `run()` 完成后从 `tool_traces` 补发 `TOOL_CALL`/`TOOL_RESULT` 事件
+
+### Fixed
+- **SDK 模型覆盖 Bug** — `AsyncCodyClient()` 不传 model 时，SDK 默认值不再覆盖环境变量 `CODY_MODEL`
+- **Web `estimate_tokens` TypeError** — 多模态消息（ImageUrl）不再导致 token 估算崩溃
+- **Web AgentRunner 性能** — 按 workdir 缓存 AgentRunner（5 分钟 TTL），避免每次消息重建
+
+### Changed
+- **Web Stop 按钮移除** — pydantic-ai 无优雅停止机制，移除前端 Stop 按钮避免误导
+
+---
+
 ## [1.7.0] - 2026-03-05
 
 ### Added

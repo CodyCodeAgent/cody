@@ -11,7 +11,7 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 ## 目录
 
 1. [快速开始](#快速开始)
-2. [三种创建方式](#三种创建方式)
+2. [四种创建方式](#四种创建方式)
 3. [核心方法](#核心方法)
 4. [多模态 Prompt](#多模态-prompt)
 5. [思考模式](#思考模式)
@@ -59,7 +59,21 @@ from cody.sdk import AsyncCodyClient       # 完整路径
 from cody.client import AsyncCodyClient    # 向后兼容
 ```
 
-## 三种创建方式
+### 环境变量配置
+
+SDK 支持通过环境变量配置模型，无需在代码中硬编码：
+
+```bash
+export CODY_MODEL=qwen3.5-plus
+export CODY_MODEL_API_KEY=sk-xxx
+export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
+```
+
+配置优先级（从高到低）：代码参数 > 环境变量 > 项目配置文件 > 全局配置文件 > 默认值
+
+> **注意**：`AsyncCodyClient()` 不传 model 参数时会使用环境变量，不会使用 SDK 默认模型覆盖。
+
+## 四种创建方式
 
 ```python
 from cody.sdk import AsyncCodyClient, Cody, config
@@ -185,17 +199,26 @@ print(result.usage.total_tokens)  # Token 使用量
 @dataclass
 class RunResult:
     output: str
-    session_id: Optional[str]
-    usage: Usage  # input_tokens, output_tokens, total_tokens
+    session_id: Optional[str]   # 自动创建（首次调用也会返回）
+    usage: Usage                # input_tokens, output_tokens, total_tokens
+    thinking: Optional[str]     # 思考内容（启用思考模式时）
 ```
+
+> **v1.7.1 变更**：`run()` 现在自动创建 session，首次调用即返回 `session_id`，无需手动调用 `create_session()`。
 
 ---
 
-#### 2. stream() — 流式执行
+#### 2. stream() / run_stream() — 流式执行
+
+`stream()` 和 `run_stream()` 完全等价（`run_stream` 是 `stream` 的别名）。
 
 ```python
 # 异步
 async for chunk in client.stream("解释这段代码"):
+    print(chunk.content, end="")
+
+# 等价写法
+async for chunk in client.run_stream("解释这段代码"):
     print(chunk.content, end="")
 
 # 同步（注意：同步版本会一次性返回所有 chunks 的列表，非真正流式）
@@ -203,28 +226,42 @@ for chunk in client.stream("解释这段代码"):
     print(chunk.content, end="")
 ```
 
+**StreamChunk 字段：**
+
+```python
+@dataclass
+class StreamChunk:
+    type: str                         # 事件类型（见下表）
+    content: str                      # 文本内容
+    session_id: Optional[str]         # 会话 ID
+    tool_name: Optional[str]          # 工具名称（type="tool_call" 时）
+    args: Optional[dict]              # 工具参数（type="tool_call" 时）
+    usage: Optional[Usage]            # Token 用量（type="done" 时）
+```
+
 **流式事件类型：**
-| 类型 | 说明 |
-|------|------|
-| `text_delta` | 文本内容（增量） |
-| `thinking` | 思考内容（增量） |
-| `tool_call` | 工具调用 |
-| `tool_result` | 工具结果 |
-| `done` | 任务完成 |
-| `compact` | 上下文压缩 |
+
+| 类型 | 说明 | 特有字段 |
+| ---- | ---- | -------- |
+| `text_delta` | 文本内容（增量） | `content` |
+| `thinking` | 思考内容（增量） | `content` |
+| `tool_call` | 工具调用 | `tool_name`, `args` |
+| `tool_result` | 工具结果 | `content`（结果文本） |
+| `done` | 任务完成 | `usage`（Token 用量） |
+| `compact` | 上下文压缩 | — |
 
 **完整示例：**
 ```python
 async with AsyncCodyClient() as client:
-    async for chunk in client.stream("创建 Flask 应用"):
+    async for chunk in client.run_stream("创建 Flask 应用"):
         if chunk.type == "text_delta":
             print(chunk.content, end="")
         elif chunk.type == "thinking":
             print(f"[思考] {chunk.content}", end="")
         elif chunk.type == "tool_call":
-            print(f"\n>> 调用工具: {chunk.content}")
+            print(f"\n>> 调用工具: {chunk.tool_name}({chunk.args})")
         elif chunk.type == "done":
-            print("\n完成")
+            print(f"\n完成 (tokens: {chunk.usage.total_tokens})")
 ```
 
 ---
@@ -260,17 +297,21 @@ print(result.result)
 #### 4. 会话管理
 
 ```python
-# 创建会话
+# 自动会话（v1.7.1+，推荐）— run() 自动创建 session
+r1 = await client.run("创建 Flask 应用")
+sid = r1.session_id  # 自动生成的 session_id
+
+# 后续轮次使用同一 session_id 即可保持上下文
+r2 = await client.run("添加 /health 端点", session_id=sid)
+r3 = await client.run("添加用户认证", session_id=sid)
+
+# 也可以手动创建会话（可自定义标题）
 session = await client.create_session(
     title="My Project",
     model="anthropic:claude-sonnet-4-0",
     workdir="/path/to/project",
 )
-
-# 多轮对话
-r1 = await client.run("创建 Flask 应用", session_id=session.id)
-r2 = await client.run("添加 /health 端点", session_id=session.id)
-r3 = await client.run("添加用户认证", session_id=session.id)
+r4 = await client.run("分析项目结构", session_id=session.id)
 
 # 列出会话
 sessions = await client.list_sessions(limit=10)
@@ -321,28 +362,17 @@ from cody import AsyncCodyClient
 
 async def main():
     async with AsyncCodyClient() as client:
-        # 创建会话
-        session = await client.create_session(title="Flask 开发")
-
-        # 第一轮：创建应用
-        r1 = await client.run(
-            "创建一个 Flask 应用",
-            session_id=session.id,
-        )
+        # 第一轮：自动创建 session
+        r1 = await client.run("创建一个 Flask 应用")
         print(r1.output)
+        sid = r1.session_id  # 拿到自动生成的 session_id
 
-        # 第二轮：添加端点
-        r2 = await client.run(
-            "添加一个 /health 端点",
-            session_id=session.id,
-        )
+        # 第二轮：传入 session_id 保持上下文
+        r2 = await client.run("添加一个 /health 端点", session_id=sid)
         print(r2.output)
 
-        # 第三轮：添加认证
-        r3 = await client.run(
-            "添加 JWT 用户认证",
-            session_id=session.id,
-        )
+        # 第三轮
+        r3 = await client.run("添加 JWT 用户认证", session_id=sid)
         print(r3.output)
 
 asyncio.run(main())
@@ -484,6 +514,8 @@ client = (
 
 async with client:
     result = await client.run("分析这个项目的架构问题，给出重构方案")
+    if result.thinking:
+        print(f"思考过程: {result.thinking}")
     print(result.output)
 ```
 
@@ -765,15 +797,25 @@ else:
 ```python
 from cody.sdk import Cody, EventType
 
-client = Cody().workdir(".").enable_events().build()
+# 方式 1：Builder 链式注册（推荐，自动启用 events）
+client = (
+    Cody()
+    .workdir(".")
+    .on("tool_call", lambda e: print(f"Tool: {e.tool_name}({list(e.args.keys())})"))
+    .on("tool_result", lambda e: print(f"Result: {e.tool_name} -> {e.result[:60]}"))
+    .build()
+)
 
-# 注册事件处理器
+# 方式 2：构造后注册（需手动 enable_events）
+client = Cody().workdir(".").enable_events().build()
 client.on(EventType.TOOL_CALL, lambda e: print(f"Tool: {e.tool_name}"))
-client.on(EventType.RUN_END, lambda e: print(f"Done: {e.result[:50]}"))
+client.on("run_end", lambda e: print(f"Done: {e.result[:50]}"))  # 也接受字符串
 
 async with client:
     await client.run("Read README.md")
 ```
+
+> **v1.7.1 变更**：`on()` 可以在 Builder 上链式调用，event_type 支持字符串（如 `"tool_call"`）和 `EventType` 枚举。
 
 **事件类型：**
 
@@ -889,11 +931,10 @@ async for chunk in client.stream("分析整个项目"):
 ### 3. 会话复用
 
 ```python
-# 多轮对话使用同一个 session_id
-session = await client.create_session()
-await client.run("创建项目", session_id=session.id)
-await client.run("添加功能", session_id=session.id)
-await client.run("修复 bug", session_id=session.id)
+# 多轮对话：首次调用自动创建 session
+r = await client.run("创建项目")
+await client.run("添加功能", session_id=r.session_id)
+await client.run("修复 bug", session_id=r.session_id)
 ```
 
 ### 4. 并发请求
@@ -941,6 +982,7 @@ async with client:
 |------|------|
 | `client.run(prompt, session_id=)` | 执行任务，返回 `RunResult` |
 | `client.stream(prompt, session_id=)` | 流式执行，yield `StreamChunk` |
+| `client.run_stream(prompt, session_id=)` | `stream()` 的别名 |
 | `client.tool(name, params)` | 直接调用工具，返回 `ToolResult` |
 
 ### 会话方法
@@ -1001,8 +1043,8 @@ async with client:
 
 | 类 | 说明 |
 |------|------|
-| `RunResult` | 执行结果（output, session_id, usage） |
-| `StreamChunk` | 流式块（type, content, session_id） |
+| `RunResult` | 执行结果（output, session_id, usage, thinking） |
+| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, usage） |
 | `ToolResult` | 工具结果（result） |
 | `SessionInfo` | 会话摘要 |
 | `SessionDetail` | 会话详情（含消息列表） |
@@ -1033,4 +1075,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-04
+**最后更新:** 2026-03-05

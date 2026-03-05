@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/cody-ai.svg)](https://pypi.org/project/cody-ai/)
 [![Python](https://img.shields.io/pypi/pyversions/cody-ai.svg)](https://pypi.org/project/cody-ai/)
-[![Tests](https://img.shields.io/badge/tests-689%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-652%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Cody 提供构建 AI 编程 Agent 所需的完整基础设施：**28 个工具、11 个内置技能、MCP/LSP 集成、子 Agent 编排、会话管理和安全体系**。你可以用 SDK 将它嵌入任何 Python 应用，也可以直接用 CLI/TUI/Web 开箱即用。
@@ -38,13 +38,12 @@ async with AsyncCodyClient(workdir="/path/to/project") as client:
     result = await client.run("创建一个 FastAPI hello world 应用")
     print(result.output)
 
-    # 多轮对话
-    session = await client.create_session()
-    await client.run("创建 Flask 应用", session_id=session.id)
-    await client.run("添加 /health 端点", session_id=session.id)
+    # 多轮对话（自动创建 session）
+    r1 = await client.run("创建 Flask 应用")
+    await client.run("添加 /health 端点", session_id=r1.session_id)
 
     # 流式输出
-    async for chunk in client.stream("解释这段代码"):
+    async for chunk in client.run_stream("解释这段代码"):
         print(chunk.content, end="")
 ```
 
@@ -195,10 +194,10 @@ git clone https://github.com/CodyCodeAgent/cody.git
 cd cody
 pip install -e ".[dev]"
 
-# 运行核心测试（570 个）+ SDK 测试（65 个）
+# 运行核心 + SDK 测试（576 个）
 uv run pytest tests/ -v
 
-# Web 后端测试（54 个）
+# Web 后端测试（76 个）
 PYTHONPATH=. uv run pytest web/tests/ -v
 
 # Web 前端测试（33 个）
@@ -246,4 +245,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-03-05 | **版本:** 1.7.0
+**最后更新:** 2026-03-05 | **版本:** 1.7.1
