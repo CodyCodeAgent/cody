@@ -133,13 +133,16 @@ cody-web --port 8000        # 生产模式
 
 ## 版本管理
 
-版本号在 **3 个位置**，必须同步更新：
+Python 版本号**单一来源**：`cody/_version.py` → `__version__ = "x.y.z"`
 
-1. `pyproject.toml` → `version = "x.y.z"`
-2. `cody/__init__.py` → `__version__ = "x.y.z"`（`web/backend/` 自动引用此值）
-3. `cody/core/mcp_client.py` → `clientInfo.version`
+其他位置自动引用，无需手动改：
 
-同时更新 `CHANGELOG.md` 添加版本条目，`CONTRIBUTING.md` 中的版本号。
+- `pyproject.toml` → `dynamic = ["version"]`，通过 setuptools 读取 `_version.py`
+- `cody/__init__.py` / `cody/sdk/__init__.py` → `from ._version import __version__`
+- `cody/core/mcp_client.py` → `from .._version import _version`
+- `cody/cli/main.py` → `click.version_option(version=cody.__version__)`
+
+升版本时还需手动更新：`CHANGELOG.md`、`web/package.json`、文档中的版本引用。
 
 ## 代码规范
 

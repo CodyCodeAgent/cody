@@ -22,7 +22,7 @@ from .commands.init_cmd import init
 
 
 @click.group()
-@click.version_option(package_name="cody-ai")
+@click.version_option(version=__import__("cody").__version__)
 def main():
     """Cody - AI Coding Assistant
 

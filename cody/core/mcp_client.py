@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from .config import MCPConfig, MCPServerConfig
+from .._version import __version__ as _version
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +289,7 @@ class MCPClient:
             {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "cody", "version": "1.7.0"},
+                "clientInfo": {"name": "cody", "version": _version},
             },
         )
         # Send initialized notification (no id, no response expected)
