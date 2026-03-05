@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cody-ai"
-version = "1.7.0"
+dynamic = ["version"]
 description = "Open-source AI Coding Agent framework with SDK, Skills, and MCP integration"
 authors = [{name = "GouChao"}]
 readme = "README.md"
@@ -69,6 +69,9 @@ dev = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "cody._version.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["cody*"]

@@ -1,6 +1,6 @@
 """Cody - AI coding companion"""
 
-__version__ = "1.7.0"
+from ._version import __version__  # noqa: F401
 
 from .sdk.client import AsyncCodyClient, CodyClient, Cody  # noqa: F401
 from .sdk.errors import CodyError, CodyNotFoundError  # noqa: F401
