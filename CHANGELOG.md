@@ -10,6 +10,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.2] - 2026-03-05
+
+### Fixed
+- **CI pytest-timeout** — dev 依赖补充 `pytest-timeout`，修复 CI `--timeout=60` 参数报错
+- **CI 前端测试** — 移除不稳定的前端测试 job，保留 Python 测试矩阵
+
+### Changed
+- **Python 版本要求** — 最低版本从 3.9 提升至 3.10（支持 `X | None` 联合类型语法）
+- **CI 测试矩阵** — 3.10 / 3.11 / 3.12 / 3.13
+
+---
+
 ## [1.7.1] - 2026-03-05
 
 ### Added
