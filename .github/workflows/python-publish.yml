@@ -49,11 +49,13 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: web
-        run: npm install
+        run: |
+          npm install --include=dev
+          ls node_modules/.bin/vitest || echo "vitest not found in .bin"
 
       - name: Frontend tests
         working-directory: web
-        run: npm test
+        run: ./node_modules/.bin/vitest run
 
   build:
     runs-on: ubuntu-latest
