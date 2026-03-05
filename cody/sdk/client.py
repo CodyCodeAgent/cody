@@ -222,7 +222,13 @@ class AsyncCodyClient:
             )
 
         self.workdir = Path(self._config.workdir) if self._config.workdir else Path.cwd()
-        self._model_override = self._config.model.model if self._config.model.model else None
+        # Only override model if the user explicitly provided one (not the SDK default)
+        _sdk_default_model = "anthropic:claude-sonnet-4-0"
+        self._model_override = (
+            self._config.model.model
+            if self._config.model.model and self._config.model.model != _sdk_default_model
+            else None
+        )
         self._db_path = Path(self._config.db_path) if self._config.db_path else None
 
         # Core objects (lazy-initialized)
