@@ -76,54 +76,57 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
         _status_spinner("Thinking...", stream_start)
     )
 
-    async for event in stream:
-        # Stop the initial "Thinking..." spinner on first real event
-        if not got_first_event and not isinstance(event, CompactEvent):
-            got_first_event = True
-            await _stop_spinner()
+    try:
+        async for event in stream:
+            # Stop the initial "Thinking..." spinner on first real event
+            if not got_first_event and not isinstance(event, CompactEvent):
+                got_first_event = True
+                await _stop_spinner()
 
-        if isinstance(event, CompactEvent):
-            console.print(
-                f"  [yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]"
-            )
-        elif isinstance(event, ThinkingEvent):
-            in_thinking = True
-            thinking_buf.append(event.content)
-        elif isinstance(event, ToolCallEvent):
-            await _stop_spinner()
-            if in_thinking:
-                console.print(rich_escape("".join(thinking_buf)), style="dim")
-                thinking_buf.clear()
-                in_thinking = False
-            args_str = ", ".join(
-                f"{k}={_truncate_repr(v)}" for k, v in list(event.args.items())[:3]
-            )
-            console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
-            spinner_task = asyncio.create_task(
-                _status_spinner(
-                    f"{event.tool_name} running...",
-                    time.monotonic(),
-                    done_label=f"{event.tool_name} done",
+            if isinstance(event, CompactEvent):
+                console.print(
+                    f"  [yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]"
                 )
-            )
-        elif isinstance(event, ToolResultEvent):
-            await _stop_spinner()
-            if verbose:
-                preview = event.result[:200]
-                console.print(f"    [dim]{rich_escape(preview)}[/dim]")
-        elif isinstance(event, TextDeltaEvent):
-            await _stop_spinner()
-            if in_thinking:
-                console.print(rich_escape("".join(thinking_buf)), style="dim")
-                thinking_buf.clear()
-                in_thinking = False
-            console.print(event.content, end="")
-        elif isinstance(event, DoneEvent):
-            await _stop_spinner()
-            if in_thinking:
-                console.print(rich_escape("".join(thinking_buf)), style="dim")
-                thinking_buf.clear()
-            result = event.result
+            elif isinstance(event, ThinkingEvent):
+                in_thinking = True
+                thinking_buf.append(event.content)
+            elif isinstance(event, ToolCallEvent):
+                await _stop_spinner()
+                if in_thinking:
+                    console.print(rich_escape("".join(thinking_buf)), style="dim")
+                    thinking_buf.clear()
+                    in_thinking = False
+                args_str = ", ".join(
+                    f"{k}={_truncate_repr(v)}" for k, v in list(event.args.items())[:3]
+                )
+                console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
+                spinner_task = asyncio.create_task(
+                    _status_spinner(
+                        f"{event.tool_name} running...",
+                        time.monotonic(),
+                        done_label=f"{event.tool_name} done",
+                    )
+                )
+            elif isinstance(event, ToolResultEvent):
+                await _stop_spinner()
+                if verbose:
+                    preview = event.result[:200]
+                    console.print(f"    [dim]{rich_escape(preview)}[/dim]")
+            elif isinstance(event, TextDeltaEvent):
+                await _stop_spinner()
+                if in_thinking:
+                    console.print(rich_escape("".join(thinking_buf)), style="dim")
+                    thinking_buf.clear()
+                    in_thinking = False
+                console.print(event.content, end="")
+            elif isinstance(event, DoneEvent):
+                await _stop_spinner()
+                if in_thinking:
+                    console.print(rich_escape("".join(thinking_buf)), style="dim")
+                    thinking_buf.clear()
+                result = event.result
+    finally:
+        await _stop_spinner()
 
     # Print total elapsed time
     total = time.monotonic() - stream_start
