@@ -158,6 +158,8 @@ export function connectChat(projectId: string): ChatSocket {
   let ws: WebSocket;
   let closed = false;
   let reconnectTimer: ReturnType<typeof setTimeout>;
+  let retryDelay = 2000;
+  const MAX_RETRY_DELAY = 60000;
 
   const handle: ChatSocket = {
     send(msg) {
@@ -180,6 +182,7 @@ export function connectChat(projectId: string): ChatSocket {
 
     ws.onopen = () => {
       handle.onStatus?.("connected");
+      retryDelay = 2000; // Reset on successful connection
     };
 
     ws.onmessage = (e) => {
@@ -194,7 +197,8 @@ export function connectChat(projectId: string): ChatSocket {
     ws.onclose = () => {
       if (!closed) {
         handle.onStatus?.("disconnected");
-        reconnectTimer = setTimeout(connect, 2000);
+        reconnectTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY);
       }
     };
 

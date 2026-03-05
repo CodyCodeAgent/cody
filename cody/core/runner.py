@@ -598,6 +598,7 @@ class AgentRunner:
     ) -> CodyResult:
         """Run agent synchronously"""
         deps = self._create_deps()
+        message_history, _compact = self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
         result = self.agent.run_sync(
             pydantic_prompt, deps=deps, message_history=message_history,

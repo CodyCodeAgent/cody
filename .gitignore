@@ -42,6 +42,15 @@ htmlcov/
 .env
 .env.local
 
+# Node
+node_modules/
+
+# Build artifacts
+web/tsconfig.tsbuildinfo
+
+# Lock files (uv)
+uv.lock
+
 # OS
 .DS_Store
 Thumbs.db

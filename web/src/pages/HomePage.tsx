@@ -1,17 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listProjects } from "../api/client";
 import type { Project } from "../types";
+import { useProjects } from "../hooks/useProjects";
 import ProjectWizard from "../components/ProjectWizard";
 
 export default function HomePage() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { projects } = useProjects();
   const [showWizard, setShowWizard] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    listProjects().then(setProjects).catch(console.error);
-  }, []);
 
   function handleProjectCreated(project: Project) {
     navigate(`/chat/${project.id}`);

@@ -52,13 +52,15 @@ class SecurityConfig:
     """Security configuration."""
     
     allowed_roots: list[str] = field(default_factory=list)
+    blocked_commands: list[str] = field(default_factory=list)
     enable_audit: bool = True
     audit_path: Optional[str] = None
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for core config."""
         return {
             "allowed_roots": self.allowed_roots,
+            "blocked_commands": self.blocked_commands,
             "enable_audit": self.enable_audit,
             "audit_path": self.audit_path,
         }
@@ -209,18 +211,6 @@ class SDKConfig:
         
         return config_dict
     
-    def apply_env(self) -> None:
-        """Apply configuration to environment variables."""
-        import os
-        
-        if self.model.base_url:
-            os.environ["CODY_MODEL_BASE_URL"] = self.model.base_url
-        if self.model.api_key:
-            os.environ["CODY_MODEL_API_KEY"] = self.model.api_key
-        if self.model.model:
-            os.environ["CODY_MODEL"] = self.model.model
-
-
 # Convenience function for quick config
 def config(
     model: Optional[str] = None,

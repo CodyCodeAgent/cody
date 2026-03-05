@@ -334,7 +334,7 @@ data: {"type": "done", "output": "项目已创建", "thinking": "...", "tool_tra
 ```json
 {
   "status": "ok",
-  "version": "1.6.0"
+  "version": "1.7.0"
 }
 ```
 
@@ -437,8 +437,10 @@ cody tui --session <id>      # 恢复指定会话
 ### 8. 安全特性
 
 **命令执行限制：**
-- 白名单机制
-- 危险命令拦截（rm -rf、dd 等）
+
+- 白名单机制（`security.allowed_commands`，管道/链式命令逐段检查）
+- 危险命令拦截（内置 `rm -rf /`、`dd if=`、`:(){` 底线拦截）
+- 可扩展黑名单（`security.blocked_commands`，SDK 用户按需自定义）
 - 需要确认的操作
 
 **权限管理：**
@@ -744,8 +746,19 @@ cody run "使用项目 B 的配置"
 - [x] 移除未使用的 python-dotenv 依赖
 - [x] 移除 OAuth 认证模块，统一为 `model_api_key` 方式
 
-**v1.6.0 总计：566 个测试（481 core + 65 sdk + 20 web），ruff 零告警**
+**代码审查修复（S1-S5, R1-R10, O2-O8）**
+- [x] S1: `run_sync()` 补充上下文压缩调用
+- [x] S2: HTML 解析器嵌套 skip 标签改为深度计数器
+- [x] S3: WebSocket 端点增加认证检查
+- [x] S4: CI 重写（Python 3.9-3.13 矩阵、Web 测试覆盖），删除 pylint.yml
+- [x] S5: 可扩展 `blocked_commands` + 管道命令白名单逐段检查
+- [x] R1: CLI/TUI 共享工具库 `cody/shared.py`
+- [x] R3: `ToolContext` 统一工具直接调用上下文
+- [x] R7: Config 缓存 60s TTL
+- [x] R9: 新增 21 个 Web 路由测试
+
+**v1.6.0 总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
 
 ---
 
-**最后更新：** 2026-03-04
+**最后更新：** 2026-03-05

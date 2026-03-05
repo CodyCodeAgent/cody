@@ -79,9 +79,9 @@ def test_tui_with_options(tmp_path):
 
 
 @pytest.mark.asyncio
-@patch("cody.tui.Config.load")
-@patch("cody.tui.AgentRunner")
-@patch("cody.tui.SessionStore")
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AgentRunner")
+@patch("cody.tui.app.SessionStore")
 async def test_tui_mounts(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
     """TUI app mounts without crashing."""
     mock_config = MagicMock()
@@ -110,9 +110,9 @@ async def test_tui_mounts(mock_store_cls, mock_runner_cls, mock_config_load, tmp
 
 
 @pytest.mark.asyncio
-@patch("cody.tui.Config.load")
-@patch("cody.tui.AgentRunner")
-@patch("cody.tui.SessionStore")
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AgentRunner")
+@patch("cody.tui.app.SessionStore")
 async def test_tui_slash_help(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
     """Typing /help shows help text."""
     mock_config = MagicMock()
@@ -145,9 +145,9 @@ async def test_tui_slash_help(mock_store_cls, mock_runner_cls, mock_config_load,
 
 
 @pytest.mark.asyncio
-@patch("cody.tui.Config.load")
-@patch("cody.tui.AgentRunner")
-@patch("cody.tui.SessionStore")
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AgentRunner")
+@patch("cody.tui.app.SessionStore")
 async def test_tui_new_session(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
     """Ctrl+N creates a new session."""
     mock_config = MagicMock()
@@ -184,9 +184,9 @@ async def test_tui_new_session(mock_store_cls, mock_runner_cls, mock_config_load
 
 
 @pytest.mark.asyncio
-@patch("cody.tui.Config.load")
-@patch("cody.tui.AgentRunner")
-@patch("cody.tui.SessionStore")
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AgentRunner")
+@patch("cody.tui.app.SessionStore")
 async def test_tui_slash_clear(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
     """/clear removes chat bubbles."""
     mock_config = MagicMock()
@@ -227,3 +227,69 @@ def test_run_tui_creates_app():
     with patch.object(CodyTUI, "run") as mock_run:
         run_tui(model="test", workdir="/tmp")
         mock_run.assert_called_once()
+
+
+# ── Additional TUI tests (S5) ─────────────────────────────────────────────────
+
+
+def test_stream_bubble_dirty_flag():
+    """StreamBubble marks dirty on append."""
+    bubble = StreamBubble()
+    assert not bubble._dirty
+    bubble.append("hi")
+    assert bubble._dirty
+
+
+def test_message_bubble_unknown_role():
+    """Unknown roles should still render."""
+    bubble = MessageBubble("tool", "tool output")
+    formatted = MessageBubble._format_message("tool", "tool output")
+    assert "tool" in formatted
+    assert bubble.role == "tool"
+
+
+def test_tui_with_extra_roots(tmp_path):
+    app = CodyTUI(
+        workdir=tmp_path,
+        extra_roots=[str(tmp_path / "extra")],
+    )
+    assert len(app._extra_roots) == 1
+
+
+@pytest.mark.asyncio
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AgentRunner")
+@patch("cody.tui.app.SessionStore")
+async def test_tui_slash_unknown(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
+    """Unknown slash commands show an error."""
+    mock_config = MagicMock()
+    mock_config.model = "test-model"
+    mock_config_load.return_value = mock_config
+
+    mock_store = MagicMock()
+    mock_session = MagicMock()
+    mock_session.id = "test123"
+    mock_session.messages = []
+    mock_store.get_latest_session.return_value = None
+    mock_store.create_session.return_value = mock_session
+    mock_store.get_message_count.return_value = 0
+    mock_store_cls.return_value = mock_store
+
+    mock_runner = MagicMock()
+    mock_runner_cls.return_value = mock_runner
+    mock_runner_cls.messages_to_history.return_value = []
+
+    app = CodyTUI(workdir=tmp_path)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#prompt-input")
+        inp.value = "/foobar"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        bubbles = app.query(MessageBubble)
+        assert len(bubbles) >= 1
+
+
+def test_tui_max_bubbles_constant():
+    """_MAX_BUBBLES should be a reasonable number."""
+    assert CodyTUI._MAX_BUBBLES >= 50

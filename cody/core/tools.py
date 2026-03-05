@@ -642,17 +642,20 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
         command: Command to execute
     """
     _check_permission(ctx, "exec_command")
-    # Security check
-    if ctx.deps.config.security.allowed_commands:
-        base_cmd = command.split()[0]
-        if base_cmd not in ctx.deps.config.security.allowed_commands:
-            raise ToolPermissionDenied(f"Command not allowed: {base_cmd}")
 
-    # Check for dangerous patterns
-    dangerous_patterns = ['rm -rf /', 'dd if=', ':(){']
-    for pattern in dangerous_patterns:
+    # Blocked patterns: built-in baseline + user-defined via config
+    _builtin_blocked = ['rm -rf /', 'dd if=', ':(){']
+    blocked = _builtin_blocked + ctx.deps.config.security.blocked_commands
+    for pattern in blocked:
         if pattern in command:
-            raise ToolPermissionDenied(f"Dangerous command detected: {pattern}")
+            raise ToolPermissionDenied(f"Blocked command pattern: {pattern}")
+
+    # Allowed commands whitelist: check every command in pipe/chain
+    if ctx.deps.config.security.allowed_commands:
+        for part in re.split(r'[|;&]', command):
+            base_cmd = part.strip().split()[0] if part.strip() else ''
+            if base_cmd and base_cmd not in ctx.deps.config.security.allowed_commands:
+                raise ToolPermissionDenied(f"Command not allowed: {base_cmd}")
 
     try:
         result = subprocess.run(

@@ -132,3 +132,35 @@ def test_delete_project_not_found(test_client):
     """DELETE /api/projects/:id returns 404 for nonexistent"""
     resp = test_client.delete("/api/projects/nonexistent")
     assert resp.status_code == 404
+
+
+# ── Init project CODY.md ────────────────────────────────────────────────────
+
+
+def test_init_project_not_found(test_client):
+    """POST /api/projects/:id/init returns 404 for nonexistent"""
+    resp = test_client.post("/api/projects/nonexistent/init")
+    assert resp.status_code == 404
+
+
+def test_init_project_generates_cody_md(test_client, project_store, tmp_path):
+    """POST /api/projects/:id/init generates CODY.md in workdir."""
+    from unittest.mock import AsyncMock, patch
+
+    p = project_store.create_project(name="Init Test", workdir=str(tmp_path))
+
+    with patch(
+        "web.backend.routes.projects.generate_project_instructions",
+        new_callable=AsyncMock,
+        return_value="# CODY.md\nGenerated content",
+    ):
+        resp = test_client.post(f"/api/projects/{p.id}/init")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "generated"
+    assert "CODY.md" in data["path"]
+    # CODY.md should be written
+    cody_md = tmp_path / "CODY.md"
+    assert cody_md.exists()
+    assert "Generated content" in cody_md.read_text()

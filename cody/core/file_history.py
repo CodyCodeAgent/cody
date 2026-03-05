@@ -1,5 +1,6 @@
 """File modification history for undo/redo support"""
 
+import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,17 +23,76 @@ class FileHistory:
     """Tracks file modifications for undo/redo.
 
     Maintains a per-workdir stack of file changes.
+    When persist=True, changes are also stored in SQLite for cross-session recovery.
     """
 
-    def __init__(self, workdir: Path, max_history: int = 100):
+    def __init__(self, workdir: Path, max_history: int = 100, persist: bool = False):
         self._workdir = workdir.resolve()
         self._max_history = max_history
+        self._persist = persist
         self._undo_stack: list[FileChange] = []
         self._redo_stack: list[FileChange] = []
+        self._db: Optional[sqlite3.Connection] = None
+
+        if persist:
+            self._db_path = self._workdir / ".cody" / "file_history.db"
+            self._init_db()
+            self._load_history()
 
     @property
     def workdir(self) -> Path:
         return self._workdir
+
+    def _init_db(self) -> None:
+        """Initialize SQLite database for persistent history."""
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._db = sqlite3.connect(str(self._db_path))
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS file_changes ("
+            "  id TEXT PRIMARY KEY,"
+            "  file_path TEXT NOT NULL,"
+            "  old_content TEXT NOT NULL,"
+            "  new_content TEXT NOT NULL,"
+            "  operation TEXT NOT NULL,"
+            "  timestamp TEXT NOT NULL"
+            ")"
+        )
+        self._db.commit()
+
+    def _load_history(self) -> None:
+        """Load history from SQLite on startup."""
+        if not self._db:
+            return
+        cursor = self._db.execute(
+            "SELECT id, file_path, old_content, new_content, operation, timestamp "
+            "FROM file_changes ORDER BY timestamp ASC LIMIT ?",
+            (self._max_history,),
+        )
+        for row in cursor:
+            self._undo_stack.append(FileChange(
+                id=row[0], file_path=row[1], old_content=row[2],
+                new_content=row[3], operation=row[4], timestamp=row[5],
+            ))
+
+    def _save_change(self, change: FileChange) -> None:
+        """Persist a change to SQLite."""
+        if not self._db:
+            return
+        self._db.execute(
+            "INSERT OR REPLACE INTO file_changes "
+            "(id, file_path, old_content, new_content, operation, timestamp) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (change.id, change.file_path, change.old_content,
+             change.new_content, change.operation, change.timestamp),
+        )
+        # Enforce max history in DB
+        self._db.execute(
+            "DELETE FROM file_changes WHERE id NOT IN ("
+            "  SELECT id FROM file_changes ORDER BY timestamp DESC LIMIT ?"
+            ")",
+            (self._max_history,),
+        )
+        self._db.commit()
 
     def record(
         self,
@@ -57,6 +117,9 @@ class FileHistory:
         if len(self._undo_stack) > self._max_history:
             self._undo_stack = self._undo_stack[-self._max_history:]
 
+        if self._persist:
+            self._save_change(change)
+
         return change
 
     def undo(self) -> Optional[FileChange]:
@@ -72,7 +135,7 @@ class FileHistory:
         full_path = self._workdir / change.file_path
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_text(change.old_content)
+        full_path.write_text(change.old_content, encoding="utf-8")
 
         self._redo_stack.append(change)
         return change
@@ -90,7 +153,7 @@ class FileHistory:
         full_path = self._workdir / change.file_path
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_text(change.new_content)
+        full_path.write_text(change.new_content, encoding="utf-8")
 
         self._undo_stack.append(change)
         return change
