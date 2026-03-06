@@ -32,7 +32,7 @@ def resolve_model(config: Config):
         from pydantic_ai.models.anthropic import AnthropicModel  # pylint: disable=import-outside-toplevel
         from pydantic_ai.providers.anthropic import AnthropicProvider  # pylint: disable=import-outside-toplevel
 
-        client = AsyncAnthropic(api_key=config.model_api_key)
+        client = AsyncAnthropic(api_key=config.model_api_key, max_retries=0)
         provider = AnthropicProvider(anthropic_client=client)
         model_name = config.model.removeprefix("anthropic:")
         return AnthropicModel(model_name, provider=provider)
