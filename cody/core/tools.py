@@ -643,6 +643,23 @@ async def search_files(
 
 # ── Command execution ────────────────────────────────────────────────────────
 
+# Regex-based blocked command patterns — handles whitespace variations and
+# argument reordering that simple substring matching would miss.
+_BLOCKED_COMMAND_PATTERNS = [
+    re.compile(r'rm\s+-[a-z]*r[a-z]*f[a-z]*\s+/'),    # rm -rf /
+    re.compile(r'rm\s+-[a-z]*f[a-z]*r[a-z]*\s+/'),    # rm -fr /
+    re.compile(r'rm\s+-r\s+-f\s+/'),                    # rm -r -f /
+    re.compile(r'rm\s+-f\s+-r\s+/'),                    # rm -f -r /
+    re.compile(r'rm\s+-[a-z]*r[a-z]*f[a-z]*\s+~'),    # rm -rf ~
+    re.compile(r'rm\s+-[a-z]*f[a-z]*r[a-z]*\s+~'),    # rm -fr ~
+    re.compile(r'rm\s+-[a-z]*r[a-z]*f[a-z]*\s+/\*'),  # rm -rf /*
+    re.compile(r'rm\s+-[a-z]*f[a-z]*r[a-z]*\s+/\*'),  # rm -fr /*
+    re.compile(r'dd\s+if='),                             # dd if=
+    re.compile(r':\(\)\s*\{'),                           # fork bomb
+    re.compile(r'mkfs\.'),                               # mkfs
+    re.compile(r'>\s*/dev/sd'),                          # overwrite disk
+]
+
 
 async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
     """Execute shell command
@@ -652,15 +669,16 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
     """
     _check_permission(ctx, "exec_command")
 
-    # Blocked patterns: built-in baseline + user-defined via config
-    _builtin_blocked = [
-        'rm -rf /', 'rm -rf ~', 'rm -rf /*', 'rm -rf ~/',
-        'dd if=', ':(){', 'mkfs.', '> /dev/sd',
-    ]
-    blocked = _builtin_blocked + ctx.deps.config.security.blocked_commands
-    for pattern in blocked:
-        if pattern in command:
-            raise ToolPermissionDenied(f"Blocked command pattern: {pattern}")
+    # Normalize whitespace for consistent pattern matching
+    normalized = re.sub(r'\s+', ' ', command.strip())
+    # Check regex-based built-in blocked patterns
+    for pattern in _BLOCKED_COMMAND_PATTERNS:
+        if pattern.search(normalized):
+            raise ToolPermissionDenied("Blocked command pattern detected")
+    # User-defined blocked commands (substring match, backward compatible)
+    for user_pattern in ctx.deps.config.security.blocked_commands:
+        if user_pattern in normalized:
+            raise ToolPermissionDenied(f"Blocked command pattern: {user_pattern}")
 
     # Allowed commands whitelist: check every command in pipe/chain
     if ctx.deps.config.security.allowed_commands:

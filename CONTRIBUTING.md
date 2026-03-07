@@ -166,7 +166,7 @@ python3 -m black cody/ tests/
 ### 规则
 
 - **行宽** — 100 字符
-- **Python 版本** — 3.9+（不用 3.10+ 语法如 `match/case`）
+- **Python 版本** — 3.10+（支持 `X | None` 联合类型，不用 `match/case`）
 - **类型注解** — 公开函数必须有类型注解，内部函数尽量有
 - **导入顺序** — stdlib → 三方库 → 项目内部（ruff 自动管理）
 - **文档字符串** — 公开 API（工具函数、Server 端点）必须有 docstring，内部辅助函数按需
@@ -294,7 +294,7 @@ python3 -m pytest tests/ -v
 
 **总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
 
-**当前版本：v1.7.1（见 CHANGELOG.md）**
+**当前版本：v1.7.3（见 CHANGELOG.md）**
 
 ---
 

@@ -1,6 +1,7 @@
 """TUI main application for Cody."""
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Optional
@@ -25,6 +26,8 @@ from ..shared import (
     format_elapsed, format_session_line, truncate_repr as _truncate_repr,
 )
 from .widgets import MessageBubble, StreamBubble, StatusLine
+
+logger = logging.getLogger(__name__)
 
 
 class CodyTUI(App):
@@ -147,7 +150,7 @@ class CodyTUI(App):
             try:
                 await self._runner.start_mcp()
             except Exception:
-                pass
+                logger.debug("MCP start failed", exc_info=True)
 
     async def _stop_services(self) -> None:
         """Stop MCP and LSP servers."""
@@ -156,7 +159,7 @@ class CodyTUI(App):
                 await self._runner.stop_mcp()
                 await self._runner.stop_lsp()
             except Exception:
-                pass
+                logger.debug("Service stop failed", exc_info=True)
 
     # ── UI helpers ───────────────────────────────────────────────────────────
 

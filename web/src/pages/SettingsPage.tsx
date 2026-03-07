@@ -80,7 +80,7 @@ export default function SettingsPage() {
               <label className="settings-field">
                 <span>API Key</span>
                 <input
-                  type="text"
+                  type="password"
                   value={modelApiKey}
                   onChange={(e) => setModelApiKey(e.target.value)}
                   placeholder="sk-..."

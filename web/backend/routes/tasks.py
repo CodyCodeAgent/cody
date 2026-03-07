@@ -77,6 +77,7 @@ async def create_task(project_id: str, body: TaskCreate, store: ProjectStore):
             cwd=str(workdir),
             capture_output=True,
             text=True,
+            timeout=30,
         )
         base_branch = "master" if result.returncode == 0 else "main"
 
@@ -87,6 +88,7 @@ async def create_task(project_id: str, body: TaskCreate, store: ProjectStore):
             cwd=str(workdir),
             capture_output=True,
             text=True,
+            timeout=30,
         )
 
         # Create and checkout the new branch
@@ -96,6 +98,7 @@ async def create_task(project_id: str, body: TaskCreate, store: ProjectStore):
             cwd=str(workdir),
             capture_output=True,
             text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             # Branch may already exist, try to just checkout
@@ -105,6 +108,7 @@ async def create_task(project_id: str, body: TaskCreate, store: ProjectStore):
                 cwd=str(workdir),
                 capture_output=True,
                 text=True,
+                timeout=30,
             )
             if result2.returncode != 0:
                 raise_structured(

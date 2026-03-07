@@ -63,23 +63,13 @@ class CodyBuilder:
     _enable_thinking: bool = False
     _thinking_budget: Optional[int] = None
     _permissions: dict = field(default_factory=dict)
-    _allowed_roots: list[str] = None
+    _allowed_roots: list[str] = field(default_factory=list)
     _db_path: Optional[str] = None
     _enable_metrics: bool = False
     _enable_events: bool = False
-    _mcp_servers: list[dict] = None
-    _lsp_languages: list[str] = None
-    _event_handlers: list[tuple] = None  # [(event_type_str, handler), ...]
-
-    def __post_init__(self):
-        if self._allowed_roots is None:
-            self._allowed_roots = []
-        if self._mcp_servers is None:
-            self._mcp_servers = []
-        if self._lsp_languages is None:
-            self._lsp_languages = ["python", "typescript", "go"]
-        if self._event_handlers is None:
-            self._event_handlers = []
+    _mcp_servers: list[dict] = field(default_factory=list)
+    _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
+    _event_handlers: list[tuple] = field(default_factory=list)
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
