@@ -1,10 +1,23 @@
 """Tests for structured error responses"""
 
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from cody.core.errors import CodyAPIError, ErrorCode, ErrorDetail
 from web.backend.app import app
+
+
+def _mock_ready_config():
+    """Return a mock Config that passes is_ready() check."""
+    cfg = MagicMock()
+    cfg.is_ready.return_value = True
+    cfg.model = "test-model"
+    cfg.model_base_url = "https://test.example.com"
+    cfg.model_api_key = "sk-test"
+    cfg.enable_thinking = False
+    cfg.thinking_budget = None
+    cfg.extra_roots = None
+    return cfg
 
 
 # ── ErrorDetail model ───────────────────────────────────────────────────────
@@ -94,7 +107,8 @@ def test_tool_error_includes_details(tmp_path):
 
 
 def test_run_error_structured():
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_mock_ready_config()):
         instance = MockRunner.return_value
         instance.run = AsyncMock(side_effect=RuntimeError("model down"))
         client = TestClient(app)
@@ -110,7 +124,8 @@ def test_stream_error_structured(test_client):
         raise RuntimeError("stream broke")
         yield  # make it a generator
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_mock_ready_config()):
         instance = MockRunner.return_value
         instance.run_stream = failing_stream
         resp = test_client.post("/run/stream", json={"prompt": "test"})
