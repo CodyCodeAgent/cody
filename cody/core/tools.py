@@ -747,11 +747,42 @@ async def spawn_agent(
     task: str,
     agent_type: str = "generic",
 ) -> str:
-    """Spawn a sub-agent to handle a task in the background
+    """Spawn a sub-agent to handle a task in the background.
+
+    Use sub-agents to parallelize independent work or isolate specialized tasks.
+    Each sub-agent runs with its own context and returns a text result.
+
+    Agent types and their capabilities:
+      - "code": File read/write + search + shell commands. For writing or modifying code.
+      - "research": Read-only (file read + search). For code analysis, pattern finding,
+        no modifications.
+      - "test": File read/write + shell commands. For writing tests and running test
+        suites.
+      - "generic": Same as code. For general-purpose tasks.
+
+    When to use sub-agents:
+      - Task has multiple independent parts that can run in parallel
+      - Need to analyze different areas of the codebase simultaneously
+      - Want to isolate risky operations (e.g., test execution) from the main flow
+
+    When NOT to use sub-agents:
+      - Task is simple and sequential (just do it directly)
+      - Reading a specific file or searching for a known symbol (use read_file/grep
+        directly)
+      - Task requires results from a previous step (run sequentially instead)
+
+    Best practices:
+      - Launch multiple agents in a single turn for parallel execution
+      - Provide detailed, self-contained task descriptions (agents have no shared context)
+      - Use "research" type for analysis to prevent accidental file modifications
+      - Check results with get_agent_status() after spawning
+
+    Limits: max 5 concurrent agents, 300s timeout per agent.
 
     Args:
-        task: Task description for the sub-agent
-        agent_type: Type of agent — "code", "research", "test", or "generic"
+        task: Detailed task description. Must be self-contained — the agent has no
+              context from the current conversation.
+        agent_type: "code", "research", "test", or "generic"
     """
     _check_permission(ctx, "spawn_agent")
     manager = ctx.deps.sub_agent_manager

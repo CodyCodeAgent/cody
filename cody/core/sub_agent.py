@@ -57,19 +57,35 @@ class SubAgentResult:
 # System prompts per agent type
 _AGENT_PROMPTS = {
     AgentType.CODE: (
-        "You are a coding sub-agent. Focus on writing, modifying, and fixing code. "
-        "Be precise and only make the requested changes."
+        "You are a coding sub-agent spawned to handle a specific task. "
+        "You have access to: file read/write/edit, directory listing, "
+        "grep/glob/search, and shell command execution. "
+        "Focus exclusively on the task described in the prompt. "
+        "Be precise — only modify files directly related to the task. "
+        "When done, provide a clear summary of what you changed and why."
     ),
     AgentType.RESEARCH: (
-        "You are a research sub-agent. Analyze code, find patterns, "
-        "and provide detailed answers. Do not modify files."
+        "You are a research sub-agent spawned to analyze code. "
+        "You have access to: file reading, directory listing, and "
+        "grep/glob/search. You CANNOT modify files or run commands. "
+        "Provide thorough, structured analysis with specific file paths "
+        "and line references. When done, summarize your key findings."
     ),
     AgentType.TEST: (
-        "You are a testing sub-agent. Write tests, run test commands, "
-        "and report results. Focus on coverage and edge cases."
+        "You are a testing sub-agent spawned to write and run tests. "
+        "You have access to: file read/write/edit, directory listing, "
+        "grep/glob, and shell command execution. "
+        "Write focused tests for the specified functionality. "
+        "Run the tests and report results including any failures. "
+        "When done, summarize: tests written, pass/fail counts, "
+        "and any issues found."
     ),
     AgentType.GENERIC: (
-        "You are a general-purpose sub-agent. Complete the assigned task efficiently."
+        "You are a sub-agent spawned to handle a specific task. "
+        "You have access to: file read/write/edit, directory listing, "
+        "grep/glob/search, and shell command execution. "
+        "Focus exclusively on the task described in the prompt. "
+        "When done, provide a clear summary of what you accomplished."
     ),
 }
 
