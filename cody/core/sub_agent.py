@@ -14,6 +14,8 @@ these imports to module level.
 """
 
 import asyncio
+import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,6 +27,8 @@ from pydantic_ai import Agent
 
 from .config import Config
 from .model_resolver import resolve_model
+
+logger = logging.getLogger(__name__)
 
 
 class AgentType(str, Enum):
@@ -210,6 +214,7 @@ class SubAgentManager:
         """Execute a sub-agent with timeout and resource limits."""
         async with self._semaphore:
             self._agents[agent_id].status = AgentStatus.RUNNING
+            start = time.perf_counter()
 
             try:
                 result = await asyncio.wait_for(
@@ -218,11 +223,20 @@ class SubAgentManager:
                 )
                 self._agents[agent_id].status = AgentStatus.COMPLETED
                 self._agents[agent_id].output = result
+                elapsed = time.perf_counter() - start
+                logger.info(
+                    "SubAgent %s (%s) completed in %.3fs",
+                    agent_id, agent_type.value, elapsed,
+                )
 
             except asyncio.TimeoutError:
                 self._agents[agent_id].status = AgentStatus.TIMEOUT
                 self._agents[agent_id].error = (
                     f"Agent timed out after {timeout}s"
+                )
+                logger.warning(
+                    "SubAgent %s (%s) timed out after %.0fs",
+                    agent_id, agent_type.value, timeout,
                 )
 
             except asyncio.CancelledError:
@@ -230,8 +244,13 @@ class SubAgentManager:
                 raise
 
             except Exception as e:
+                elapsed = time.perf_counter() - start
                 self._agents[agent_id].status = AgentStatus.FAILED
                 self._agents[agent_id].error = str(e)
+                logger.error(
+                    "SubAgent %s (%s) failed in %.3fs: %s",
+                    agent_id, agent_type.value, elapsed, e,
+                )
 
             finally:
                 self._agents[agent_id].completed_at = (

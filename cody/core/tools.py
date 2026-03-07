@@ -21,15 +21,19 @@ so the model can self-correct and retry instead of breaking the run.
 
 import fnmatch
 import functools
+import logging
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from pydantic_ai import ModelRetry, RunContext
 
 from .deps import CodyDeps
 from .errors import ToolError, ToolPermissionDenied, ToolPathDenied, ToolInvalidParams
+
+_tool_logger = logging.getLogger(__name__)
 
 
 def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
@@ -1213,12 +1217,22 @@ def _with_model_retry(func):
     pydantic-ai would normally propagate it as an unhandled exception, breaking
     the entire agent run. By converting it to ModelRetry, the error message is
     sent back to the model so it can correct its parameters and try again.
+
+    Also logs elapsed time for every tool call at DEBUG level.
     """
+    tool_name = func.__name__
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
         try:
-            return await func(*args, **kwargs)
+            result = await func(*args, **kwargs)
+            elapsed = time.perf_counter() - start
+            _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)
+            return result
         except ToolError as e:
+            elapsed = time.perf_counter() - start
+            _tool_logger.debug("tool.%s failed in %.3fs: %s", tool_name, elapsed, e)
             raise ModelRetry(str(e)) from e
 
     return wrapper

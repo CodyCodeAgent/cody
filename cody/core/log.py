@@ -11,8 +11,10 @@ Usage — call once at process startup::
     setup_logging(verbose=True)  # DEBUG to file + stderr
 """
 
+import functools
 import logging
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -68,3 +70,48 @@ def setup_logging(*, verbose: bool = False, log_dir: Path | None = None) -> None
         root.setLevel(logging.DEBUG)
     else:
         root.setLevel(logging.INFO)
+
+
+def log_elapsed(name: str | None = None, level: int = logging.DEBUG):
+    """Decorator that logs method elapsed time.
+
+    Works with both sync and async functions.
+
+    Usage::
+
+        @log_elapsed()
+        async def run(self, prompt):
+            ...
+
+        @log_elapsed("tool.exec_command")
+        async def exec_command(ctx, command):
+            ...
+    """
+    def decorator(func):
+        label = name or f"{func.__module__}.{func.__qualname__}"
+        func_logger = logging.getLogger(func.__module__)
+
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            try:
+                return await func(*args, **kwargs)
+            finally:
+                elapsed = time.perf_counter() - start
+                func_logger.log(level, "%s took %.3fs", label, elapsed)
+
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            try:
+                return func(*args, **kwargs)
+            finally:
+                elapsed = time.perf_counter() - start
+                func_logger.log(level, "%s took %.3fs", label, elapsed)
+
+        import asyncio
+        if asyncio.iscoroutinefunction(func):
+            return async_wrapper
+        return sync_wrapper
+
+    return decorator

@@ -34,6 +34,7 @@ from .config import Config
 from .context import CompactResult, compact_messages
 from .deps import CodyDeps
 from .file_history import FileHistory
+from .log import log_elapsed
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
 from .permissions import PermissionLevel, PermissionManager
@@ -490,6 +491,7 @@ class AgentRunner:
 
     # ── Core run methods ─────────────────────────────────────────────────────
 
+    @log_elapsed("AgentRunner.run", level=logging.INFO)
     async def run(
         self,
         prompt: Prompt,
@@ -505,6 +507,7 @@ class AgentRunner:
         )
         return CodyResult.from_raw(result)
 
+    @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
     async def run_stream(
         self,
         prompt: Prompt,
@@ -591,6 +594,7 @@ class AgentRunner:
                 cody_result = CodyResult.from_raw(event.result)
                 yield DoneEvent(result=cody_result)
 
+    @log_elapsed("AgentRunner.run_sync", level=logging.INFO)
     def run_sync(
         self,
         prompt: Prompt,
@@ -608,6 +612,7 @@ class AgentRunner:
 
     # ── Session-aware run methods ────────────────────────────────────────────
 
+    @log_elapsed("AgentRunner.run_with_session", level=logging.INFO)
     async def run_with_session(
         self,
         prompt: Prompt,
@@ -624,6 +629,7 @@ class AgentRunner:
         store.add_message(sid, "assistant", result.output)
         return result, sid
 
+    @log_elapsed("AgentRunner.run_stream_with_session", level=logging.INFO)
     async def run_stream_with_session(
         self,
         prompt: Prompt,
