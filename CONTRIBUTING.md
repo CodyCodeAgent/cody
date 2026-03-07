@@ -228,8 +228,8 @@ python3 -m pytest tests/ -v
 ### 示例：添加新工具
 
 ```
-1. 在 core/tools.py 实现工具函数
-2. 把函数追加到对应的 *_TOOLS 列表（如 FILE_TOOLS、SEARCH_TOOLS）
+1. 在 core/tools/ 对应子模块实现工具函数（如 file_ops.py、search.py）
+2. 把函数追加到 registry.py 对应的 *_TOOLS 列表（如 FILE_TOOLS、SEARCH_TOOLS）
 3. 如果子 Agent 也要用，加到 SUB_AGENT_TOOLSETS 对应的 type 列表
 4. 在 tests/test_tools.py 写 3+ 个测试
 5. 更新 docs/CLI.md 和 docs/API.md 的工具列表
@@ -268,7 +268,7 @@ python3 -m pytest tests/ -v
 
 | 模块 | 测试数 | 状态 |
 |------|--------|------|
-| core/tools.py | 51 | 完善 |
+| core/tools/ | 51 | 完善 |
 | core/skill_manager.py | 40 | 完善 |
 | core/lsp_client.py | 34 | 完善 |
 | core/config.py | 33 | 完善 |
@@ -294,7 +294,7 @@ python3 -m pytest tests/ -v
 
 **总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
 
-**当前版本：v1.7.3（见 CHANGELOG.md）**
+**当前版本：v1.7.4（见 CHANGELOG.md）**
 
 ---
 
@@ -311,7 +311,7 @@ python3 -m pytest tests/ -v
 
 1. **跑通测试** — `pip install -e ".[dev]" && python3 -m pytest tests/ -v`
 2. **看 `core/runner.py`** — 理解框架核心引擎（模块 docstring 有架构概览）
-3. **看 `core/tools.py`** — 理解工具注册模式（底部 TOOL_REGISTRY 区域）
+3. **看 `core/tools/`** — 理解工具注册模式（`registry.py` 中的 `*_TOOLS` 列表）
 4. **看 `cody/sdk/client.py`** — 理解 SDK 如何包装 core（Builder 模式、事件流、指标）
 5. **看 `web/backend/app.py`** — 理解 Web Backend 如何调用 core
 6. **看本文件** — 了解代码规范

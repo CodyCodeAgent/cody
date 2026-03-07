@@ -237,6 +237,12 @@ class StreamChunk:
     tool_name: Optional[str]          # 工具名称（type="tool_call" 时）
     args: Optional[dict]              # 工具参数（type="tool_call" 时）
     usage: Optional[Usage]            # Token 用量（type="done" 时）
+    # v1.7.4+ compact 事件详情
+    original_messages: int            # 压缩前消息数（type="compact" 时）
+    compacted_messages: int           # 压缩后消息数（type="compact" 时）
+    estimated_tokens_saved: int       # 估计节省的 token 数（type="compact" 时）
+    # v1.7.4+ done 事件消息历史
+    message_history: Optional[list]   # 完整对话历史（type="done" 时）
 ```
 
 **流式事件类型：**
@@ -993,6 +999,11 @@ async with client:
 | `client.list_sessions(limit=)` | 列出会话 |
 | `client.get_session(session_id)` | 获取会话详情 |
 | `client.delete_session(session_id)` | 删除会话 |
+| `client.get_latest_session(workdir=)` | 获取最近的会话（v1.7.4+） |
+| `client.get_message_count(session_id)` | 获取会话消息数（v1.7.4+） |
+| `client.add_message(session_id, role, content)` | 添加消息到会话（v1.7.4+） |
+| `client.update_title(session_id, title)` | 更新会话标题（v1.7.4+） |
+| `AsyncCodyClient.messages_to_history(messages)` | 将消息列表转换为对话历史（静态方法，v1.7.4+） |
 
 ### 技能方法
 
@@ -1075,4 +1086,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-05
+**最后更新:** 2026-03-07

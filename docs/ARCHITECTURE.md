@@ -127,11 +127,32 @@ LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list
 
 **Shared utilities** (`cody/shared.py`): CLI and TUI share common helper functions (spinner frames, elapsed formatting, session display, config path resolution) via this module, avoiding code duplication.
 
-### 2. Tool System (`core/tools.py`)
+### 2. Tool System (`core/tools/`)
 
 All tools share the signature `async def tool(ctx: RunContext[CodyDeps], ...) -> str`.
 
-**Declarative tool registry:** Tools are organized into categorized lists at the bottom of `tools.py`:
+**Modular package structure:** The tool system is organized as a Python package (`core/tools/`) with 14 submodules by category:
+
+```
+core/tools/
+├── __init__.py      — re-exports all tools, lists, and registration functions (backward compatible)
+├── _base.py         — shared helpers: _check_permission, _resolve_and_check, _with_model_retry
+├── _file_filter.py  — _is_binary, _parse_gitignore, _iter_files, constants
+├── file_ops.py      — read_file, write_file, edit_file, list_directory
+├── search.py        — grep, glob, patch, search_files
+├── command.py       — exec_command
+├── skills.py        — list_skills, read_skill
+├── agents.py        — spawn_agent, get_agent_status, kill_agent
+├── mcp.py           — mcp_list_tools, mcp_call
+├── web.py           — webfetch, websearch
+├── lsp.py           — lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
+├── history.py       — undo_file, redo_file, list_file_changes
+├── todo.py          — todo_write, todo_read
+├── user.py          — question
+└── registry.py      — *_TOOLS lists, CORE_TOOLS, register_tools(), register_sub_agent_tools()
+```
+
+**Declarative tool registry** (in `registry.py`):
 ```
 FILE_TOOLS      — read_file, write_file, edit_file, list_directory
 SEARCH_TOOLS    — grep, glob, patch, search_files
@@ -151,6 +172,8 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + USER_TOOLS  (all except MCP)
 **Registration functions:**
 - `register_tools(agent, include_mcp=False)` — used by `AgentRunner` to register all tools
 - `register_sub_agent_tools(agent, agent_type)` — registers a subset based on agent type (`code`, `research`, `test`, `generic`)
+
+**Backward compatibility:** `from cody.core.tools import read_file` and `from cody.core import tools; tools.read_file` both work unchanged.
 
 **30+ tools across 11 categories:**
 
@@ -246,8 +269,8 @@ SQLite-backed persistence:
 | Audit | `core/audit.py` | SQLite event log (tool_call, file_write, command_exec, etc.) |
 | Rate Limit | `core/rate_limiter.py` | Sliding window per-key throttling |
 | File History | `core/file_history.py` | Undo/redo stack for file modifications |
-| Path Safety | `core/tools.py` | `_resolve_and_check()` prevents symlink/traversal escapes |
-| Cmd Safety | `core/tools.py` | Dangerous command detection (rm -rf, dd, fork bomb) |
+| Path Safety | `core/tools/_base.py` | `_resolve_and_check()` prevents symlink/traversal escapes |
+| Cmd Safety | `core/tools/command.py` | Dangerous command detection (rm -rf, dd, fork bomb) |
 
 Web Backend (`web/backend/middleware.py`) wires these as middleware: auth → rate_limit → audit.
 
@@ -259,9 +282,9 @@ The four consumers demonstrate different ways to build on the core framework:
 
 | Consumer | Module | Integration Pattern |
 |----------|--------|---------------------|
-| **CLI** | `cody/cli/` | Click commands → `AgentRunner.run_stream()` → print events to terminal |
-| **TUI** | `cody/tui/` | Textual app → `AgentRunner.run_stream()` → render events in TUI widgets |
-| **Web Backend** | `web/backend/` | FastAPI → `AgentRunner.run_with_session()` → JSON/SSE/WebSocket responses |
+| **CLI** | `cody/cli/` | Click commands → `AsyncCodyClient` (SDK) → `AgentRunner.run_stream()` → print events to terminal |
+| **TUI** | `cody/tui/` | Textual app → `AsyncCodyClient` (SDK) → `AgentRunner.run_stream()` → render events in TUI widgets |
+| **Web Backend** | `web/backend/` | FastAPI + `Depends()` injection → `AgentRunner.run_with_session()` → JSON/SSE/WebSocket responses |
 | **Python SDK** | `cody/sdk/` | `CodyClient` / `AsyncCodyClient` → wraps core with Builder pattern + typed results |
 
 Each consumer adds its own concerns (CLI adds argument parsing, TUI adds widget rendering, Web adds HTTP auth/middleware, SDK adds Builder API) while delegating all agent logic to core.
@@ -347,9 +370,9 @@ Config
 ## 依赖方向
 
 ```
-cli/ ────────────→ core/*  (direct import)
-tui/ ────────────→ core/*  (direct import)
-web/backend/ ────→ core/*  (direct import)
+cli/ ────────────→ cody/sdk/ → core/*  (via SDK for session mgmt, direct for streaming)
+tui/ ────────────→ cody/sdk/ → core/*  (via SDK for session mgmt, direct for streaming)
+web/backend/ ────→ core/*  (direct import, Depends() for DI)
 cody/sdk/ ───────→ core/*  (direct import, in-process)
                      ↓
               pydantic-ai, sqlite3, httpx, etc.
@@ -361,4 +384,4 @@ cody/sdk/ ───────→ core/*  (direct import, in-process)
 
 ---
 
-**Last updated:** 2026-03-05
+**Last updated:** 2026-03-07

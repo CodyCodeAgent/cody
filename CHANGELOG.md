@@ -13,6 +13,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.4] - 2026-03-07
+
+### Changed
+- **工具系统模块化** — `core/tools.py`（1307 行）拆分为 `core/tools/` 包（14 个子模块），按类别组织：file_ops、search、command、skills、agents、mcp、web、lsp、history、todo、user、registry。通过 `__init__.py` re-export 保持完全向后兼容
+- **CLI/TUI 走 SDK 层** — CLI 和 TUI 不再直接导入 `core.AgentRunner`/`core.SessionStore`，改为通过 `AsyncCodyClient` SDK 进行会话管理。流式渲染仍使用 core 原始事件
+- **Web Backend 依赖注入** — 路由端点从直接调用全局 getter 改为 FastAPI `Depends()` 注入（`session_store_dep`、`audit_logger_dep`），提升可测试性
+- **pydantic-ai 版本下限** — `>=0.0.14` → `>=0.1.0`
+
+### Added
+- **mypy 类型检查** — CI 流水线新增 mypy 检查步骤，`pyproject.toml` 新增 `[tool.mypy]` 配置。修复 4 个类型错误
+- **SDK 会话管理方法** — `AsyncCodyClient` 新增 `get_latest_session()`、`get_message_count()`、`add_message()`、`update_title()`、`messages_to_history()`
+- **StreamChunk 增强** — 新增 compact 事件详情字段和 done 事件 `message_history` 字段
+
+---
+
 ## [1.7.3] - 2026-03-05
 
 ### Fixed
