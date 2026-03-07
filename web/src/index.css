@@ -942,6 +942,276 @@ body {
   padding: 6px 10px;
 }
 
+/* ── Project detail page ──────────────────────────── */
+
+.project-detail {
+  padding: 32px;
+  max-width: 800px;
+}
+
+.project-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.project-detail-header h2 {
+  font-size: 24px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.project-description {
+  color: #a1a1aa;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.project-meta {
+  font-size: 13px;
+  color: #71717a;
+  margin-top: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.project-meta-label {
+  color: #a1a1aa;
+  flex-shrink: 0;
+}
+
+.project-meta code {
+  color: #a78bfa;
+  font-size: 13px;
+}
+
+.project-code-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Tasks section ────────────────────────────────── */
+
+.tasks-section {
+  border-top: 1px solid #27272a;
+  padding-top: 24px;
+}
+
+.tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.tasks-header h3 {
+  font-size: 18px;
+  color: #e4e4e7;
+}
+
+.tasks-empty {
+  color: #71717a;
+  font-size: 14px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+}
+
+.task-card:hover {
+  border-color: #3f3f46;
+}
+
+.task-info {
+  flex: 1;
+}
+
+.task-name-link {
+  background: none;
+  border: none;
+  color: #e4e4e7;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.task-name-link:hover {
+  color: #818cf8;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.task-branch {
+  color: #a78bfa;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  padding: 1px 6px;
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 3px;
+}
+
+.task-status {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.task-status-active {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.task-status-completed {
+  color: #6366f1;
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.task-status-archived {
+  color: #71717a;
+  background: rgba(113, 113, 122, 0.1);
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── New task form ────────────────────────────────── */
+
+.new-task-form {
+  padding: 16px;
+  background: #1e1e2e;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.new-task-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ── Task chat header ─────────────────────────────── */
+
+.task-chat-header-info h3 {
+  margin-bottom: 0;
+}
+
+.task-chat-meta {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.task-branch-badge {
+  color: #a78bfa;
+  font-size: 11px;
+  padding: 1px 6px;
+  background: rgba(167, 139, 250, 0.1);
+  border-radius: 3px;
+}
+
+/* ── Code paths in wizard ─────────────────────────── */
+
+.wizard-hint {
+  font-size: 13px;
+  color: #71717a;
+  margin-bottom: 8px;
+}
+
+.code-paths-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.code-path-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #1e1e2e;
+  border: 1px solid #27272a;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.code-path-item code {
+  color: #a78bfa;
+  font-size: 13px;
+}
+
+.code-path-browser {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  background: #1e1e2e;
+}
+
+.code-path-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wizard-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.wizard-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #a1a1aa;
+}
+
+.wizard-fields input {
+  padding: 8px 12px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #e4e4e7;
+  font-size: 14px;
+  outline: none;
+}
+
+.wizard-fields input:focus {
+  border-color: #6366f1;
+}
+
 /* ── Responsive ──────────────────────────────────── */
 
 @media (max-width: 768px) {

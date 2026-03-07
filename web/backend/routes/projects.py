@@ -26,6 +26,7 @@ def _project_response(p) -> ProjectResponse:
         name=p.name,
         description=p.description,
         workdir=p.workdir,
+        code_paths=p.code_paths,
         session_id=p.session_id,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -67,6 +68,7 @@ async def create_project(body: ProjectCreate, store: ProjectStore):
         name=body.name,
         description=body.description,
         workdir=str(workdir),
+        code_paths=body.code_paths,
     )
 
     # Create a cody session directly via SessionStore
@@ -106,6 +108,7 @@ async def update_project(project_id: str, body: ProjectUpdate,
     project = await asyncio.to_thread(
         store.update_project,
         project_id, name=body.name, description=body.description,
+        code_paths=body.code_paths,
     )
     if project is None:
         raise_structured(

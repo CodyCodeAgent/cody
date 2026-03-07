@@ -36,7 +36,10 @@ from cody.core.errors import CodyAPIError
 from cody.core.log import setup_logging
 
 from .db import ProjectStore
-from .models import HealthResponse, ProjectCreate, ProjectUpdate, ProjectResponse
+from .models import (
+    HealthResponse, ProjectCreate, ProjectUpdate, ProjectResponse,
+    TaskCreate, TaskUpdate, TaskResponse,
+)
 from .state import get_project_store
 from .middleware import auth_middleware, rate_limit_middleware, audit_middleware
 
@@ -50,7 +53,9 @@ from .routes.agents import router as agents_router
 from .routes.websocket import router as ws_router
 from .routes.config import router as config_router
 from .routes import projects as _projects
+from .routes import tasks as _tasks
 from .routes import chat as _chat
+from .routes import task_chat as _task_chat
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
@@ -179,7 +184,61 @@ async def init_project_endpoint(
     )
 
 
-# Chat WebSocket
+# ── Task routes ────────────────────────────────────────────────────────────
+
+@app.get("/api/projects/{project_id}/tasks", response_model=list[TaskResponse])
+async def list_tasks_endpoint(
+    project_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
+    return await _tasks.list_tasks(project_id=project_id, store=store)
+
+
+@app.post("/api/projects/{project_id}/tasks", response_model=TaskResponse, status_code=201)
+async def create_task_endpoint(
+    project_id: str,
+    body: TaskCreate,
+    store: ProjectStore = Depends(get_project_store),
+):
+    return await _tasks.create_task(project_id=project_id, body=body, store=store)
+
+
+@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
+async def get_task_endpoint(
+    task_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
+    return await _tasks.get_task(task_id=task_id, store=store)
+
+
+@app.put("/api/tasks/{task_id}", response_model=TaskResponse)
+async def update_task_endpoint(
+    task_id: str,
+    body: TaskUpdate,
+    store: ProjectStore = Depends(get_project_store),
+):
+    return await _tasks.update_task(task_id=task_id, body=body, store=store)
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task_endpoint(
+    task_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
+    return await _tasks.delete_task(task_id=task_id, store=store)
+
+
+# Chat WebSocket (task-level) — must be before project-level to avoid "task" matching as project_id
+@app.websocket("/ws/chat/task/{task_id}")
+async def task_chat_websocket_endpoint(
+    ws: WebSocket,
+    task_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
+    await _task_chat.task_chat_websocket(ws=ws, task_id=task_id, store=store)
+
+
+# Chat WebSocket (project-level)
 @app.websocket("/ws/chat/{project_id}")
 async def chat_websocket_endpoint(
     ws: WebSocket,

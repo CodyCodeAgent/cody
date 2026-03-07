@@ -4,7 +4,20 @@ export interface Project {
   name: string;
   description: string;
   workdir: string;
+  code_paths: string[];
   session_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Matches backend TaskResponse */
+export interface Task {
+  id: string;
+  project_id: string;
+  name: string;
+  branch_name: string;
+  session_id: string | null;
+  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -68,7 +81,8 @@ export interface WSEvent {
     | "done"
     | "error"
     | "cancelled"
-    | "pong";
+    | "pong"
+    | "config_required";
   content?: string;
   output?: string;
   thinking?: string;
