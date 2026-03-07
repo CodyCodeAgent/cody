@@ -110,6 +110,16 @@ export function disableSkill(name: string): Promise<{ name: string; enabled: boo
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
+export interface ConfigStatus {
+  is_ready: boolean;
+  missing_fields: string[];
+}
+
+/** GET /config/status */
+export function getConfigStatus(): Promise<ConfigStatus> {
+  return request("/config/status");
+}
+
 /** GET /config */
 export function getConfig(): Promise<Record<string, unknown>> {
   return request("/config");

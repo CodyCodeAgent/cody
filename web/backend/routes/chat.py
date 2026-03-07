@@ -68,6 +68,18 @@ async def chat_websocket(
 
                 try:
                     workdir = Path(project.workdir)
+
+                    # Check config readiness before running
+                    config = get_config(workdir)
+                    if not config.is_ready():
+                        missing = config.missing_fields()
+                        await ws.send_json({
+                            "type": "config_required",
+                            "message": f"Configuration incomplete: {', '.join(missing)}",
+                            "missing_fields": missing,
+                        })
+                        continue
+
                     runner = get_runner(workdir)
 
                     # Apply per-message overrides from frontend

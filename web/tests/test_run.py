@@ -4,9 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from cody.core import Config
 from cody.core.runner import CodyResult, TextDeltaEvent, DoneEvent
 from cody.core.session import SessionStore
 from web.backend.app import app
+
+
+def _ready_config():
+    """Return a Config that passes is_ready() check."""
+    return Config(model="test-model", model_base_url="https://api.example.com/v1")
 
 
 def _mock_cody_result(output, input_tokens=10, output_tokens=5):
@@ -28,7 +34,8 @@ def test_run_agent():
     """POST /run executes agent and returns result."""
     mock_result = _mock_cody_result("I created the file.", input_tokens=100, output_tokens=50)
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run = AsyncMock(return_value=mock_result)
 
@@ -46,7 +53,8 @@ def test_run_agent():
 
 def test_run_agent_error():
     """POST /run returns 500 on agent failure."""
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run = AsyncMock(side_effect=RuntimeError("LLM API error"))
 
@@ -74,7 +82,8 @@ def test_run_with_session_id(tmp_path):
     mock_result = _mock_cody_result("done with session")
 
     with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
-         patch("web.backend.routes.run.get_session_store", return_value=store):
+         patch("web.backend.routes.run.get_session_store", return_value=store), \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run_with_session = AsyncMock(return_value=(mock_result, session.id))
 
@@ -95,7 +104,8 @@ def test_run_without_session_id():
     """POST /run without session_id uses plain run."""
     mock_result = _mock_cody_result("no session")
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run = AsyncMock(return_value=mock_result)
 
@@ -117,7 +127,8 @@ def test_run_stream():
         yield TextDeltaEvent(content=" World")
         yield DoneEvent(result=CodyResult(output="Hello World"))
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run_stream = fake_stream
 
@@ -139,7 +150,8 @@ def test_run_stream_error():
         raise RuntimeError("stream broke")
         yield  # noqa: F841 — make it a generator
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run_stream = failing_stream
 
@@ -158,7 +170,8 @@ def test_run_agent_with_images():
     """POST /run with images constructs MultimodalPrompt."""
     mock_result = _mock_cody_result("I see the image.")
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run = AsyncMock(return_value=mock_result)
 
@@ -183,7 +196,8 @@ def test_run_agent_without_images():
     """POST /run without images uses plain str prompt."""
     mock_result = _mock_cody_result("text response")
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner:
+    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
         instance = MockRunner.return_value
         instance.run = AsyncMock(return_value=mock_result)
 

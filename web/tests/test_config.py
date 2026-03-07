@@ -19,6 +19,36 @@ def _make_config(**overrides):
     return Config(**defaults)
 
 
+def test_config_status_ready():
+    """GET /config/status returns ready when model + base_url set."""
+    cfg = _make_config(model_base_url="https://api.example.com/v1")
+
+    with patch("web.backend.routes.config.Config") as MockConfig:
+        MockConfig.load.return_value = cfg
+        client = TestClient(app)
+        resp = client.get("/config/status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_ready"] is True
+    assert data["missing_fields"] == []
+
+
+def test_config_status_not_ready():
+    """GET /config/status returns not ready when config is empty."""
+    cfg = Config()  # empty defaults
+
+    with patch("web.backend.routes.config.Config") as MockConfig:
+        MockConfig.load.return_value = cfg
+        client = TestClient(app)
+        resp = client.get("/config/status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_ready"] is False
+    assert len(data["missing_fields"]) > 0
+
+
 def test_get_config():
     """GET /config returns config with secrets masked."""
     cfg = _make_config()

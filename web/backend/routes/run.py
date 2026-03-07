@@ -35,6 +35,16 @@ async def run_agent(request: RunRequest):
     )
     try:
         config = config_from_run_request(request)
+
+        # Fail early if config is incomplete
+        if not config.is_ready():
+            missing = config.missing_fields()
+            raise_structured(
+                ErrorCode.INVALID_PARAMS,
+                f"Configuration incomplete: {', '.join(missing)}",
+                status_code=422,
+            )
+
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
         extra_roots = [Path(r) for r in (request.allowed_roots or [])]
         runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
@@ -117,6 +127,20 @@ async def run_agent_stream(request: RunRequest):
     async def generate() -> AsyncIterator[str]:
         try:
             config = config_from_run_request(request)
+
+            # Fail early if config is incomplete
+            if not config.is_ready():
+                missing = config.missing_fields()
+                error_payload = {
+                    "type": "error",
+                    "error": {
+                        "code": ErrorCode.INVALID_PARAMS.value,
+                        "message": f"Configuration incomplete: {', '.join(missing)}",
+                    },
+                }
+                yield f"data: {json.dumps(error_payload)}\n\n"
+                return
+
             workdir = Path(request.workdir) if request.workdir else Path.cwd()
             extra_roots = [Path(r) for r in (request.allowed_roots or [])]
             runner = AgentRunner(
