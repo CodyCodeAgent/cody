@@ -21,15 +21,19 @@ so the model can self-correct and retry instead of breaking the run.
 
 import fnmatch
 import functools
+import logging
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from pydantic_ai import ModelRetry, RunContext
 
 from .deps import CodyDeps
 from .errors import ToolError, ToolPermissionDenied, ToolPathDenied, ToolInvalidParams
+
+_tool_logger = logging.getLogger(__name__)
 
 
 def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
@@ -234,7 +238,7 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
     )
 
     if not full_path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+        raise ToolInvalidParams(f"File not found: {path}")
 
     return full_path.read_text(encoding="utf-8", errors="replace")
 
@@ -252,10 +256,10 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
     # Record old content for undo
     old_content = ""
     if full_path.exists():
-        old_content = full_path.read_text()
+        old_content = full_path.read_text(encoding="utf-8", errors="replace")
 
     full_path.parent.mkdir(parents=True, exist_ok=True)
-    full_path.write_text(content)
+    full_path.write_text(content, encoding="utf-8")
 
     # Track in file history
     if ctx.deps.file_history:
@@ -291,15 +295,15 @@ async def edit_file(
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+        raise ToolInvalidParams(f"File not found: {path}")
 
-    content = full_path.read_text()
+    content = full_path.read_text(encoding="utf-8", errors="replace")
 
     if old_text not in content:
         raise ToolInvalidParams(f"Text not found in file: {old_text[:50]}...")
 
     new_content = content.replace(old_text, new_text, 1)
-    full_path.write_text(new_content)
+    full_path.write_text(new_content, encoding="utf-8")
 
     # Track in file history
     if ctx.deps.file_history:
@@ -329,7 +333,7 @@ async def list_directory(ctx: RunContext['CodyDeps'], path: str = ".") -> str:
     )
 
     if not full_path.exists():
-        raise FileNotFoundError(f"Directory not found: {path}")
+        raise ToolInvalidParams(f"Directory not found: {path}")
 
     if not full_path.is_dir():
         raise ToolInvalidParams(f"Not a directory: {path}")
@@ -363,7 +367,7 @@ async def grep(
     )
 
     if not full_path.exists():
-        raise FileNotFoundError(f"Path not found: {path}")
+        raise ToolInvalidParams(f"Path not found: {path}")
 
     try:
         regex = re.compile(pattern)
@@ -423,7 +427,7 @@ async def glob(
     )
 
     if not full_path.exists():
-        raise FileNotFoundError(f"Path not found: {path}")
+        raise ToolInvalidParams(f"Path not found: {path}")
 
     if not full_path.is_dir():
         raise ToolInvalidParams(f"Not a directory: {path}")
@@ -494,9 +498,9 @@ async def patch(
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
+        raise ToolInvalidParams(f"File not found: {path}")
 
-    original_lines = full_path.read_text().splitlines(keepends=True)
+    original_lines = full_path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     result_lines: list[str] = []
     orig_idx = 0
 
@@ -517,6 +521,11 @@ async def patch(
             if not hunk_match:
                 raise ToolInvalidParams(f"Invalid hunk header: {line.rstrip()}")
             hunk_start = int(hunk_match.group(1)) - 1  # 0-indexed
+            if hunk_start < 0 or hunk_start > len(original_lines):
+                raise ToolInvalidParams(
+                    f"Invalid hunk start line {hunk_start + 1}: "
+                    f"file has {len(original_lines)} lines"
+                )
 
             # Copy lines before this hunk
             while orig_idx < hunk_start:
@@ -554,7 +563,7 @@ async def patch(
         orig_idx += 1
 
     patched_content = "".join(result_lines)
-    full_path.write_text(patched_content)
+    full_path.write_text(patched_content, encoding="utf-8")
 
     # Track in file history
     if ctx.deps.file_history:
@@ -590,7 +599,7 @@ async def search_files(
     )
 
     if not full_path.exists():
-        raise FileNotFoundError(f"Path not found: {path}")
+        raise ToolInvalidParams(f"Path not found: {path}")
 
     if not full_path.is_dir():
         raise ToolInvalidParams(f"Not a directory: {path}")
@@ -644,7 +653,10 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
     _check_permission(ctx, "exec_command")
 
     # Blocked patterns: built-in baseline + user-defined via config
-    _builtin_blocked = ['rm -rf /', 'dd if=', ':(){']
+    _builtin_blocked = [
+        'rm -rf /', 'rm -rf ~', 'rm -rf /*', 'rm -rf ~/',
+        'dd if=', ':(){', 'mkfs.', '> /dev/sd',
+    ]
     blocked = _builtin_blocked + ctx.deps.config.security.blocked_commands
     for pattern in blocked:
         if pattern in command:
@@ -1236,12 +1248,22 @@ def _with_model_retry(func):
     pydantic-ai would normally propagate it as an unhandled exception, breaking
     the entire agent run. By converting it to ModelRetry, the error message is
     sent back to the model so it can correct its parameters and try again.
+
+    Also logs elapsed time for every tool call at DEBUG level.
     """
+    tool_name = func.__name__
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
         try:
-            return await func(*args, **kwargs)
-        except (ToolError, FileNotFoundError) as e:
+            result = await func(*args, **kwargs)
+            elapsed = time.perf_counter() - start
+            _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)
+            return result
+        except ToolError as e:
+            elapsed = time.perf_counter() - start
+            _tool_logger.debug("tool.%s failed in %.3fs: %s", tool_name, elapsed, e)
             raise ModelRetry(str(e)) from e
 
     return wrapper

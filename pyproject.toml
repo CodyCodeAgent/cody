@@ -9,12 +9,11 @@ description = "Open-source AI Coding Agent framework with SDK, Skills, and MCP i
 authors = [{name = "GouChao"}]
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["ai", "coding-assistant", "llm", "cli", "sdk", "mcp"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -65,6 +64,7 @@ dev = [
     "cody-ai[all]",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
+    "pytest-timeout>=2.0.0",
     "black>=24.0.0",
     "ruff>=0.7.0",
     "mypy>=1.13.0",
@@ -82,11 +82,11 @@ exclude = ["tests*", "web.tests*", "web.__tests__*"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39']
+target-version = ['py310']
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

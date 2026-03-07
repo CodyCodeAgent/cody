@@ -491,6 +491,16 @@ body {
   color: #71717a;
 }
 
+.system-content-error {
+  display: inline-block;
+  padding: 8px 16px;
+  background: #3b1219;
+  border: 1px solid #7f1d1d;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #fca5a5;
+}
+
 /* ── Thinking block ─────────────────────────────── */
 
 .thinking-block {

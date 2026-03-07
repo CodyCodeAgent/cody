@@ -9,6 +9,7 @@ from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
 from ..core import Config, AgentRunner, SessionStore
+from ..core.log import setup_logging
 from .utils import (
     console, _ensure_config_ready, _get_input,
     _handle_command, _build_history_from_session,
@@ -58,6 +59,8 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
         cody run --model qwen3.5 "写个排序算法"
         cody run --workdir /proj/frontend --allow-root /proj/backend "sync configs"
     """
+    setup_logging(verbose=verbose)
+
     if not prompt:
         console.print("[yellow]Please provide a prompt[/yellow]")
         console.print("Example: cody run 'create a hello.py file'")
@@ -121,6 +124,8 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         cody chat --session abc123
         cody chat --workdir /proj/frontend --allow-root /proj/backend
     """
+    setup_logging()
+
     workdir_path = Path(workdir) if workdir else Path.cwd()
 
     cfg = Config.load(workdir=workdir_path)
@@ -253,6 +258,8 @@ def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, cont
         cody tui --continue
         cody tui --workdir /proj/frontend --allow-root /proj/backend
     """
+    setup_logging()
+
     # Check config readiness before launching TUI (still in normal terminal)
     workdir_path = Path(workdir) if workdir else Path.cwd()
     cfg = Config.load(workdir=workdir_path)

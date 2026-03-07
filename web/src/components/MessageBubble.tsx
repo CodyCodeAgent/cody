@@ -5,9 +5,12 @@ import { summarizeArgs } from "../utils/summarizeArgs";
 
 export default function MessageBubble({ message }: { message: Message }) {
   if (message.role === "system") {
+    const isError = message.content.startsWith("Error:");
     return (
       <div className="message message-system">
-        <div className="system-content">{message.content}</div>
+        <div className={isError ? "system-content-error" : "system-content"}>
+          {message.content}
+        </div>
       </div>
     );
   }

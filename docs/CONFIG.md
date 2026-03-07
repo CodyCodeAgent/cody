@@ -785,4 +785,30 @@ ls -la ~/.cody/skills/
 
 ---
 
-**最后更新:** 2026-03-05
+### Q: 如何查看运行日志？
+
+Cody 自动将日志写入 `~/.cody/logs/cody.log`（自动轮转，5 MB / 3 备份）：
+
+```bash
+# 查看最近日志
+tail -50 ~/.cody/logs/cody.log
+
+# 实时跟踪
+tail -f ~/.cody/logs/cody.log
+
+# 启用详细日志（同时输出到终端）
+cody run -v "your prompt"
+```
+
+日志目录结构：
+```
+~/.cody/logs/
+├── cody.log          # 当前日志
+├── cody.log.1        # 第 1 个备份
+├── cody.log.2        # 第 2 个备份
+└── cody.log.3        # 第 3 个备份
+```
+
+---
+
+**最后更新:** 2026-03-07

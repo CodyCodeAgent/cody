@@ -400,6 +400,9 @@ class AsyncCodyClient:
             return run_result
 
         except Exception as e:
+            # Ensure metrics run is closed on exception
+            if self._metrics and self._metrics._current_run is not None:
+                self._metrics.end_run("", TokenUsage(0, 0, 0))
             if self._events:
                 await self._events.dispatch_async(RunEvent(
                     event_type=EventType.RUN_ERROR,
@@ -408,10 +411,6 @@ class AsyncCodyClient:
                     error=str(e),
                 ))
             raise
-        finally:
-            # Ensure metrics run is closed even on exception
-            if self._metrics and self._metrics._current_run is not None:
-                self._metrics.end_run("", TokenUsage(0, 0, 0))
 
     async def stream(
         self,
@@ -453,7 +452,7 @@ class AsyncCodyClient:
                 elif chunk.type == "tool_result":
                     await self._events.dispatch_async(ToolEvent(
                         event_type=EventType.TOOL_RESULT,
-                        tool_name=chunk.content,
+                        tool_name=chunk.tool_name or "",
                         result=chunk.content,
                     ))
                 elif chunk.type == "text_delta":

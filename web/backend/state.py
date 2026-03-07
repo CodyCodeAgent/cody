@@ -41,7 +41,7 @@ _CONFIG_CACHE_TTL = 60.0  # seconds
 _sub_agent_manager = None
 _sub_agent_lock = asyncio.Lock()
 _project_store: Optional[ProjectStore] = None
-_runner_cache: dict[str, tuple] = {}  # key -> (AgentRunner, created_at)
+_runner_cache: dict[str, tuple] = {}  # key -> (AgentRunner, created_at, config_fingerprint)
 _RUNNER_CACHE_TTL = 300.0  # 5 minutes
 
 
@@ -123,23 +123,32 @@ def create_full_deps(config: Config, workdir: Path) -> CodyDeps:
     )
 
 
+def _config_fingerprint(config: Config) -> str:
+    """Return a short fingerprint of config fields that affect the agent."""
+    return f"{config.model}|{config.model_base_url}|{config.model_api_key}|{config.enable_thinking}"
+
+
 def get_runner(workdir: Path):
     """Get or create a cached AgentRunner for the given workdir.
 
     Avoids re-creating the agent, tools, skill manager, etc. on every message.
-    Cache entries expire after _RUNNER_CACHE_TTL seconds.
+    Cache entries expire after _RUNNER_CACHE_TTL seconds or when the model
+    config changes (e.g. user switches model in Settings).
     """
     from cody.core import AgentRunner
 
     key = str(workdir)
     now = time.monotonic()
-    if key in _runner_cache:
-        runner, created_at = _runner_cache[key]
-        if now - created_at < _RUNNER_CACHE_TTL:
-            return runner
     config = get_config(workdir)
+    fp = _config_fingerprint(config)
+
+    if key in _runner_cache:
+        runner, created_at, cached_fp = _runner_cache[key]
+        if now - created_at < _RUNNER_CACHE_TTL and cached_fp == fp:
+            return runner
+
     runner = AgentRunner(config=config, workdir=workdir)
-    _runner_cache[key] = (runner, now)
+    _runner_cache[key] = (runner, now, fp)
     return runner
 
 

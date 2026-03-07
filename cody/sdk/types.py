@@ -88,7 +88,10 @@ def _event_to_chunk(
             tool_name=event.tool_name, args=event.args,
         )
     elif isinstance(event, ToolResultEvent):
-        return StreamChunk(type="tool_result", content=event.result, session_id=session_id)
+        return StreamChunk(
+            type="tool_result", content=event.result, session_id=session_id,
+            tool_name=event.tool_name,
+        )
     elif isinstance(event, CompactEvent):
         return StreamChunk(type="compact", session_id=session_id)
     elif isinstance(event, DoneEvent):
