@@ -20,7 +20,8 @@ except ImportError:
         "  pip install cody-ai[tui]"
     )
 
-from ..core import AgentRunner, Config, SessionStore
+from ..core import Config
+from ..sdk.client import AsyncCodyClient
 from ..shared import (
     SPINNER_FRAMES, compact_message, auto_title,
     format_elapsed, format_session_line, truncate_repr as _truncate_repr,
@@ -89,8 +90,7 @@ class CodyTUI(App):
 
         # Initialized in on_mount
         self._config: Optional[Config] = None
-        self._runner: Optional[AgentRunner] = None
-        self._store: Optional[SessionStore] = None
+        self._client: Optional[AsyncCodyClient] = None
         self._session_id: Optional[str] = None
         self._message_history: list = []
         self._cancel_event: Optional[asyncio.Event] = None
@@ -109,22 +109,27 @@ class CodyTUI(App):
             extra_roots=self._extra_roots or None,
         )
 
-        self._runner = AgentRunner(
-            config=self._config,
-            workdir=self._workdir,
-            extra_roots=[Path(r) for r in self._extra_roots],
+        self._client = AsyncCodyClient(
+            workdir=str(self._workdir),
+            model=self._config.model,
+            api_key=self._config.model_api_key,
+            base_url=self._config.model_base_url,
         )
-        self._store = SessionStore()
+        # Apply full config via core config
+        self._client._core_config = self._config
+        self._client._runner = None
+
+        store = self._client._get_session_store()
 
         # Resolve or create session
         session = None
         if self._session_id_arg:
-            session = self._store.get_session(self._session_id_arg)
+            session = store.get_session(self._session_id_arg)
         elif self._continue_last:
-            session = self._store.get_latest_session(workdir=str(self._workdir))
+            session = store.get_latest_session(workdir=str(self._workdir))
 
         if session is None:
-            session = self._store.create_session(
+            session = store.create_session(
                 title="TUI session",
                 model=self._config.model,
                 workdir=str(self._workdir),
@@ -136,7 +141,7 @@ class CodyTUI(App):
         for msg in session.messages:
             self._add_bubble(msg.role, msg.content)
 
-        self._message_history = AgentRunner.messages_to_history(session.messages)
+        self._message_history = AsyncCodyClient.messages_to_history(session.messages)
         self._update_status()
         self.query_one("#prompt-input", Input).focus()
 
@@ -146,18 +151,18 @@ class CodyTUI(App):
     @work(thread=False)
     async def _start_services(self) -> None:
         """Start MCP servers in the background."""
-        if self._runner:
+        if self._client:
             try:
-                await self._runner.start_mcp()
+                runner = self._client._get_runner()
+                await runner.start_mcp()
             except Exception:
                 logger.debug("MCP start failed", exc_info=True)
 
     async def _stop_services(self) -> None:
         """Stop MCP and LSP servers."""
-        if self._runner:
+        if self._client:
             try:
-                await self._runner.stop_mcp()
-                await self._runner.stop_lsp()
+                await self._client.close()
             except Exception:
                 logger.debug("Service stop failed", exc_info=True)
 
@@ -188,8 +193,8 @@ class CodyTUI(App):
         model = self._config.model if self._config else "?"
         sid = self._session_id or "?"
         msg_count = (
-            self._store.get_message_count(self._session_id)
-            if self._store and self._session_id
+            self._client.get_message_count(self._session_id)
+            if self._client and self._session_id
             else 0
         )
         self.query_one("#status-line", StatusLine).update(
@@ -252,12 +257,13 @@ class CodyTUI(App):
         self._add_bubble("user", text)
 
         # Auto-title
-        if self._store and self._store.get_message_count(self._session_id) == 0:
-            self._store.update_title(self._session_id, auto_title(text))
+        assert self._session_id is not None
+        if self._client and self._client.get_message_count(self._session_id) == 0:
+            self._client.update_title(self._session_id, auto_title(text))
 
         # Save user message
-        if self._store:
-            self._store.add_message(self._session_id, "user", text)
+        if self._client:
+            self._client.add_message(self._session_id, "user", text)
 
         # Run agent
         self._run_agent(text)
@@ -301,6 +307,7 @@ class CodyTUI(App):
             ToolResultEvent, DoneEvent,
         )
 
+        assert self._session_id is not None
         self.is_running = True
         self._set_input_enabled(False)
         self._cancel_event = asyncio.Event()
@@ -311,7 +318,9 @@ class CodyTUI(App):
         self._start_processing()
 
         try:
-            async for event in self._runner.run_stream(
+            assert self._client is not None
+            runner = self._client._get_runner()
+            async for event in runner.run_stream(
                 prompt, message_history=self._message_history
             ):
                 if self._cancel_event.is_set():
@@ -345,8 +354,8 @@ class CodyTUI(App):
                     # Use real message history from pydantic-ai (includes tool calls)
                     self._message_history = event.result.all_messages()
                     # Save assistant message
-                    if self._store and not self._cancel_event.is_set():
-                        self._store.add_message(
+                    if self._client and not self._cancel_event.is_set():
+                        self._client.add_message(
                             self._session_id, "assistant", event.result.output
                         )
 
@@ -402,16 +411,17 @@ class CodyTUI(App):
             self._add_bubble("system", f"[yellow]Unknown command: {cmd}[/yellow]\nType /help")
 
     def _show_sessions(self) -> None:
-        if not self._store:
+        if not self._client:
             return
-        sessions = self._store.list_sessions(limit=10)
+        store = self._client._get_session_store()
+        sessions = store.list_sessions(limit=10)
         if not sessions:
             self._add_bubble("system", "[yellow]No sessions found[/yellow]")
             return
 
         lines = ["[bold]Recent sessions:[/bold]"]
         for s in sessions:
-            count = self._store.get_message_count(s.id)
+            count = self._client.get_message_count(s.id)
             line = format_session_line(
                 s.id, s.title, count, s.updated_at, self._session_id or ""
             )
@@ -421,10 +431,11 @@ class CodyTUI(App):
     # ── Actions ──────────────────────────────────────────────────────────────
 
     def action_new_session(self) -> None:
-        if not self._store or not self._config:
+        if not self._client or not self._config:
             return
 
-        session = self._store.create_session(
+        store = self._client._get_session_store()
+        session = store.create_session(
             title="TUI session",
             model=self._config.model,
             workdir=str(self._workdir),

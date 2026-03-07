@@ -171,6 +171,38 @@ async def get_sub_agent_manager(workdir: Optional[Path] = None):
     return _sub_agent_manager
 
 
+# ── FastAPI Depends() wrappers ───────────────────────────────────────────────
+# These functions extract workdir from request context and delegate to the
+# cached getters above. Use as: config: Config = Depends(config_dep)
+
+
+def config_dep(workdir: str = "") -> Config:
+    """FastAPI dependency for config. Accepts workdir as query param."""
+    wd = Path(workdir) if workdir else Path.cwd()
+    return get_config(wd)
+
+
+def runner_dep(workdir: str = ""):
+    """FastAPI dependency for AgentRunner."""
+    wd = Path(workdir) if workdir else Path.cwd()
+    return get_runner(wd)
+
+
+def session_store_dep() -> SessionStore:
+    """FastAPI dependency for SessionStore."""
+    return get_session_store()
+
+
+def project_store_dep() -> ProjectStore:
+    """FastAPI dependency for ProjectStore."""
+    return get_project_store()
+
+
+def audit_logger_dep() -> AuditLogger:
+    """FastAPI dependency for AuditLogger."""
+    return get_audit_logger()
+
+
 def reset_state():
     """Reset all singletons for testing."""
     global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked

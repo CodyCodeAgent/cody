@@ -5,13 +5,14 @@ Migrated from cody/server.py.
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from cody.core import SessionStore
 from cody.core.errors import ErrorCode
 
 from ..helpers import raise_structured
 from ..models import SessionResponse, SessionDetailResponse
-from ..state import get_session_store
+from ..state import session_store_dep
 
 router = APIRouter(tags=["sessions"])
 
@@ -21,9 +22,9 @@ async def create_session(
     title: str = "New session",
     model: str = "",
     workdir: str = "",
+    store: SessionStore = Depends(session_store_dep),
 ):
     """Create a new session."""
-    store = get_session_store()
     session = await asyncio.to_thread(
         store.create_session, title=title, model=model, workdir=workdir,
     )
@@ -39,9 +40,11 @@ async def create_session(
 
 
 @router.get("/sessions")
-async def list_sessions(limit: int = 20):
+async def list_sessions(
+    limit: int = 20,
+    store: SessionStore = Depends(session_store_dep),
+):
     """List recent sessions."""
-    store = get_session_store()
     sessions = await asyncio.to_thread(store.list_sessions, limit=limit)
     result = []
     for s in sessions:
@@ -59,9 +62,11 @@ async def list_sessions(limit: int = 20):
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
-async def get_session(session_id: str):
+async def get_session(
+    session_id: str,
+    store: SessionStore = Depends(session_store_dep),
+):
     """Get session with messages."""
-    store = get_session_store()
     session = await asyncio.to_thread(store.get_session, session_id)
     if not session:
         raise_structured(
@@ -91,9 +96,11 @@ async def get_session(session_id: str):
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(
+    session_id: str,
+    store: SessionStore = Depends(session_store_dep),
+):
     """Delete a session."""
-    store = get_session_store()
     deleted = await asyncio.to_thread(store.delete_session, session_id)
     if not deleted:
         raise_structured(

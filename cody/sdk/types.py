@@ -48,6 +48,12 @@ class StreamChunk:
     args: Optional[dict] = None
     # Usage info (populated when type="done")
     usage: Optional[Usage] = None
+    # Compact event details (populated when type="compact")
+    original_messages: int = 0
+    compacted_messages: int = 0
+    estimated_tokens_saved: int = 0
+    # Message history (populated when type="done") for multi-turn state
+    message_history: Optional[list] = None
 
 
 @dataclass
@@ -93,11 +99,17 @@ def _event_to_chunk(
             tool_name=event.tool_name,
         )
     elif isinstance(event, CompactEvent):
-        return StreamChunk(type="compact", session_id=session_id)
+        return StreamChunk(
+            type="compact", session_id=session_id,
+            original_messages=event.original_messages,
+            compacted_messages=event.compacted_messages,
+            estimated_tokens_saved=event.estimated_tokens_saved,
+        )
     elif isinstance(event, DoneEvent):
         return StreamChunk(
             type="done", content=event.result.output, session_id=session_id,
             usage=_usage_from_result(event.result),
+            message_history=event.result.all_messages(),
         )
     return StreamChunk(type="unknown", session_id=session_id)
 

@@ -1,20 +1,30 @@
 """Tests for /audit endpoint."""
 
-from unittest.mock import patch
-
 from fastapi.testclient import TestClient
 
 from cody.core.audit import AuditLogger
 from web.backend.app import app
+from web.backend.state import audit_logger_dep
+
+
+def _client_with_logger(logger):
+    """Create a TestClient with the given AuditLogger injected."""
+    app.dependency_overrides[audit_logger_dep] = lambda: logger
+    return TestClient(app)
+
+
+def _cleanup():
+    app.dependency_overrides.pop(audit_logger_dep, None)
 
 
 def test_query_audit_empty(tmp_path):
     """GET /audit returns empty list when no entries."""
     logger = AuditLogger(db_path=tmp_path / "audit.db")
-
-    with patch("web.backend.routes.audit_routes.get_audit_logger", return_value=logger):
-        client = TestClient(app)
+    client = _client_with_logger(logger)
+    try:
         resp = client.get("/audit")
+    finally:
+        _cleanup()
 
     assert resp.status_code == 200
     data = resp.json()
@@ -27,10 +37,11 @@ def test_query_audit_with_entries(tmp_path):
     logger = AuditLogger(db_path=tmp_path / "audit.db")
     logger.log(event="tool_call", tool_name="read_file", args_summary="path=test.py")
     logger.log(event="command_exec", tool_name="exec_command", args_summary="cmd=ls")
-
-    with patch("web.backend.routes.audit_routes.get_audit_logger", return_value=logger):
-        client = TestClient(app)
+    client = _client_with_logger(logger)
+    try:
         resp = client.get("/audit")
+    finally:
+        _cleanup()
 
     assert resp.status_code == 200
     data = resp.json()
@@ -51,10 +62,11 @@ def test_query_audit_filter_by_event(tmp_path):
     logger.log(event="tool_call", tool_name="read_file")
     logger.log(event="command_exec", tool_name="exec_command")
     logger.log(event="tool_call", tool_name="write_file")
-
-    with patch("web.backend.routes.audit_routes.get_audit_logger", return_value=logger):
-        client = TestClient(app)
+    client = _client_with_logger(logger)
+    try:
         resp = client.get("/audit", params={"event": "tool_call"})
+    finally:
+        _cleanup()
 
     assert resp.status_code == 200
     data = resp.json()
@@ -68,10 +80,11 @@ def test_query_audit_limit(tmp_path):
     logger = AuditLogger(db_path=tmp_path / "audit.db")
     for i in range(5):
         logger.log(event="tool_call", tool_name=f"tool_{i}")
-
-    with patch("web.backend.routes.audit_routes.get_audit_logger", return_value=logger):
-        client = TestClient(app)
+    client = _client_with_logger(logger)
+    try:
         resp = client.get("/audit", params={"limit": 2})
+    finally:
+        _cleanup()
 
     assert resp.status_code == 200
     data = resp.json()

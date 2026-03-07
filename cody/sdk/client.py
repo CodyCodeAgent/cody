@@ -610,6 +610,46 @@ class AsyncCodyClient:
                 code="SESSION_NOT_FOUND",
             )
 
+    async def get_latest_session(
+        self,
+        workdir: str | None = None,
+    ) -> SessionInfo | None:
+        """Get the most recent session, optionally filtered by workdir."""
+        store = self._get_session_store()
+        session = store.get_latest_session(workdir=workdir)
+        if not session:
+            return None
+        return SessionInfo(
+            id=session.id,
+            title=session.title,
+            model=session.model,
+            workdir=session.workdir,
+            message_count=len(session.messages),
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
+    def get_message_count(self, session_id: str) -> int:
+        """Get message count for a session."""
+        store = self._get_session_store()
+        return store.get_message_count(session_id)
+
+    def add_message(self, session_id: str, role: str, content: str) -> None:
+        """Add a message to a session."""
+        store = self._get_session_store()
+        store.add_message(session_id, role, content)
+
+    def update_title(self, session_id: str, title: str) -> None:
+        """Update session title."""
+        store = self._get_session_store()
+        store.update_title(session_id, title)
+
+    @staticmethod
+    def messages_to_history(messages) -> list:
+        """Convert stored session messages to pydantic-ai message format."""
+        from ..core.runner import AgentRunner
+        return AgentRunner.messages_to_history(messages)
+
     # ── Skills ────────────────────────────────────────────────────────────
 
     async def list_skills(self) -> list[dict]:
@@ -829,6 +869,22 @@ class CodyClient:
 
     def get_skill(self, skill_name: str):
         return _run_async(self._async.get_skill(skill_name))
+
+    def get_latest_session(self, workdir: str | None = None):
+        return _run_async(self._async.get_latest_session(workdir=workdir))
+
+    def get_message_count(self, session_id: str) -> int:
+        return self._async.get_message_count(session_id)
+
+    def add_message(self, session_id: str, role: str, content: str) -> None:
+        self._async.add_message(session_id, role, content)
+
+    def update_title(self, session_id: str, title: str) -> None:
+        self._async.update_title(session_id, title)
+
+    @staticmethod
+    def messages_to_history(messages) -> list:
+        return AsyncCodyClient.messages_to_history(messages)
 
     def read_file(self, path: str) -> str:
         return _run_async(self._async.read_file(path))

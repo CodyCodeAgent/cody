@@ -8,10 +8,10 @@ import logging
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from cody.core import AgentRunner
+from cody.core import AgentRunner, SessionStore
 from cody.core.errors import (
     CodyAPIError, ErrorCode,
     ToolError, ToolPermissionDenied, ToolPathDenied,
@@ -19,7 +19,7 @@ from cody.core.errors import (
 
 from ..helpers import build_prompt, config_from_run_request, raise_structured, serialize_stream_event
 from ..models import RunRequest, RunResponse, ToolTraceResponse
-from ..state import get_session_store
+from ..state import session_store_dep
 
 logger = logging.getLogger("cody.web.run")
 
@@ -27,7 +27,10 @@ router = APIRouter(tags=["run"])
 
 
 @router.post("/run", response_model=RunResponse)
-async def run_agent(request: RunRequest):
+async def run_agent(
+    request: RunRequest,
+    store: SessionStore = Depends(session_store_dep),
+):
     """Run agent with prompt, optionally within a session."""
     logger.info(
         "POST /run: session=%s prompt_len=%d workdir=%s",
@@ -53,7 +56,6 @@ async def run_agent(request: RunRequest):
         prompt = build_prompt(request.prompt, images_raw)
 
         if request.session_id is not None:
-            store = get_session_store()
             result, sid = await runner.run_with_session(
                 prompt, store, request.session_id
             )
@@ -117,7 +119,10 @@ async def run_agent(request: RunRequest):
 
 
 @router.post("/run/stream")
-async def run_agent_stream(request: RunRequest):
+async def run_agent_stream(
+    request: RunRequest,
+    store: SessionStore = Depends(session_store_dep),
+):
     """Run agent with streaming response, emitting structured events."""
     logger.info(
         "POST /run/stream: session=%s prompt_len=%d workdir=%s",
@@ -151,7 +156,6 @@ async def run_agent_stream(request: RunRequest):
             prompt = build_prompt(request.prompt, images_raw)
 
             if request.session_id is not None:
-                store = get_session_store()
                 async for event, sid in runner.run_stream_with_session(
                     prompt, store, request.session_id
                 ):

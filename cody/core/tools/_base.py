@@ -1,0 +1,89 @@
+"""Shared helpers used across tool modules."""
+
+import functools
+import logging
+import time
+
+from pydantic_ai import ModelRetry, RunContext
+from pathlib import Path
+
+from ..errors import ToolError, ToolPathDenied
+
+_tool_logger = logging.getLogger("cody.core.tools")
+
+
+def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
+    """Check permission before tool execution. Raises ToolPermissionDenied if denied."""
+    if ctx.deps.permission_manager:
+        ctx.deps.permission_manager.check(tool_name)
+
+
+def _resolve_and_check(
+    workdir: Path,
+    path: str,
+    *,
+    allow_read_outside: bool = False,
+    allowed_roots: list[Path] | None = None,
+) -> Path:
+    """Resolve path and verify it's inside an allowed directory. Returns resolved Path.
+
+    *workdir* is always an implicit allowed root.  Additional roots can be
+    supplied via *allowed_roots* (the access boundary).
+
+    If *allow_read_outside* is True, paths that fall outside every allowed root
+    are still permitted for read-only operations.  The caller is responsible
+    for passing this flag only when appropriate.
+    """
+    if Path(path).is_absolute():
+        full_path = Path(path).resolve()
+    else:
+        full_path = (workdir / path).resolve()
+
+    roots: list[Path] = [workdir.resolve()]
+    if allowed_roots:
+        roots.extend(r.resolve() for r in allowed_roots)
+
+    for root in roots:
+        if full_path.is_relative_to(root):
+            return full_path
+
+    if allow_read_outside:
+        return full_path
+    raise ToolPathDenied(
+        f"Access denied: {path} is outside all permitted directories "
+        f"({', '.join(str(r) for r in roots)}). "
+        f"Tip: add paths to security.allowed_roots in .cody/config.json, "
+        f"or use --allow-root at the command line."
+    )
+
+
+def _with_model_retry(func):
+    """Wrap a tool function so ToolError is converted to ModelRetry.
+
+    When a tool raises ToolError (e.g. ToolInvalidParams for "text not found"),
+    pydantic-ai would normally propagate it as an unhandled exception, breaking
+    the entire agent run. By converting it to ModelRetry, the error message is
+    sent back to the model so it can correct its parameters and try again.
+
+    Also logs elapsed time for every tool call at DEBUG level.
+    """
+    tool_name = func.__name__
+
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        try:
+            result = await func(*args, **kwargs)
+            elapsed = time.perf_counter() - start
+            _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)
+            return result
+        except ToolError as e:
+            elapsed = time.perf_counter() - start
+            _tool_logger.debug("tool.%s failed in %.3fs: %s", tool_name, elapsed, e)
+            raise ModelRetry(str(e)) from e
+
+    return wrapper
+
+
+# Forward import for type hints used in _check_permission
+from ..deps import CodyDeps  # noqa: E402

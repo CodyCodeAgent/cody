@@ -184,7 +184,7 @@ class SDKConfig:
         """Convert to core Config format."""
         
         # Build config dict
-        config_dict = {
+        config_dict: dict[str, object] = {
             "model": self.model.model,
         }
         

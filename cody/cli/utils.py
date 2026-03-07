@@ -13,7 +13,7 @@ except ImportError:
         "  pip install cody-ai[cli]"
     )
 
-from ..core import Config, AgentRunner
+from ..core import Config
 from ..core.setup import SetupAnswers, build_config_from_answers
 from ..shared import format_session_line
 
@@ -95,21 +95,17 @@ def _get_input() -> str:
         from prompt_toolkit.history import InMemoryHistory
 
         if not hasattr(_get_input, '_history'):
-            _get_input._history = InMemoryHistory()
+            _get_input._history = InMemoryHistory()  # type: ignore[attr-defined]
 
         return pt_prompt(
             "You > ",
-            history=_get_input._history,
+            history=_get_input._history,  # type: ignore[attr-defined]
             multiline=False,
         )
     except ImportError:
         # Fallback to basic input
         return input("You > ")
 
-
-def _build_history_from_session(session) -> list:
-    """Convert stored session messages to pydantic-ai message format"""
-    return AgentRunner.messages_to_history(session.messages)
 
 
 def _handle_command(cmd: str, session, store, console: Console) -> bool:

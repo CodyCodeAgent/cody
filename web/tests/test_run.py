@@ -8,6 +8,7 @@ from cody.core import Config
 from cody.core.runner import CodyResult, TextDeltaEvent, DoneEvent
 from cody.core.session import SessionStore
 from web.backend.app import app
+from web.backend.state import session_store_dep
 
 
 def _ready_config():
@@ -81,17 +82,20 @@ def test_run_with_session_id(tmp_path):
 
     mock_result = _mock_cody_result("done with session")
 
-    with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
-         patch("web.backend.routes.run.get_session_store", return_value=store), \
-         patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
-        instance = MockRunner.return_value
-        instance.run_with_session = AsyncMock(return_value=(mock_result, session.id))
+    app.dependency_overrides[session_store_dep] = lambda: store
+    try:
+        with patch("web.backend.routes.run.AgentRunner") as MockRunner, \
+             patch("web.backend.routes.run.config_from_run_request", return_value=_ready_config()):
+            instance = MockRunner.return_value
+            instance.run_with_session = AsyncMock(return_value=(mock_result, session.id))
 
-        client = TestClient(app)
-        resp = client.post("/run", json={
-            "prompt": "hello",
-            "session_id": session.id,
-        })
+            client = TestClient(app)
+            resp = client.post("/run", json={
+                "prompt": "hello",
+                "session_id": session.id,
+            })
+    finally:
+        app.dependency_overrides.pop(session_store_dep, None)
 
     assert resp.status_code == 200
     data = resp.json()

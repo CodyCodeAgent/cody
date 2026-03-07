@@ -8,11 +8,12 @@ import click
 from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
-from ..core import Config, AgentRunner, SessionStore
+from ..core import Config
 from ..core.log import setup_logging
+from ..sdk.client import AsyncCodyClient
 from .utils import (
     console, _ensure_config_ready, _get_input,
-    _handle_command, _build_history_from_session,
+    _handle_command,
 )
 from .rendering import _render_stream
 from ..shared import auto_title
@@ -76,16 +77,25 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
         extra_roots=list(extra_roots) or None,
     )
 
-    runner = AgentRunner(config=cfg, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
+    client = AsyncCodyClient(
+        workdir=str(workdir_path),
+        model=cfg.model,
+        api_key=cfg.model_api_key,
+        base_url=cfg.model_base_url,
+    )
+    # Apply full config (thinking, extra_roots, etc.) via core config
+    client._core_config = cfg
+    client._runner = None  # Force lazy re-creation with updated config
 
     if verbose:
         console.print(f"[dim]Model: {cfg.model}[/dim]")
-        console.print(f"[dim]Workdir: {runner.workdir}[/dim]")
+        console.print(f"[dim]Workdir: {workdir_path}[/dim]")
         if cfg.enable_thinking:
             budget = f" (budget: {cfg.thinking_budget})" if cfg.thinking_budget else ""
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
     async def _run_stream():
+        runner = client._get_runner()
         await runner.start_mcp()
         try:
             result = await _render_stream(runner.run_stream(prompt), verbose=verbose)
@@ -94,8 +104,7 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
                 if usage:
                     console.print(f"[dim]Tokens: {usage.total_tokens}[/dim]")
         finally:
-            await runner.stop_mcp()
-            await runner.stop_lsp()
+            await client.close()
 
     asyncio.run(_run_stream())
 
@@ -136,10 +145,20 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         thinking_budget=thinking_budget,
         extra_roots=list(extra_roots) or None,
     )
-    store = SessionStore()
 
-    # Resolve session
+    client = AsyncCodyClient(
+        workdir=str(workdir_path),
+        model=cfg.model,
+        api_key=cfg.model_api_key,
+        base_url=cfg.model_base_url,
+    )
+    # Apply full config via core config
+    client._core_config = cfg
+    client._runner = None
+
+    # Resolve session via SDK
     session = None
+    store = client._get_session_store()
     if session_id:
         session = store.get_session(session_id)
         if not session:
@@ -162,8 +181,6 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
             workdir=str(workdir_path),
         )
 
-    runner = AgentRunner(config=cfg, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
-
     # Print header
     console.print(
         Panel(
@@ -177,10 +194,11 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
     console.print("[dim]Type your message. Commands: /quit, /sessions, /clear, /help[/dim]\n")
 
     # Build message history from session
-    message_history = _build_history_from_session(session)
+    message_history = AsyncCodyClient.messages_to_history(session.messages)
 
     async def _chat_loop():
         nonlocal message_history
+        runner = client._get_runner()
         await runner.start_mcp()
         try:
             while True:
@@ -204,11 +222,11 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
                     continue
 
                 # Auto-title from first message
-                if store.get_message_count(session.id) == 0:
-                    store.update_title(session.id, auto_title(user_input))
+                if client.get_message_count(session.id) == 0:
+                    client.update_title(session.id, auto_title(user_input))
 
                 # Save user message
-                store.add_message(session.id, "user", user_input)
+                client.add_message(session.id, "user", user_input)
 
                 # Run agent with streaming
                 try:
@@ -219,14 +237,13 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
                     # Update history for next turn
                     if result:
                         message_history = result.all_messages()
-                        store.add_message(session.id, "assistant", result.output)
+                        client.add_message(session.id, "assistant", result.output)
 
                 except Exception as e:
                     console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
 
         finally:
-            await runner.stop_mcp()
-            await runner.stop_lsp()
+            await client.close()
 
     try:
         asyncio.run(_chat_loop())

@@ -5,9 +5,11 @@ Migrated from cody/server.py.
 
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from ..state import get_audit_logger
+from cody.core.audit import AuditLogger
+
+from ..state import audit_logger_dep
 
 router = APIRouter(tags=["audit"])
 
@@ -17,10 +19,10 @@ async def query_audit(
     event: Optional[str] = None,
     since: Optional[str] = None,
     limit: int = 50,
+    audit_logger: AuditLogger = Depends(audit_logger_dep),
 ):
     """Query audit log entries."""
-    logger = get_audit_logger()
-    entries = logger.query(event=event, since=since, limit=limit)
+    entries = audit_logger.query(event=event, since=since, limit=limit)
     return {
         "entries": [
             {
@@ -36,5 +38,5 @@ async def query_audit(
             }
             for e in entries
         ],
-        "total": logger.count(event=event),
+        "total": audit_logger.count(event=event),
     }

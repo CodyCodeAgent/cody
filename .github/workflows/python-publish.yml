@@ -32,6 +32,9 @@ jobs:
       - name: Lint
         run: ruff check cody/ tests/ web/
 
+      - name: Type check
+        run: mypy cody/ --ignore-missing-imports
+
       - name: Core + SDK tests
         run: pytest tests/ -v --timeout=60
 
