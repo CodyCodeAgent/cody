@@ -85,7 +85,7 @@ async def test_read_file_outside_workdir_allowed(tmp_path):
     ctx = MockContext(tmp_path)
 
     # Reading outside workdir is allowed but file may not exist
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ToolInvalidParams):
         await read_file(ctx, "../../../nonexistent_file.txt")
 
 
@@ -274,7 +274,7 @@ async def test_patch_replace_line(tmp_path):
 async def test_patch_file_not_found(tmp_path):
     ctx = MockContext(tmp_path)
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ToolInvalidParams):
         await patch(ctx, "nonexistent.py", "@@ -1,1 +1,1 @@\n-a\n+b\n")
 
 

@@ -1,9 +1,12 @@
 """Skill management system — Agent Skills open standard (agentskills.io)"""
 
+import logging
 import re
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Optional
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .config import Config
@@ -172,20 +175,23 @@ class SkillManager:
                 try:
                     text = skill_md.read_text()
                     fm, _ = _parse_frontmatter(text)
-                except ValueError:
-                    continue  # Skip skills without valid frontmatter
+                except ValueError as e:
+                    logger.debug("Skipping skill %s: invalid frontmatter: %s", dir_name, e)
+                    continue
 
                 name = fm.get("name", "")
                 description = fm.get("description", "")
 
                 # Validate required fields
                 if not name or not description:
+                    logger.debug("Skipping skill %s: missing name or description", dir_name)
                     continue
 
                 # Validate name matches directory
                 try:
                     _validate_name(name, dir_name)
-                except ValueError:
+                except ValueError as e:
+                    logger.debug("Skipping skill %s: %s", dir_name, e)
                     continue
 
                 enabled = self._is_enabled(name)
