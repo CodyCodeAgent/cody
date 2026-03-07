@@ -172,20 +172,8 @@ async def get_sub_agent_manager(workdir: Optional[Path] = None):
 
 
 # ── FastAPI Depends() wrappers ───────────────────────────────────────────────
-# These functions extract workdir from request context and delegate to the
-# cached getters above. Use as: config: Config = Depends(config_dep)
-
-
-def config_dep(workdir: str = "") -> Config:
-    """FastAPI dependency for config. Accepts workdir as query param."""
-    wd = Path(workdir) if workdir else Path.cwd()
-    return get_config(wd)
-
-
-def runner_dep(workdir: str = ""):
-    """FastAPI dependency for AgentRunner."""
-    wd = Path(workdir) if workdir else Path.cwd()
-    return get_runner(wd)
+# Parameterless singletons only — config/runner need workdir from request body
+# so they remain as direct calls in route handlers.
 
 
 def session_store_dep() -> SessionStore:

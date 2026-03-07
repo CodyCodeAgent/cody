@@ -83,9 +83,7 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
         api_key=cfg.model_api_key,
         base_url=cfg.model_base_url,
     )
-    # Apply full config (thinking, extra_roots, etc.) via core config
-    client._core_config = cfg
-    client._runner = None  # Force lazy re-creation with updated config
+    client.set_config(cfg)
 
     if verbose:
         console.print(f"[dim]Model: {cfg.model}[/dim]")
@@ -95,7 +93,7 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
     async def _run_stream():
-        runner = client._get_runner()
+        runner = client.get_runner()
         await runner.start_mcp()
         try:
             result = await _render_stream(runner.run_stream(prompt), verbose=verbose)
@@ -152,13 +150,11 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         api_key=cfg.model_api_key,
         base_url=cfg.model_base_url,
     )
-    # Apply full config via core config
-    client._core_config = cfg
-    client._runner = None
+    client.set_config(cfg)
 
     # Resolve session via SDK
     session = None
-    store = client._get_session_store()
+    store = client.get_session_store()
     if session_id:
         session = store.get_session(session_id)
         if not session:
@@ -198,7 +194,7 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
 
     async def _chat_loop():
         nonlocal message_history
-        runner = client._get_runner()
+        runner = client.get_runner()
         await runner.start_mcp()
         try:
             while True:

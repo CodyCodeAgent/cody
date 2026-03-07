@@ -257,7 +257,7 @@ class AsyncCodyClient:
     async def __aexit__(self, *args):
         await self.close()
 
-    # ── Internal: core access ─────────────────────────────────────────────
+    # ── Core access ──────────────────────────────────────────────────────
 
     def _get_config(self):
         """Get or create core Config."""
@@ -276,19 +276,40 @@ class AsyncCodyClient:
                 self._core_config.model_base_url = self._config.model.base_url
         return self._core_config
 
-    def _get_runner(self):
-        """Get or create AgentRunner."""
+    def set_config(self, config) -> None:
+        """Apply a pre-built core Config, replacing any cached config/runner.
+
+        This is the public API for CLI/TUI to inject a Config with overrides
+        (thinking, extra_roots, etc.) without reaching into private attributes.
+        """
+        self._core_config = config
+        self._runner = None  # Force lazy re-creation with updated config
+
+    def get_runner(self):
+        """Get or create the underlying AgentRunner.
+
+        Power-user API for callers that need raw streaming events
+        (ToolCallEvent, ThinkingEvent, etc.) or direct MCP control.
+        """
         if self._runner is None:
             from ..core.runner import AgentRunner
             self._runner = AgentRunner(config=self._get_config(), workdir=self.workdir)
         return self._runner
 
-    def _get_session_store(self):
-        """Get or create SessionStore."""
+    def get_session_store(self):
+        """Get or create the underlying SessionStore.
+
+        Power-user API for callers that need synchronous session access
+        (e.g. TUI on_mount) or direct store operations.
+        """
         if self._session_store is None:
             from ..core.session import SessionStore
             self._session_store = SessionStore(db_path=self._db_path)
         return self._session_store
+
+    # Keep private aliases for internal use
+    _get_runner = get_runner
+    _get_session_store = get_session_store
 
     async def close(self):
         """Clean up resources."""

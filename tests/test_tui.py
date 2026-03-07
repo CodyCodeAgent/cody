@@ -96,7 +96,7 @@ def _setup_tui_mocks(mock_client_cls, mock_config_load):
     mock_store.get_latest_session.return_value = None
     mock_store.create_session.return_value = mock_session
     mock_store.get_message_count.return_value = 0
-    mock_client._get_session_store.return_value = mock_store
+    mock_client.get_session_store.return_value = mock_store
     mock_client.get_message_count.return_value = 0
 
     mock_client_cls.messages_to_history.return_value = []

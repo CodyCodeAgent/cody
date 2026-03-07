@@ -115,11 +115,9 @@ class CodyTUI(App):
             api_key=self._config.model_api_key,
             base_url=self._config.model_base_url,
         )
-        # Apply full config via core config
-        self._client._core_config = self._config
-        self._client._runner = None
+        self._client.set_config(self._config)
 
-        store = self._client._get_session_store()
+        store = self._client.get_session_store()
 
         # Resolve or create session
         session = None
@@ -153,7 +151,7 @@ class CodyTUI(App):
         """Start MCP servers in the background."""
         if self._client:
             try:
-                runner = self._client._get_runner()
+                runner = self._client.get_runner()
                 await runner.start_mcp()
             except Exception:
                 logger.debug("MCP start failed", exc_info=True)
@@ -319,7 +317,7 @@ class CodyTUI(App):
 
         try:
             assert self._client is not None
-            runner = self._client._get_runner()
+            runner = self._client.get_runner()
             async for event in runner.run_stream(
                 prompt, message_history=self._message_history
             ):
@@ -413,7 +411,7 @@ class CodyTUI(App):
     def _show_sessions(self) -> None:
         if not self._client:
             return
-        store = self._client._get_session_store()
+        store = self._client.get_session_store()
         sessions = store.list_sessions(limit=10)
         if not sessions:
             self._add_bubble("system", "[yellow]No sessions found[/yellow]")
@@ -434,7 +432,7 @@ class CodyTUI(App):
         if not self._client or not self._config:
             return
 
-        store = self._client._get_session_store()
+        store = self._client.get_session_store()
         session = store.create_session(
             title="TUI session",
             model=self._config.model,

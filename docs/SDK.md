@@ -1012,6 +1012,14 @@ async with client:
 | `client.list_skills()` | 列出所有技能 |
 | `client.get_skill(name)` | 获取技能详情和文档 |
 
+### 高级方法（Power-user API）
+
+| 方法 | 说明 |
+|------|------|
+| `client.set_config(config)` | 注入预构建的 core Config（含 thinking、extra_roots 等覆盖），重置 runner（v1.7.4+） |
+| `client.get_runner()` | 获取底层 AgentRunner，用于原始流式事件或 MCP 控制（v1.7.4+） |
+| `client.get_session_store()` | 获取底层 SessionStore，用于同步会话操作（v1.7.4+） |
+
 ### 其他方法
 
 | 方法 | 说明 |

@@ -32,10 +32,6 @@ from .history import undo_file, redo_file, list_file_changes
 from .todo import todo_write, todo_read
 from .user import question
 
-# Re-export internal helpers used by tests
-from ._file_filter import _is_binary, _parse_gitignore, _is_gitignored, _iter_files
-from .command import _BLOCKED_COMMAND_PATTERNS
-
 # Re-export registry
 from .registry import (
     FILE_TOOLS, SEARCH_TOOLS, COMMAND_TOOLS, SKILL_TOOLS,
@@ -65,7 +61,4 @@ __all__ = [
     "CORE_TOOLS", "SUB_AGENT_TOOLSETS",
     # Registration
     "register_tools", "register_sub_agent_tools",
-    # Test helpers
-    "_is_binary", "_parse_gitignore", "_is_gitignored", "_iter_files",
-    "_BLOCKED_COMMAND_PATTERNS",
 ]
