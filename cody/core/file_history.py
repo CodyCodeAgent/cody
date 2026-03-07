@@ -132,7 +132,8 @@ class FileHistory:
             return None
 
         change = self._undo_stack.pop()
-        full_path = self._workdir / change.file_path
+        file_path = Path(change.file_path)
+        full_path = file_path if file_path.is_absolute() else self._workdir / file_path
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(change.old_content, encoding="utf-8")
@@ -150,7 +151,8 @@ class FileHistory:
             return None
 
         change = self._redo_stack.pop()
-        full_path = self._workdir / change.file_path
+        file_path = Path(change.file_path)
+        full_path = file_path if file_path.is_absolute() else self._workdir / file_path
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(change.new_content, encoding="utf-8")

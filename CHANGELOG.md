@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **统一日志系统** (`core/log.py`) — 所有日志写入 `~/.cody/logs/cody.log`，RotatingFileHandler 自动轮转（5 MB / 3 备份），CLI/TUI/Web 统一接入。`cody run -v` 同时输出到 stderr
+
 ---
 
 ## [1.7.3] - 2026-03-05

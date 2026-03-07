@@ -1,11 +1,14 @@
 """Configuration management"""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Literal, Optional, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class AuthConfig(BaseModel):
@@ -104,13 +107,19 @@ class Config(BaseModel):
             # Layer: defaults ← global ← project ← env vars
             merged: dict = {}
             if global_config.exists():
-                merged.update(json.loads(
-                    global_config.read_text(encoding="utf-8"),
-                ))
+                try:
+                    merged.update(json.loads(
+                        global_config.read_text(encoding="utf-8"),
+                    ))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning("Failed to parse %s: %s, skipping", global_config, e)
             if project_config.exists():
-                merged.update(json.loads(
-                    project_config.read_text(encoding="utf-8"),
-                ))
+                try:
+                    merged.update(json.loads(
+                        project_config.read_text(encoding="utf-8"),
+                    ))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning("Failed to parse %s: %s, skipping", project_config, e)
             # Strip legacy fields from old config files
             merged.pop("coding_plan_key", None)
             merged.pop("coding_plan_protocol", None)
@@ -121,7 +130,11 @@ class Config(BaseModel):
         if not path.exists():
             return cls._apply_env_overrides(cls())
 
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning("Failed to parse %s: %s, using defaults", path, e)
+            return cls._apply_env_overrides(cls())
         # Strip legacy fields from old config files
         data.pop("coding_plan_key", None)
         data.pop("coding_plan_protocol", None)
@@ -149,7 +162,13 @@ class Config(BaseModel):
             config.enable_thinking = env_thinking.lower() in ("1", "true", "yes")
         env_thinking_budget = os.environ.get("CODY_THINKING_BUDGET")
         if env_thinking_budget:
-            config.thinking_budget = int(env_thinking_budget)
+            try:
+                config.thinking_budget = int(env_thinking_budget)
+            except ValueError:
+                logger.warning(
+                    "Invalid CODY_THINKING_BUDGET value: %r, ignoring",
+                    env_thinking_budget,
+                )
         return config
 
     def apply_overrides(

@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from .prompt import ImageData
 
@@ -17,7 +17,7 @@ class Message:
     role: str  # "user" or "assistant"
     content: str
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    images: List[ImageData] = field(default_factory=list)  # only for user messages
+    images: list[ImageData] = field(default_factory=list)  # only for user messages
 
 
 @dataclass
@@ -111,7 +111,7 @@ class SessionStore:
         session_id: str,
         role: str,
         content: str,
-        images: Optional[List[ImageData]] = None,
+        images: Optional[list[ImageData]] = None,
     ) -> Message:
         """Add a message to a session"""
         image_list = list(images) if images else []

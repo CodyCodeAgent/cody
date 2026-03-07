@@ -33,6 +33,7 @@ except ImportError:
 
 from cody import __version__
 from cody.core.errors import CodyAPIError
+from cody.core.log import setup_logging
 
 from .db import ProjectStore
 from .models import HealthResponse, ProjectCreate, ProjectUpdate, ProjectResponse
@@ -53,12 +54,7 @@ from .routes import chat as _chat
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stdout,
-)
+setup_logging()
 logger = logging.getLogger("cody.web")
 
 

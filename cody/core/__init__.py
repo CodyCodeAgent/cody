@@ -54,6 +54,8 @@ _LAZY_IMPORTS = {
     "RateLimitResult": (".rate_limiter", "RateLimitResult"),
     # deps
     "CodyDeps": (".deps", "CodyDeps"),
+    # log
+    "setup_logging": (".log", "setup_logging"),
     # model_resolver
     "resolve_model": (".model_resolver", "resolve_model"),
     # project_instructions
