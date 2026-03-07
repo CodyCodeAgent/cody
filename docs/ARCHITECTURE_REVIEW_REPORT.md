@@ -53,6 +53,7 @@
 | `docs/API.md` | v1.7.0 | ❌ 落后 |
 | `README.md` | v1.7.3 | ✅ 正确 |
 | `CHANGELOG.md` | v1.7.3 | ✅ 正确 |
+| `web/package.json` | 1.7.0 | ❌ 落后（应与 Python 包同步）|
 
 ### 1.3 Python 版本要求不一致（严重）
 
@@ -300,7 +301,7 @@ _event_handlers: list[tuple] = None  # type: ignore
 
 | # | 问题 | 位置 | 建议 |
 |---|------|------|------|
-| S1 | 文档版本号不一致（CLAUDE.md/FEATURES.md/API.md 落后于 v1.7.3）| CLAUDE.md:1, docs/FEATURES.md, docs/API.md | 全量更新版本引用 |
+| S1 | 文档版本号不一致（CLAUDE.md/FEATURES.md/API.md/package.json 落后于 v1.7.3）| CLAUDE.md:1, docs/FEATURES.md, docs/API.md, web/package.json | 全量更新版本引用 |
 | S2 | Python 版本要求不一致（4 处文档仍写 3.9+，实际要求 3.10+）| CLAUDE.md:150, docs/QUICKSTART.md:11, docs/FEATURES.md:461, docs/SKILLS.md:149 | 统一为 `>=3.10` |
 | S3 | `exec_command` 黑名单可绕过（多空格、参数重排等）| cody/core/tools.py:656-663 | 使用正则或命令标准化 |
 
@@ -315,6 +316,10 @@ _event_handlers: list[tuple] = None  # type: ignore
 | R5 | `tools.py` 单文件过大（1289 行）| cody/core/tools.py | 考虑拆分为 `tools/` 包 |
 | R6 | `web.py` 函数内 import stdlib 模块 | cody/core/web.py:239 | 移到文件顶部 |
 | R7 | Web Backend 全局可变状态多 | web/backend/state.py | 考虑 FastAPI 依赖注入 |
+| R8 | 中间件缺少 X-Forwarded-For 处理 | web/backend/middleware.py:118 | Docker/反代环境下限流和审计日志会使用错误 IP |
+| R9 | Tasks 路由 git subprocess 无超时 | web/backend/routes/tasks.py:74-115 | 添加 timeout 参数防止挂起 |
+| R10 | 前端 Settings 页面 API Key 明文显示 | web/src/pages/SettingsPage.tsx:83 | 使用 password 类型 input |
+| R11 | CI 未运行 mypy 类型检查 | .github/workflows/python-publish.yml | 在 CI 中加入 `mypy cody/` 步骤 |
 
 ### 可选（锦上添花）
 
@@ -324,6 +329,9 @@ _event_handlers: list[tuple] = None  # type: ignore
 | O2 | 缺少 ADR（架构决策记录）文档 | docs/ | 记录 shell=True、延迟导入等设计理由 |
 | O3 | pyproject.toml 核心依赖仅 3 个 | pyproject.toml:24-28 | 精简好评，但 pydantic-ai 版本下限很低（0.0.14），应提高 |
 | O4 | CLI/TUI 测试覆盖较薄 | tests/test_cli.py, tests/test_tui.py | 可增加交互场景测试 |
+| O5 | 前端无 .test.ts 文件 | web/src/ | vitest 已配置但无前端单元测试 |
+| O6 | WebSocket 连接未强制 wss:// | web/src/api/client.ts:214 | HTTPS 页面应使用 wss:// |
+| O7 | Sessions 列表存在 N+1 查询 | web/backend/routes/sessions.py:45-48 | 批量查询消息计数 |
 
 ---
 
