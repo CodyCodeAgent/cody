@@ -49,6 +49,7 @@ web/backend/            →  core/runner.py  →  core/tools.py
 | `core/runner.py` | 框架中枢 — Agent 创建、工具注册、run/stream 执行 |
 | `core/tools.py` | 28 个工具函数 + 底部声明式工具注册表 |
 | `core/errors.py` | 错误码 + ToolError 异常层级（Web Backend 按类型映射 HTTP 状态码） |
+| `core/log.py` | 统一日志 — setup_logging()，RotatingFileHandler → ~/.cody/logs/ |
 | `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON，is_ready() 检查 |
 | `core/setup.py` | 交互式配置向导数据层 — SetupAnswers + build_config_from_answers |
 | `core/deps.py` | CodyDeps 数据类 + ToolContext，工具的依赖注入容器 |
