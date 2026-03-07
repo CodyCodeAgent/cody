@@ -41,7 +41,7 @@ def test_init_creates_directory(runner, tmp_path, monkeypatch):
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
-        result = runner.invoke(main, ['init'])
+        result = runner.invoke(main, ['init'], input='n\n')
         assert result.exit_code == 0, result.output
         assert 'Initialized' in result.output
         assert (Path.cwd() / '.cody').exists()
@@ -60,7 +60,7 @@ def test_init_already_exists(runner, tmp_path, monkeypatch):
 
     with runner.isolated_filesystem(temp_dir=tmp_path):
         (Path.cwd() / '.cody').mkdir()
-        result = runner.invoke(main, ['init'])
+        result = runner.invoke(main, ['init'], input='n\n')
         assert result.exit_code == 0, result.output
         # .cody already existed → skip scaffold message
         assert 'skipping scaffold' in result.output
@@ -79,7 +79,7 @@ def test_init_updates_existing_cody_md(runner, tmp_path, monkeypatch):
     with runner.isolated_filesystem(temp_dir=tmp_path):
         (Path.cwd() / '.cody').mkdir()
         (Path.cwd() / 'CODY.md').write_text("old content")
-        result = runner.invoke(main, ['init'])
+        result = runner.invoke(main, ['init'], input='n\n')
         assert result.exit_code == 0, result.output
         # File updated, not just created
         assert 'Updated' in result.output
@@ -113,6 +113,7 @@ def test_chat_help(runner):
 
 def test_chat_nonexistent_session(runner, monkeypatch):
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
+    monkeypatch.setattr("cody.core.config.Config.is_ready", lambda self: True)
     result = runner.invoke(main, ['chat', '--session', 'nonexistent'], input='/quit\n')
     assert 'Session not found' in result.output
 

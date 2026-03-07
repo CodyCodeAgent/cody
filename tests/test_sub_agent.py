@@ -254,11 +254,10 @@ async def test_cleanup(manager):
     with patch.object(manager, "_execute", side_effect=slow_execute):
         await manager.spawn("task1")
         await manager.spawn("task2")
+        await manager.cleanup()
 
-    await manager.cleanup()
-
-    for r in manager.list_agents():
-        assert r.status == AgentStatus.KILLED
+        for r in manager.list_agents():
+            assert r.status == AgentStatus.KILLED
 
 
 # ── List agents ─────────────────────────────────────────────────────────────

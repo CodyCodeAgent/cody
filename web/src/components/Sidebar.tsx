@@ -42,7 +42,7 @@ export default function Sidebar({
           >
             <button
               className="session-link"
-              onClick={() => navigate(`/chat/${p.id}`)}
+              onClick={() => navigate(`/project/${p.id}`)}
             >
               <span className="session-title">{p.name}</span>
               <span className="session-meta">{p.workdir}</span>

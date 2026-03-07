@@ -2,6 +2,7 @@ import type {
   DirectoryListResponse,
   HealthResponse,
   Project,
+  Task,
   SessionDetail,
   WSEvent,
 } from "../types";
@@ -46,12 +47,18 @@ export function listProjects(): Promise<Project[]> {
 export function createProject(
   name: string,
   workdir: string,
-  description?: string
+  description?: string,
+  code_paths?: string[]
 ): Promise<Project> {
   return request("/api/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, workdir, description: description ?? "" }),
+    body: JSON.stringify({
+      name,
+      workdir,
+      description: description ?? "",
+      code_paths: code_paths ?? [],
+    }),
   });
 }
 
@@ -75,6 +82,48 @@ export function updateProject(
 /** DELETE /api/projects/:id */
 export function deleteProject(id: string): Promise<{ status: string }> {
   return request(`/api/projects/${id}`, { method: "DELETE" });
+}
+
+// ── Tasks ──────────────────────────────────────────────────────────────────
+
+/** GET /api/projects/:id/tasks */
+export function listTasks(projectId: string): Promise<Task[]> {
+  return request(`/api/projects/${projectId}/tasks`);
+}
+
+/** POST /api/projects/:id/tasks */
+export function createTask(
+  projectId: string,
+  name: string,
+  branchName: string
+): Promise<Task> {
+  return request(`/api/projects/${projectId}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, branch_name: branchName }),
+  });
+}
+
+/** GET /api/tasks/:id */
+export function getTask(taskId: string): Promise<Task> {
+  return request(`/api/tasks/${taskId}`);
+}
+
+/** PUT /api/tasks/:id */
+export function updateTask(
+  taskId: string,
+  data: { name?: string; status?: string }
+): Promise<Task> {
+  return request(`/api/tasks/${taskId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** DELETE /api/tasks/:id */
+export function deleteTask(taskId: string): Promise<{ status: string }> {
+  return request(`/api/tasks/${taskId}`, { method: "DELETE" });
 }
 
 // ── Sessions ───────────────────────────────────────────────────────────────
@@ -215,6 +264,67 @@ export function connectChat(projectId: string): ChatSocket {
     ws.onerror = () => {
       /* onclose fires after onerror, reconnect handled there */
     };
+  }
+
+  connect();
+  return handle;
+}
+
+/**
+ * Open a WebSocket to /ws/chat/task/:taskId with auto-reconnect.
+ */
+export function connectTaskChat(taskId: string): ChatSocket {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${location.host}/ws/chat/task/${taskId}`;
+
+  let ws: WebSocket;
+  let closed = false;
+  let reconnectTimer: ReturnType<typeof setTimeout>;
+  let retryDelay = 2000;
+  const MAX_RETRY_DELAY = 60000;
+
+  const handle: ChatSocket = {
+    send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(msg));
+      }
+    },
+    close() {
+      closed = true;
+      clearTimeout(reconnectTimer);
+      if (ws) ws.close();
+    },
+    onEvent: null,
+    onStatus: null,
+  };
+
+  function connect() {
+    handle.onStatus?.("connecting");
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      handle.onStatus?.("connected");
+      retryDelay = 2000;
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as WSEvent;
+        handle.onEvent?.(event);
+      } catch {
+        /* ignore non-JSON */
+      }
+    };
+
+    ws.onclose = () => {
+      if (!closed) {
+        handle.onStatus?.("disconnected");
+        reconnectTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY);
+      }
+    };
+
+    ws.onerror = () => {};
   }
 
   connect();

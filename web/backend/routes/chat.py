@@ -110,9 +110,15 @@ async def chat_websocket(
                         # Must create a new runner — changing config alone
                         # won't rebuild the underlying agent/model.
                         from cody.core import AgentRunner
-                        runner = AgentRunner(config=config, workdir=workdir)
+                        extra_roots = [Path(p) for p in (project.code_paths or []) if p]
+                        runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
                     else:
-                        runner = get_runner(workdir)
+                        from cody.core import AgentRunner
+                        extra_roots = [Path(p) for p in (project.code_paths or []) if p]
+                        if extra_roots:
+                            runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
+                        else:
+                            runner = get_runner(workdir)
                     session_store = get_session_store()
 
                     t0 = time.monotonic()

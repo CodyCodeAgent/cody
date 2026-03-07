@@ -19,11 +19,13 @@ class ProjectCreate(BaseModel):
     name: str
     description: str = ""
     workdir: str
+    code_paths: list[str] = []
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    code_paths: Optional[list[str]] = None
 
 
 class ProjectResponse(BaseModel):
@@ -31,7 +33,29 @@ class ProjectResponse(BaseModel):
     name: str
     description: str
     workdir: str
+    code_paths: list[str] = []
     session_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class TaskCreate(BaseModel):
+    name: str
+    branch_name: str
+
+
+class TaskUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+
+
+class TaskResponse(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    branch_name: str
+    session_id: Optional[str] = None
+    status: str
     created_at: str
     updated_at: str
 
