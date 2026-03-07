@@ -12,7 +12,7 @@ from web.backend.app import app
 def _make_config(**overrides):
     """Create a Config with sensible defaults for testing."""
     defaults = {
-        "model": "anthropic:claude-sonnet-4-0",
+        "model": "test-model",
         "model_api_key": "sk-abc123secret",
     }
     defaults.update(overrides)
@@ -30,7 +30,7 @@ def test_get_config():
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["model"] == "anthropic:claude-sonnet-4-0"
+    assert data["model"] == "test-model"
     # API key should be masked
     assert data["model_api_key"] == "***"
 
@@ -89,6 +89,6 @@ def test_put_config_partial_update():
         MockPath.return_value = MagicMock()
 
         client = TestClient(app)
-        resp = client.put("/config", json={"model": "anthropic:claude-haiku-3-5"})
+        resp = client.put("/config", json={"model": "claude-haiku-3-5"})
 
     assert resp.status_code == 200

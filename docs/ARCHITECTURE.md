@@ -334,7 +334,7 @@ Main Agent → spawn_agent("task", "research") tool call
 
 ```
 Config
-├── model: str                    # "anthropic:claude-sonnet-4-0"
+├── model: str                    # "claude-sonnet-4-0"
 ├── skills: SkillConfig           # enabled[], disabled[]
 ├── mcp: MCPConfig                # servers[]
 ├── permissions: PermissionsConfig # overrides{}, default_level

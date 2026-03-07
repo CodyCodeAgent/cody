@@ -50,7 +50,8 @@ class CodyBuilder:
         client = (
             Cody()
             .workdir("/path/to/project")
-            .model("anthropic:claude-sonnet-4-0")
+            .model("your-model-name")
+            .base_url("https://api.example.com/v1")
             .build()
         )
     """
@@ -86,7 +87,7 @@ class CodyBuilder:
         return self
 
     def model(self, model: str) -> "CodyBuilder":
-        """Set model name (e.g., 'anthropic:claude-sonnet-4-0')."""
+        """Set model name (e.g., 'claude-sonnet-4-0', 'gpt-4o')."""
         self._model = model
         return self
 
@@ -186,7 +187,7 @@ def Cody() -> CodyBuilder:
     """Create a new CodyBuilder instance.
 
     Usage:
-        client = Cody().workdir(".").model("anthropic:claude-sonnet-4-0").build()
+        client = Cody().workdir(".").model("your-model-name").base_url("https://api.example.com/v1").build()
     """
     return CodyBuilder()
 
@@ -240,12 +241,9 @@ class AsyncCodyClient:
             )
 
         self.workdir = Path(self._config.workdir) if self._config.workdir else Path.cwd()
-        # Only override model if the user explicitly provided one (not the SDK default)
-        _sdk_default_model = "anthropic:claude-sonnet-4-0"
+        # Only override model if the user explicitly provided one
         self._model_override = (
-            self._config.model.model
-            if self._config.model.model and self._config.model.model != _sdk_default_model
-            else None
+            self._config.model.model if self._config.model.model else None
         )
         self._db_path = Path(self._config.db_path) if self._config.db_path else None
 

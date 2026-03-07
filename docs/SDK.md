@@ -82,7 +82,7 @@ from cody.sdk import AsyncCodyClient, Cody, config
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("anthropic:claude-sonnet-4-0")
+    .model("claude-sonnet-4-0")
     .api_key("sk-ant-xxx")
     .thinking(True, budget=10000)
     .allowed_roots(["/path/to/project", "/shared/libs"])
@@ -94,15 +94,15 @@ client = (
 # 2. 直接构造
 client = AsyncCodyClient(
     workdir="/path/to/project",
-    model="anthropic:claude-sonnet-4-0",
+    model="claude-sonnet-4-0",
     api_key="sk-ant-xxx",
-    base_url=None,  # 使用默认 Anthropic API
+    base_url="https://api.example.com/v1",
     db_path="/path/to/sessions.db",
 )
 
 # 3. Config 对象
 cfg = config(
-    model="anthropic:claude-sonnet-4-0",
+    model="claude-sonnet-4-0",
     workdir=".",
     api_key="sk-ant-xxx",
     enable_thinking=True,
@@ -156,7 +156,7 @@ client = AsyncCodyClient(
 )
 ```
 
-> **说明**：`base_url` 指向 OpenAI 兼容的 API 地址。不设置 `base_url` 时，默认使用 Anthropic API。
+> **说明**：`base_url` 指向 OpenAI 兼容的 API 地址，必须配置。
 
 ### CodyClient（同步）
 
@@ -308,7 +308,7 @@ r3 = await client.run("添加用户认证", session_id=sid)
 # 也可以手动创建会话（可自定义标题）
 session = await client.create_session(
     title="My Project",
-    model="anthropic:claude-sonnet-4-0",
+    model="claude-sonnet-4-0",
     workdir="/path/to/project",
 )
 r4 = await client.run("分析项目结构", session_id=session.id)
@@ -525,7 +525,7 @@ async with client:
 from cody.sdk import AsyncCodyClient, config
 
 cfg = config(
-    model="anthropic:claude-sonnet-4-0",
+    model="claude-sonnet-4-0",
     enable_thinking=True,
     thinking_budget=8000,
 )
@@ -542,7 +542,7 @@ from cody.sdk import SDKConfig, ModelConfig, AsyncCodyClient
 cfg = SDKConfig(
     workdir="/path/to/project",
     model=ModelConfig(
-        model="anthropic:claude-sonnet-4-0",
+        model="claude-sonnet-4-0",
         enable_thinking=True,
         thinking_budget=10000,
     ),

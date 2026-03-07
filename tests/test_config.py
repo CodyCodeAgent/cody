@@ -20,7 +20,7 @@ from cody.core.config import (
 
 def test_default_config():
     config = Config()
-    assert config.model == "anthropic:claude-sonnet-4-0"
+    assert config.model == ""
     assert config.model_base_url is None
     assert config.model_api_key is None
     assert config.auth.type == "api_key"
@@ -110,7 +110,7 @@ def test_security_config_with_whitelist():
 def test_config_load_nonexistent():
     """Loading from nonexistent path returns defaults"""
     config = Config.load("/tmp/nonexistent_cody_config_12345.json")
-    assert config.model == "anthropic:claude-sonnet-4-0"
+    assert config.model == ""
 
 
 def test_config_save_and_load(tmp_path):
@@ -155,7 +155,7 @@ def test_config_load_default_fallback(tmp_path, monkeypatch):
     (tmp_path / "home").mkdir()
 
     config = Config.load(workdir=tmp_path / "project")
-    assert config.model == "anthropic:claude-sonnet-4-0"
+    assert config.model == ""
 
 
 # ── Config round-trip with nested structures ─────────────────────────────────
@@ -280,52 +280,53 @@ def test_config_env_overrides_file_values(tmp_path, monkeypatch):
 # ── Config.is_ready / Config.missing_fields ──────────────────────────────
 
 
-def test_config_is_ready_with_api_key():
-    """Config with model_api_key (no base_url) is ready"""
-    config = Config(model_api_key="sk-test")
+def test_config_is_ready_with_model_and_base_url():
+    """Config with model + base_url is ready"""
+    config = Config(model="test-model", model_base_url="https://api.example.com/v1")
     assert config.is_ready() is True
 
 
-def test_config_is_ready_with_base_url_and_key():
-    """Config with base_url + api_key is ready"""
-    config = Config(model_base_url="https://api.example.com/v1", model_api_key="sk-test")
-    assert config.is_ready() is True
-
-
-def test_config_not_ready_with_base_url_no_key():
-    """Config with base_url but no api_key is NOT ready"""
+def test_config_not_ready_no_model():
+    """Config with no model is NOT ready"""
     config = Config(model_base_url="https://api.example.com/v1")
     assert config.is_ready() is False
 
 
-def test_config_not_ready_no_key():
-    """Config with no api_key is NOT ready"""
+def test_config_not_ready_no_base_url():
+    """Config with no base_url is NOT ready"""
+    config = Config(model="test-model")
+    assert config.is_ready() is False
+
+
+def test_config_not_ready_empty():
+    """Default config is NOT ready"""
     config = Config()
     assert config.is_ready() is False
 
 
-def test_config_missing_fields_no_key():
-    """missing_fields reports missing api_key when not configured"""
+def test_config_missing_fields_no_config():
+    """missing_fields reports missing model and base_url when not configured"""
     config = Config()
     missing = config.missing_fields()
-    assert len(missing) == 1
-    assert "model_api_key" in missing[0]
+    assert len(missing) == 2
+    assert any("model" in m for m in missing)
+    assert any("model_base_url" in m for m in missing)
 
 
 def test_config_missing_fields_empty_when_ready():
     """missing_fields returns empty list when config is ready"""
-    config = Config(model_api_key="sk-test")
+    config = Config(model="test-model", model_base_url="https://api.example.com/v1")
     assert config.missing_fields() == []
 
 
 def test_config_load_strips_legacy_oauth(tmp_path):
     """Config.load ignores legacy claude_oauth_token in JSON files"""
-    data = {"model": "anthropic:claude-sonnet-4-0", "claude_oauth_token": "old-oauth-token"}
+    data = {"model": "test-model", "claude_oauth_token": "old-oauth-token"}
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(data))
 
     config = Config.load(config_path)
-    assert config.model == "anthropic:claude-sonnet-4-0"
+    assert config.model == "test-model"
     assert not hasattr(config, "claude_oauth_token") or getattr(config, "claude_oauth_token", None) is None
 
 

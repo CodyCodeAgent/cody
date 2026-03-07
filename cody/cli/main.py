@@ -116,7 +116,7 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
 
     Examples:
         cody chat
-        cody chat --model anthropic:claude-sonnet-4-0
+        cody chat --model claude-sonnet-4-0
         cody chat --continue
         cody chat --session abc123
         cody chat --workdir /proj/frontend --allow-root /proj/backend
@@ -249,7 +249,7 @@ def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, cont
 
     Examples:
         cody tui
-        cody tui --model anthropic:claude-sonnet-4-0
+        cody tui --model claude-sonnet-4-0
         cody tui --continue
         cody tui --workdir /proj/frontend --allow-root /proj/backend
     """

@@ -160,7 +160,7 @@ cody run "复杂任务分析"
 cody run -v "读取并分析 main.py"
 
 # 输出示例：
-# Model: anthropic:claude-sonnet-4-0
+# Model: claude-sonnet-4-0
 # Workdir: /home/user/project
 #   → read_file(path='main.py')
 #     [内容预览...]
@@ -230,7 +230,7 @@ cody chat \
 cody chat
 
 # 指定模型
-cody chat --model anthropic:claude-sonnet-4-0
+cody chat --model claude-sonnet-4-0
 
 # 指定工作目录
 cody chat --workdir /path/to/project
@@ -268,7 +268,7 @@ cody chat --continue --workdir /new/path
 ```
 ╭────────────────────────────────────────────────────╮
 │                  Cody Chat                          │
-│  Model: anthropic:claude-sonnet-4-0                │
+│  Model: claude-sonnet-4-0                │
 │  Workdir: /home/user/project                       │
 │  Session: abc123                                   │
 ╰────────────────────────────────────────────────────╯
@@ -423,7 +423,7 @@ cody sessions show <session_id>
 ╭────────────────────────────────────────────────────╮
 │            Session abc123                           │
 │  Title: Flask 应用开发                             │
-│  Model: anthropic:claude-sonnet-4-0                │
+│  Model: claude-sonnet-4-0                │
 │  Workdir: /home/user/project                       │
 │  Created: 2026-02-28T10:00:00                      │
 │  Messages: 4                                       │
@@ -576,7 +576,7 @@ cody config show
 **输出示例:**
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "model_api_key": "sk-ant...xyz",
   "enable_thinking": false,
   "skills": {
@@ -596,7 +596,7 @@ cody config show
 
 ```bash
 # 设置模型
-cody config set model "anthropic:claude-sonnet-4-0"
+cody config set model "claude-sonnet-4-0"
 
 # 设置自定义 API 地址
 cody config set model_base_url "https://..."
@@ -612,7 +612,7 @@ cody config set thinking_budget 10000
 **输出:**
 
 ```
-Set model = anthropic:claude-sonnet-4-0
+Set model = claude-sonnet-4-0
 ```
 
 ---
@@ -685,7 +685,7 @@ Initialized Cody in current directory
 
 | 提供商 | 模型示例 |
 |--------|----------|
-| Anthropic | `anthropic:claude-sonnet-4-0`, `anthropic:claude-opus-4-0` |
+| Claude | `claude-sonnet-4-0`, `claude-opus-4-0` |
 | OpenAI | `openai:gpt-4`, `openai:gpt-4-turbo` |
 | Google | `google:gemini-pro` |
 | DeepSeek | `deepseek:deepseek-coder` |

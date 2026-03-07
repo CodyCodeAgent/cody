@@ -120,7 +120,7 @@ from cody import Cody
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("anthropic:claude-sonnet-4-0")
+    .model("claude-sonnet-4-0")
     .thinking(enabled=True, budget=10000)
     .enable_metrics()
     .enable_events()

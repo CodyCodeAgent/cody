@@ -19,7 +19,7 @@ async def builder_example():
     client = (
         Cody()
         .workdir(".")
-        .model("anthropic:claude-sonnet-4-0")
+        .model("your-model-name")
         .thinking(True, budget=10000)
         .build()
     )
@@ -45,7 +45,7 @@ async def direct_example():
 async def config_example():
     """Create client with a config object."""
     cfg = config(
-        model="anthropic:claude-sonnet-4-0",
+        model="your-model-name",
         workdir=".",
         enable_thinking=True,
     )

@@ -60,7 +60,7 @@ class SecurityConfig(BaseModel):
 
 class Config(BaseModel):
     """Main configuration"""
-    model: str = 'anthropic:claude-sonnet-4-0'
+    model: str = ''
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
     enable_thinking: bool = False
@@ -74,13 +74,16 @@ class Config(BaseModel):
 
     def is_ready(self) -> bool:
         """Check if configuration has enough info to make API calls."""
-        return bool(self.model_api_key)
+        return bool(self.model and self.model_base_url)
 
     def missing_fields(self) -> list:
         """Return descriptions of missing configuration fields."""
-        if not self.model_api_key:
-            return ["model_api_key (run 'cody config setup' to configure)"]
-        return []
+        missing = []
+        if not self.model:
+            missing.append("model (run 'cody config setup' to configure)")
+        if not self.model_base_url:
+            missing.append("model_base_url (run 'cody config setup' to configure)")
+        return missing
 
     @classmethod
     def load(

@@ -35,7 +35,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
   "enable_thinking": false,
@@ -78,18 +78,18 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 #### `model`
 
 **类型:** `string`  
-**默认:** `"anthropic:claude-sonnet-4-0"`  
+**默认:** `"claude-sonnet-4-0"`  
 **说明:** AI 模型名称
 
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0"
+  "model": "claude-sonnet-4-0"
 }
 ```
 
 **支持的模型：**
-- `anthropic:claude-sonnet-4-0`
-- `anthropic:claude-opus-4-0`
+- `claude-sonnet-4-0`
+- `claude-opus-4-0`
 - `openai:gpt-4`
 - `openai:gpt-4-turbo`
 - `google:gemini-pro`
@@ -122,7 +122,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 **类型:** `string | null`
 **默认:** `null`
-**说明:** 模型 API Key。Anthropic 或自定义 OpenAI 兼容提供商的 API Key。
+**说明:** 模型 API Key。OpenAI 兼容提供商的 API Key。
 
 `cody config setup` 交互式设置后会自动保存到配置文件。也可通过环境变量 `CODY_MODEL_API_KEY` 覆盖。
 
@@ -508,7 +508,7 @@ cody config show
 **输出示例：**
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "model_api_key": "sk-ant...xyz",
   "enable_thinking": false,
   "skills": {
@@ -527,7 +527,7 @@ cody config show
 
 ```bash
 # 设置模型
-cody config set model "anthropic:claude-sonnet-4-0"
+cody config set model "claude-sonnet-4-0"
 
 # 设置 API 地址
 cody config set model_base_url "https://..."
@@ -544,11 +544,11 @@ cody config set thinking_budget 10000
 
 ## 配置示例
 
-### 示例 1：基础配置（Anthropic）
+### 示例 1：基础配置
 
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "skills": {
     "enabled": ["git", "github", "python"]
   }
@@ -590,7 +590,7 @@ cody config set thinking_budget 10000
 
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "mcp": {
     "servers": [
       {
@@ -651,7 +651,7 @@ cody init
 
 | 安装方式 | 说明 |
 |----------|------|
-| `pip install cody-ai` | 核心 SDK（pydantic-ai、anthropic、pydantic、httpx） |
+| `pip install cody-ai` | 核心 SDK（pydantic-ai、pydantic、httpx） |
 | `pip install cody-ai[cli]` | + CLI（click、rich） |
 | `pip install cody-ai[tui]` | + TUI（textual） |
 | `pip install cody-ai[web]` | + Web（fastapi、uvicorn） |
@@ -684,7 +684,7 @@ export CODY_MODEL_API_KEY=sk-...
 ```bash
 # 全局配置（~/.cody/config.json）
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "skills": {
     "enabled": ["git", "github"]
   }
