@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { connectChat, getSession } from "../api/client";
+import { connectChat, getConfigStatus, getSession } from "../api/client";
 import type { ChatSocket, ChatSocketStatus } from "../api/client";
 import type { ImageAttachment, Message, ToolCallInfo, WSEvent } from "../types";
 import { summarizeArgs } from "../utils/summarizeArgs";
@@ -25,6 +25,8 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [wsStatus, setWsStatus] = useState<ChatSocketStatus>("connecting");
+  const [configReady, setConfigReady] = useState<boolean | null>(null); // null = loading
+  const [configMissing, setConfigMissing] = useState<string[]>([]);
 
   // Display state (flushed from buffer at screen refresh rate)
   const [streamContent, setStreamContent] = useState("");
@@ -97,6 +99,19 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
         /* session may not exist yet */
       });
   }, [sessionId]);
+
+  // Check config readiness on mount
+  useEffect(() => {
+    getConfigStatus()
+      .then((status) => {
+        setConfigReady(status.is_ready);
+        setConfigMissing(status.missing_fields);
+      })
+      .catch(() => {
+        // If the endpoint fails, assume config might be okay and let runtime catch errors
+        setConfigReady(true);
+      });
+  }, []);
 
   // Connect WebSocket
   useEffect(() => {
@@ -205,6 +220,13 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           setStreaming(false);
           break;
         }
+
+        case "config_required":
+          setConfigReady(false);
+          setConfigMissing((event as unknown as { missing_fields?: string[] }).missing_fields ?? []);
+          resetBuffer();
+          setStreaming(false);
+          break;
 
         case "error":
           if (event.message) {
@@ -338,6 +360,23 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           </span>
         )}
       </div>
+      {configReady === false && (
+        <div className="config-banner">
+          <div className="config-banner-icon">!</div>
+          <div className="config-banner-text">
+            <strong>Configuration required</strong>
+            <p>
+              {configMissing.length > 0
+                ? configMissing.join(", ")
+                : "Model and API base URL must be configured before chatting."}
+            </p>
+          </div>
+          <a className="btn btn-primary btn-sm" href="/settings">
+            Go to Settings
+          </a>
+        </div>
+      )}
+
       <div className="messages">
         {messages.map((m, i) => (
           <MessageBubble key={i} message={m} />
@@ -454,10 +493,10 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask Cody..."
-          disabled={streaming}
+          placeholder={configReady === false ? "Configure model in Settings first..." : "Ask Cody..."}
+          disabled={streaming || configReady === false}
         />
-        <button type="submit" disabled={streaming || (!input.trim() && pendingImages.length === 0)}>
+        <button type="submit" disabled={streaming || configReady === false || (!input.trim() && pendingImages.length === 0)}>
           Send
         </button>
       </form>

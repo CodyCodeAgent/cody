@@ -38,7 +38,7 @@ from cody.sdk.client import CodyBuilder, Cody, AsyncCodyClient, CodyClient
 
 def test_model_config_defaults():
     cfg = ModelConfig()
-    assert cfg.model == "anthropic:claude-sonnet-4-0"
+    assert cfg.model == ""
     assert cfg.base_url is None
     assert cfg.api_key is None
     assert cfg.enable_thinking is False
@@ -55,7 +55,7 @@ def test_model_config_to_dict():
 def test_model_config_to_dict_minimal():
     cfg = ModelConfig()
     d = cfg.to_dict()
-    assert d == {"model": "anthropic:claude-sonnet-4-0"}
+    assert d == {"model": ""}
 
 
 def test_permission_config():
@@ -89,7 +89,7 @@ def test_sdk_config_defaults():
     assert cfg.workdir is None
     assert cfg.enable_metrics is False
     assert cfg.enable_events is False
-    assert cfg.model.model == "anthropic:claude-sonnet-4-0"
+    assert cfg.model.model == ""
 
 
 def test_sdk_config_from_dict():

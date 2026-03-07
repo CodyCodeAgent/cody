@@ -11,7 +11,7 @@ from typing import Optional, Literal
 class ModelConfig:
     """Model configuration."""
     
-    model: str = "anthropic:claude-sonnet-4-0"
+    model: str = ""
     base_url: Optional[str] = None
     api_key: Optional[str] = None
     provider: Optional[str] = None
@@ -101,7 +101,7 @@ class SDKConfig:
     
     Usage:
         config = SDKConfig(
-            model="anthropic:claude-sonnet-4-0",
+            model="your-model-name",
             workdir="/path/to/project",
             enable_thinking=True,
             permissions={"exec_command": "allow"},
@@ -229,9 +229,9 @@ def config(
         from cody.sdk import config
         
         cfg = config(
-            model="anthropic:claude-sonnet-4-0",
+            model="your-model-name",
             workdir="/path/to/project",
-            api_key="sk-xxx",
+            base_url="https://api.example.com/v1",
             enable_thinking=True,
             permissions={"exec_command": "allow"},
         )

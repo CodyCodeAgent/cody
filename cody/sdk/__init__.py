@@ -14,7 +14,7 @@ Usage:
     client = (
         Cody()
         .workdir("/path/to/project")
-        .model("anthropic:claude-sonnet-4-0")
+        .model("your-model-name")
         .api_key("sk-xxx")
         .thinking(True)
         .build()
@@ -22,7 +22,7 @@ Usage:
     
     # Method 2: Config object
     cfg = config(
-        model="anthropic:claude-sonnet-4-0",
+        model="your-model-name",
         workdir="/path/to/project",
         api_key="sk-xxx",
         enable_thinking=True,
@@ -32,7 +32,7 @@ Usage:
     # Method 3: Direct parameters
     async with AsyncCodyClient(
         workdir="/path/to/project",
-        model="anthropic:claude-sonnet-4-0",
+        model="your-model-name",
     ) as client:
         result = await client.run("Create a hello.py file")
         print(result.output)

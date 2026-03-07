@@ -30,6 +30,21 @@ class ConfigUpdateRequest(BaseModel):
     thinking_budget: Optional[int] = None
 
 
+@router.get("/config/status")
+async def get_config_status(workdir: Optional[str] = None):
+    """Return config readiness status and missing fields."""
+    try:
+        wd = Path(workdir) if workdir else Path.cwd()
+        cfg = Config.load(workdir=wd)
+        return {
+            "is_ready": cfg.is_ready(),
+            "missing_fields": cfg.missing_fields(),
+        }
+    except Exception as e:
+        logger.error("GET /config/status error: %s", e, exc_info=True)
+        raise_structured(ErrorCode.SERVER_ERROR, str(e), status_code=500)
+
+
 @router.get("/config")
 async def get_config(workdir: Optional[str] = None):
     """Return current configuration (excluding secrets)."""

@@ -64,12 +64,12 @@ def test_tui_default_construction():
 
 def test_tui_with_options(tmp_path):
     app = CodyTUI(
-        model="anthropic:claude-sonnet-4-0",
+        model="test-model",
         workdir=tmp_path,
         session_id="abc123",
         continue_last=True,
     )
-    assert app._model_override == "anthropic:claude-sonnet-4-0"
+    assert app._model_override == "test-model"
     assert app._workdir == tmp_path.resolve()
     assert app._session_id_arg == "abc123"
     assert app._continue_last is True

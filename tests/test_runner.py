@@ -270,13 +270,13 @@ async def test_run_with_session_not_found(tmp_path):
 # ── _resolve_model ──────────────────────────────────────────────────────────
 
 
-def test_resolve_model_no_api_key_raises():
-    """Without api_key, _resolve_model raises ValueError"""
+def test_resolve_model_no_base_url_raises():
+    """Without model_base_url, _resolve_model raises ValueError"""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(model="anthropic:claude-sonnet-4-0")
+        runner.config = Config(model="test-model")
 
-    with pytest.raises(ValueError, match="model_api_key is required"):
+    with pytest.raises(ValueError, match="model_base_url is required"):
         runner._resolve_model()
 
 
@@ -308,51 +308,6 @@ def test_resolve_model_base_url_without_api_key():
     # Should not raise — falls back to "not-set" placeholder
     result = runner._resolve_model()
     assert not isinstance(result, str)
-
-
-def test_resolve_model_api_key_anthropic():
-    """With model_api_key (no base_url), _resolve_model returns an AnthropicModel"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="anthropic:claude-sonnet-4-0",
-            model_api_key="sk-ant-test-key",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    from pydantic_ai.models.anthropic import AnthropicModel
-    assert isinstance(result, AnthropicModel)
-
-
-def test_resolve_model_api_key_strips_prefix():
-    """Anthropic API key path strips 'anthropic:' prefix from model name"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="anthropic:claude-sonnet-4-0",
-            model_api_key="sk-ant-test-key",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    assert "anthropic:" not in str(result.model_name)
-
-
-def test_resolve_model_base_url_takes_priority_over_api_key():
-    """model_base_url takes priority over model_api_key for Anthropic"""
-    with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
-        runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config(
-            model="glm-4",
-            model_base_url="https://open.bigmodel.cn/api/paas/v4/",
-            model_api_key="sk-test",
-        )
-
-    result = runner._resolve_model()
-    assert not isinstance(result, str)
-    from pydantic_ai.models.openai import OpenAIChatModel
-    assert isinstance(result, OpenAIChatModel)
 
 
 # ── model_base_url _resolve_model ──────────────────────────────────────────

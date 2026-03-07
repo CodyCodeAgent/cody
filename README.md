@@ -119,7 +119,7 @@ AI 代理的使用说明...
 
 | 提供商 | 模型示例 |
 |--------|----------|
-| Anthropic | `anthropic:claude-sonnet-4-0`, `anthropic:claude-opus-4-0` |
+| Claude | `claude-sonnet-4-0`, `claude-opus-4-0` |
 | OpenAI | `openai:gpt-4`, `openai:gpt-4-turbo` |
 | Google | `google:gemini-pro` |
 | DeepSeek | `deepseek:deepseek-coder` |

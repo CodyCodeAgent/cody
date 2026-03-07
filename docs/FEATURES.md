@@ -203,7 +203,7 @@ pip install cody-ai[all]       # 全部功能
 from cody import Cody
 
 # Builder 模式创建客户端
-client = Cody().workdir("/path/to/project").model("anthropic:claude-sonnet-4-0").build()
+client = Cody().workdir("/path/to/project").model("claude-sonnet-4-0").build()
 
 # 同步执行
 result = client.run("重构 auth.py，提取通用逻辑到 utils.py")
@@ -399,7 +399,7 @@ cody tui --session <id>      # 恢复指定会话
 **`.cody/config.json`（项目级）：**
 ```json
 {
-  "model": "anthropic:claude-sonnet-4-0",
+  "model": "claude-sonnet-4-0",
   "skills": {
     "enabled": ["github", "docker"],
     "disabled": ["web"]
@@ -419,7 +419,7 @@ cody tui --session <id>      # 恢复指定会话
 ```json
 {
   "model_api_key": "sk-...",
-  "default_model": "anthropic:claude-sonnet-4-0",
+  "default_model": "claude-sonnet-4-0",
   "skills": {
     "enabled": ["git"]
   }
@@ -432,7 +432,7 @@ cody tui --session <id>      # 恢复指定会话
 |------|------|------|
 | 交互式配置 | `cody config setup` | 推荐方式，引导配置并保存 |
 | OpenAI 兼容 API | `model_base_url` + `model_api_key` | 智谱 GLM、阿里 DashScope 等 |
-| Anthropic API Key | `model_api_key`（通过 `cody config setup` 配置） | 默认方式 |
+| API Key | `model_api_key`（通过 `cody config setup` 配置） | 可选 |
 
 ### 8. 安全特性
 
@@ -484,7 +484,7 @@ cody tui --session <id>      # 恢复指定会话
 from cody import Cody
 
 # 构建自己的 AI 代码审查系统
-client = Cody().workdir(repo_path).model("anthropic:claude-sonnet-4-0").build()
+client = Cody().workdir(repo_path).model("claude-sonnet-4-0").build()
 
 # 自动代码审查
 diff = get_pr_diff()
@@ -686,7 +686,7 @@ cody run "使用项目 B 的配置"
 
 **阿里云百炼 Coding Plan**
 - [x] 集成百炼 Coding Plan API（Qwen3.5、GLM-5、Kimi K2.5、MiniMax M2.5 等）
-- [x] 支持 OpenAI 和 Anthropic 两种协议
+- [x] 支持 OpenAI 兼容协议
 - [x] CLI `--coding-plan-key` / `--coding-plan-protocol` 参数
 - [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
 
@@ -740,7 +740,7 @@ cody run "使用项目 B 的配置"
 - [x] 与 TUI 一致的 120 字符截断策略
 
 **PyPI 依赖分层**
-- [x] 核心依赖仅 4 个 — pydantic-ai、anthropic、pydantic、httpx
+- [x] 核心依赖仅 3 个 — pydantic-ai、pydantic、httpx
 - [x] 可选依赖组 — `[cli]`、`[tui]`、`[web]`、`[repl]`、`[all]`、`[dev]`
 - [x] 入口模块友好报错 — 缺依赖时提示 `pip install cody-ai[xxx]`
 - [x] 移除未使用的 python-dotenv 依赖

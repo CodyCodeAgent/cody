@@ -324,6 +324,48 @@ body {
   color: #a1a1aa;
 }
 
+/* ── Config banner ───────────────────────────────── */
+
+.config-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: rgba(250, 204, 21, 0.08);
+  border-bottom: 1px solid rgba(250, 204, 21, 0.2);
+}
+
+.config-banner-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.config-banner-text {
+  flex: 1;
+  font-size: 13px;
+  color: #e4e4e7;
+}
+
+.config-banner-text strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #facc15;
+}
+
+.config-banner-text p {
+  color: #a1a1aa;
+  margin: 0;
+}
+
 /* ── Chat input ──────────────────────────────────── */
 
 .chat-input {

@@ -290,7 +290,9 @@ class AgentRunner:
             "You have access to file operations, shell commands, skills, web search, "
             "and code intelligence via LSP. "
             "When a skill matches the task, call read_skill(skill_name) to load its "
-            "full instructions. For complex tasks, spawn sub-agents using spawn_agent(). "
+            "full instructions. "
+            "For complex tasks with independent parts, use spawn_agent() to run "
+            "sub-agents in parallel — see its description for usage guide. "
             "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
             "Always execute commands and file operations as needed to complete tasks.",
         ]

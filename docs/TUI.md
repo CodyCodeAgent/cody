@@ -15,7 +15,7 @@ TUI（Terminal User Interface）是 Cody 框架的参考实现之一，提供全
 cody tui
 
 # 指定模型
-cody tui --model anthropic:claude-sonnet-4-0
+cody tui --model claude-sonnet-4-0
 
 # 继续上次会话
 cody tui --continue
@@ -79,7 +79,7 @@ cody tui --workdir /path/to/project
 
 **空闲时** — 显示当前会话信息：
 ```
-Session: abc123 | Model: anthropic:claude-sonnet-4-0 | Dir: project | Messages: 4
+Session: abc123 | Model: claude-sonnet-4-0 | Dir: project | Messages: 4
 ```
 
 | 字段 | 说明 |

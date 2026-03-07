@@ -12,11 +12,41 @@ from web.backend.app import app
 def _make_config(**overrides):
     """Create a Config with sensible defaults for testing."""
     defaults = {
-        "model": "anthropic:claude-sonnet-4-0",
+        "model": "test-model",
         "model_api_key": "sk-abc123secret",
     }
     defaults.update(overrides)
     return Config(**defaults)
+
+
+def test_config_status_ready():
+    """GET /config/status returns ready when model + base_url set."""
+    cfg = _make_config(model_base_url="https://api.example.com/v1")
+
+    with patch("web.backend.routes.config.Config") as MockConfig:
+        MockConfig.load.return_value = cfg
+        client = TestClient(app)
+        resp = client.get("/config/status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_ready"] is True
+    assert data["missing_fields"] == []
+
+
+def test_config_status_not_ready():
+    """GET /config/status returns not ready when config is empty."""
+    cfg = Config()  # empty defaults
+
+    with patch("web.backend.routes.config.Config") as MockConfig:
+        MockConfig.load.return_value = cfg
+        client = TestClient(app)
+        resp = client.get("/config/status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_ready"] is False
+    assert len(data["missing_fields"]) > 0
 
 
 def test_get_config():
@@ -30,7 +60,7 @@ def test_get_config():
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["model"] == "anthropic:claude-sonnet-4-0"
+    assert data["model"] == "test-model"
     # API key should be masked
     assert data["model_api_key"] == "***"
 
@@ -89,6 +119,6 @@ def test_put_config_partial_update():
         MockPath.return_value = MagicMock()
 
         client = TestClient(app)
-        resp = client.put("/config", json={"model": "anthropic:claude-haiku-3-5"})
+        resp = client.put("/config", json={"model": "claude-haiku-3-5"})
 
     assert resp.status_code == 200

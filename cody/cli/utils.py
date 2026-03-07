@@ -45,16 +45,14 @@ def _interactive_setup() -> Config:
     # 1. API Key (required)
     api_key = click.prompt("\nAPI Key", prompt_suffix=": ")
 
-    # 2. Base URL (optional — leave empty for Anthropic)
+    # 2. Base URL (required)
     base_url = click.prompt(
-        "API Base URL (leave empty for Anthropic)",
-        default="",
+        "API Base URL",
         prompt_suffix=": ",
-    ).strip() or None
+    ).strip()
 
     # 3. Model name
-    default_model = "anthropic:claude-sonnet-4-0" if not base_url else ""
-    model = click.prompt("Model name", default=default_model, prompt_suffix=": ")
+    model = click.prompt("Model name", prompt_suffix=": ")
 
     # 4. Thinking mode
     enable_thinking = click.confirm("Enable thinking mode?", default=False)
