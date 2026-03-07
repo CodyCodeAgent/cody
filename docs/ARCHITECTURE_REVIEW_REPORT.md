@@ -130,6 +130,24 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ...
   - `core/tools/registry.py` — 声明式注册表
 - 当前虽然用注释分隔良好，但随着工具增加，单文件维护难度会上升
 
+**CLI/TUI 绕过 SDK 直接使用 core（建议）**
+
+- 位置：`cody/cli/main.py`、`cody/tui/app.py`
+- 问题：CLI 和 TUI 直接 import `AgentRunner`、`Config`、`SessionStore`，绕过了 SDK 层
+- 影响：
+  - 无法享受 SDK 的事件钩子（events）和指标收集（metrics）
+  - 会话管理逻辑在 CLI、TUI、SDK 三处重复实现
+  - `messages_to_history()` 调用在 `cli/utils.py:112` 和 `tui/app.py:136` 重复
+- 建议：CLI/TUI 应通过 `AsyncCodyClient` 访问 core，实现统一的监控和错误处理
+- 架构应为：CLI/TUI → SDK → core（而非 CLI/TUI → core）
+
+**TUI 异常处理吞没错误（建议）**
+
+- 位置：`cody/tui/app.py:149,158,361`、`cody/tui/widgets.py:49`
+- 问题：4 处 `except Exception: pass`，静默吞没 MCP/LSP 启动失败和 widget 更新错误
+- 影响：用户无法得知服务启动失败
+- 建议：至少使用 `logger.exception()` 记录日志
+
 **Web Backend `state.py` 全局可变状态较多（建议）**
 
 - 位置：`web/backend/state.py`
@@ -320,6 +338,8 @@ _event_handlers: list[tuple] = None  # type: ignore
 | R9 | Tasks 路由 git subprocess 无超时 | web/backend/routes/tasks.py:74-115 | 添加 timeout 参数防止挂起 |
 | R10 | 前端 Settings 页面 API Key 明文显示 | web/src/pages/SettingsPage.tsx:83 | 使用 password 类型 input |
 | R11 | CI 未运行 mypy 类型检查 | .github/workflows/python-publish.yml | 在 CI 中加入 `mypy cody/` 步骤 |
+| R12 | CLI/TUI 绕过 SDK 直接使用 core | cody/cli/main.py, cody/tui/app.py | 改为通过 AsyncCodyClient 访问 core |
+| R13 | TUI 4 处 bare except 吞没错误 | cody/tui/app.py:149,158,361, widgets.py:49 | 至少添加 logger.exception() |
 
 ### 可选（锦上添花）
 
