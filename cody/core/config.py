@@ -59,6 +59,8 @@ class SecurityConfig(BaseModel):
     restricted_paths: list[str] = Field(default_factory=list)
     allowed_roots: list[str] = Field(default_factory=list)
     require_confirmation: bool = True
+    allow_private_urls: bool = False
+    command_timeout: int = 30
 
 
 class Config(BaseModel):
@@ -213,10 +215,21 @@ class Config(BaseModel):
     def save(self, path: Union[Path, str]):
         """Save configuration to file.
 
-        model_api_key is persisted to the config file for convenience.
-        Use environment variables (CODY_MODEL_API_KEY) to override if needed.
+        Sensitive fields (API keys, tokens) are excluded from persistence.
+        Use environment variables (CODY_MODEL_API_KEY) to supply secrets.
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump(exclude_none=True)
+        # Exclude sensitive fields from persistence
+        data.pop("model_api_key", None)
+        if "auth" in data:
+            data["auth"].pop("token", None)
+            data["auth"].pop("refresh_token", None)
+            data["auth"].pop("api_key", None)
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        # Restrict file permissions (owner read/write only)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass

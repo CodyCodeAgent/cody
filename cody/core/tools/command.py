@@ -11,6 +11,8 @@ from ._base import _check_permission
 
 # Regex-based blocked command patterns — handles whitespace variations and
 # argument reordering that simple substring matching would miss.
+_MAX_COMMAND_LENGTH = 4096
+
 _BLOCKED_COMMAND_PATTERNS = [
     re.compile(r'rm\s+-[a-z]*r[a-z]*f[a-z]*\s+/'),    # rm -rf /
     re.compile(r'rm\s+-[a-z]*f[a-z]*r[a-z]*\s+/'),    # rm -fr /
@@ -24,6 +26,11 @@ _BLOCKED_COMMAND_PATTERNS = [
     re.compile(r':\(\)\s*\{'),                           # fork bomb
     re.compile(r'mkfs\.'),                               # mkfs
     re.compile(r'>\s*/dev/sd'),                          # overwrite disk
+    re.compile(r'\$\('),                                 # command substitution $(...)
+    re.compile(r'`[^`]+`'),                              # backtick command substitution
+    re.compile(r'\beval\b'),                             # eval
+    re.compile(r'\bexec\b'),                             # exec
+    re.compile(r'base64\s+.*\|\s*(sh|bash|zsh)'),       # base64 decode piped to shell
 ]
 
 
@@ -34,6 +41,12 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
         command: Command to execute
     """
     _check_permission(ctx, "exec_command")
+
+    # Reject excessively long commands
+    if len(command) > _MAX_COMMAND_LENGTH:
+        raise ToolPermissionDenied(
+            f"Command too long ({len(command)} chars, max {_MAX_COMMAND_LENGTH})"
+        )
 
     # Normalize whitespace for consistent pattern matching
     normalized = re.sub(r'\s+', ' ', command.strip())
