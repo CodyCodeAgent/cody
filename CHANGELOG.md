@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.8.0] - 2026-03-08
+
 ### Changed
 - **CLI/TUI 完全回归 SDK 流式 API** — CLI 和 TUI 不再直接使用 `runner.run_stream()`，改为通过 `client.stream()` 消费 `StreamChunk`。CLI 不再维护 `message_history` 变量，SDK 通过 `session_id` 自动管理会话消息
 - **Web Backend DI 清理** — 删除 6 处 `session_store` fallback 死代码（projects/tasks/chat/task_chat），提取 `resolve_chat_runner()` 共享函数消除 chat/task_chat 50 行重复逻辑
