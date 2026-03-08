@@ -8,8 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **CLI/TUI 完全回归 SDK 流式 API** — CLI 和 TUI 不再直接使用 `runner.run_stream()`，改为通过 `client.stream()` 消费 `StreamChunk`。CLI 不再维护 `message_history` 变量，SDK 通过 `session_id` 自动管理会话消息
+- **Web Backend DI 清理** — 删除 6 处 `session_store` fallback 死代码（projects/tasks/chat/task_chat），提取 `resolve_chat_runner()` 共享函数消除 chat/task_chat 50 行重复逻辑
+- **SDK 类属性别名移除** — 删除 `_get_runner = get_runner` / `_get_session_store = get_session_store` 不安全别名，内部统一使用 `self.get_runner()` / `self.get_session_store()`
+
 ### Added
 - **统一日志系统** (`core/log.py`) — 所有日志写入 `~/.cody/logs/cody.log`，RotatingFileHandler 自动轮转（5 MB / 3 备份），CLI/TUI/Web 统一接入。`cody run -v` 同时输出到 stderr
+- **StreamChunk.tool_call_id** — 流式事件新增 `tool_call_id` 字段，`tool_call` 和 `tool_result` 类型均携带工具调用 ID
+- **AsyncCodyClient.start_mcp()** — 新增公开方法，用于在 `stream()` 前启动 MCP 服务器
 
 ---
 
@@ -17,7 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - **工具系统模块化** — `core/tools.py`（1307 行）拆分为 `core/tools/` 包（14 个子模块），按类别组织：file_ops、search、command、skills、agents、mcp、web、lsp、history、todo、user、registry。通过 `__init__.py` re-export 保持完全向后兼容
-- **CLI/TUI 走 SDK 层** — CLI 和 TUI 不再直接导入 `core.AgentRunner`/`core.SessionStore`，改为通过 `AsyncCodyClient` SDK 进行会话管理。流式渲染仍使用 core 原始事件
+- **CLI/TUI 走 SDK 层** — CLI 和 TUI 不再直接导入 `core.AgentRunner`/`core.SessionStore`，改为通过 `AsyncCodyClient` SDK 进行会话管理和流式渲染
 - **Web Backend 依赖注入** — 路由端点从直接调用全局 getter 改为 FastAPI `Depends()` 注入（`session_store_dep`、`audit_logger_dep`），提升可测试性
 - **pydantic-ai 版本下限** — `>=0.0.14` → `>=0.1.0`
 

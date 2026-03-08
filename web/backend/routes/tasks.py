@@ -43,7 +43,7 @@ async def list_tasks(project_id: str, store: ProjectStore):
 
 
 async def create_task(project_id: str, body: TaskCreate, store: ProjectStore,
-                      session_store: SessionStore | None = None):
+                      session_store: SessionStore = None):
     """Create a development task: create git branch and chat session."""
     logger.info(
         "Create task: project=%s name=%s branch=%s",
@@ -136,9 +136,6 @@ async def create_task(project_id: str, body: TaskCreate, store: ProjectStore,
 
     # Create a chat session for this task
     try:
-        if session_store is None:
-            from ..state import get_session_store
-            session_store = get_session_store()
         session = await asyncio.to_thread(
             session_store.create_session,
             title=f"{project.name} - {body.name}",
@@ -172,7 +169,7 @@ async def update_task(task_id: str, body: TaskUpdate, store: ProjectStore):
 
 
 async def delete_task(task_id: str, store: ProjectStore,
-                      session_store: SessionStore | None = None):
+                      session_store: SessionStore = None):
     """Delete a task and its linked session."""
     logger.info("Delete task: id=%s", task_id)
     task = await asyncio.to_thread(store.get_task, task_id)
@@ -181,9 +178,6 @@ async def delete_task(task_id: str, store: ProjectStore,
 
     if task.session_id:
         try:
-            if session_store is None:
-                from ..state import get_session_store
-                session_store = get_session_store()
             await asyncio.to_thread(
                 session_store.delete_session, task.session_id,
             )

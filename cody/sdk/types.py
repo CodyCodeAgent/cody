@@ -46,6 +46,8 @@ class StreamChunk:
     # Tool call details (populated when type="tool_call")
     tool_name: Optional[str] = None
     args: Optional[dict] = None
+    # Tool call ID (populated when type="tool_call" or "tool_result")
+    tool_call_id: Optional[str] = None
     # Usage info (populated when type="done")
     usage: Optional[Usage] = None
     # Compact event details (populated when type="compact")
@@ -92,11 +94,13 @@ def _event_to_chunk(
         return StreamChunk(
             type="tool_call", content=event.tool_name, session_id=session_id,
             tool_name=event.tool_name, args=event.args,
+            tool_call_id=event.tool_call_id,
         )
     elif isinstance(event, ToolResultEvent):
         return StreamChunk(
             type="tool_result", content=event.result, session_id=session_id,
             tool_name=event.tool_name,
+            tool_call_id=event.tool_call_id,
         )
     elif isinstance(event, CompactEvent):
         return StreamChunk(

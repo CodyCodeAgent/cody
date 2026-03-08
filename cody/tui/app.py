@@ -151,8 +151,7 @@ class CodyTUI(App):
         """Start MCP servers in the background."""
         if self._client:
             try:
-                runner = self._client.get_runner()
-                await runner.start_mcp()
+                await self._client.start_mcp()
             except Exception:
                 logger.debug("MCP start failed", exc_info=True)
 
@@ -254,16 +253,12 @@ class CodyTUI(App):
         # Show user message
         self._add_bubble("user", text)
 
-        # Auto-title
+        # Auto-title (before stream, which auto-saves user message)
         assert self._session_id is not None
         if self._client and self._client.get_message_count(self._session_id) == 0:
             self._client.update_title(self._session_id, auto_title(text))
 
-        # Save user message
-        if self._client:
-            self._client.add_message(self._session_id, "user", text)
-
-        # Run agent
+        # Run agent — SDK auto-saves user+assistant messages via session
         self._run_agent(text)
 
     _SPINNER_FRAMES = SPINNER_FRAMES
@@ -299,12 +294,7 @@ class CodyTUI(App):
 
     @work(thread=False)
     async def _run_agent(self, prompt: str) -> None:
-        """Stream agent response with structured events."""
-        from ..core.runner import (
-            CompactEvent, ThinkingEvent, TextDeltaEvent, ToolCallEvent,
-            ToolResultEvent, DoneEvent,
-        )
-
+        """Stream agent response via SDK StreamChunk API."""
         assert self._session_id is not None
         self.is_running = True
         self._set_input_enabled(False)
@@ -317,45 +307,42 @@ class CodyTUI(App):
 
         try:
             assert self._client is not None
-            runner = self._client.get_runner()
-            async for event in runner.run_stream(
-                prompt, message_history=self._message_history
+            async for chunk in self._client.stream(
+                prompt, session_id=self._session_id
             ):
                 if self._cancel_event.is_set():
                     bubble.append("\n\n[dim italic](cancelled)[/dim italic]")
                     break
 
-                if isinstance(event, CompactEvent):
+                if chunk.type == "compact":
                     self._add_bubble(
                         "system",
-                        f"[yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]",
+                        f"[yellow]{compact_message(chunk.original_messages, chunk.compacted_messages, chunk.estimated_tokens_saved)}[/yellow]",
                     )
-                elif isinstance(event, ThinkingEvent):
-                    bubble.append(f"[dim]{event.content}[/dim]")
-                elif isinstance(event, ToolCallEvent):
-                    self._set_processing_state(f"Running {event.tool_name}...")
+                elif chunk.type == "thinking":
+                    bubble.append(f"[dim]{chunk.content}[/dim]")
+                elif chunk.type == "tool_call":
+                    tool_name = chunk.tool_name or ""
+                    self._set_processing_state(f"Running {tool_name}...")
+                    args = chunk.args or {}
                     args_str = ", ".join(
                         f"{k}={_truncate_repr(v)}"
-                        for k, v in list(event.args.items())[:3]
+                        for k, v in list(args.items())[:3]
                     )
-                    bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
-                elif isinstance(event, ToolResultEvent):
+                    bubble.append(f"\n[dim]→ {tool_name}({args_str})[/dim]\n")
+                elif chunk.type == "tool_result":
                     self._set_processing_state("Generating...")
-                    result_len = len(event.result) if event.result else 0
+                    result_len = len(chunk.content) if chunk.content else 0
+                    tool_name = chunk.tool_name or ""
                     bubble.append(
-                        f"[dim]✓ {event.tool_name} done ({result_len} chars)[/dim]\n"
+                        f"[dim]✓ {tool_name} done ({result_len} chars)[/dim]\n"
                     )
-                elif isinstance(event, TextDeltaEvent):
+                elif chunk.type == "text_delta":
                     self._set_processing_state("Generating...")
-                    bubble.append(event.content)
-                elif isinstance(event, DoneEvent):
-                    # Use real message history from pydantic-ai (includes tool calls)
-                    self._message_history = event.result.all_messages()
-                    # Save assistant message
-                    if self._client and not self._cancel_event.is_set():
-                        self._client.add_message(
-                            self._session_id, "assistant", event.result.output
-                        )
+                    bubble.append(chunk.content)
+                elif chunk.type == "done":
+                    # Update message history from SDK stream
+                    self._message_history = chunk.message_history or []
 
         except Exception as e:
             bubble.append(f"\n\n[bold red]Error: {e}[/bold red]")

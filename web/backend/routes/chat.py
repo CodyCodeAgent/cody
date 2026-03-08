@@ -15,9 +15,8 @@ from cody.core import SessionStore
 from cody.core.auth import AuthError
 
 from ..db import ProjectStore
-from ..helpers import build_prompt, serialize_stream_event
+from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
 from ..middleware import validate_credential
-from ..state import get_config, get_runner
 
 logger = logging.getLogger("cody.web.chat")
 
@@ -26,7 +25,7 @@ async def chat_websocket(
     ws: WebSocket,
     project_id: str,
     store: ProjectStore = None,
-    session_store: SessionStore | None = None,
+    session_store: SessionStore = None,
 ):
     """WebSocket endpoint that streams AI responses for a project."""
     # Authenticate before accepting
@@ -80,15 +79,11 @@ async def chat_websocket(
 
                 try:
                     workdir = Path(project.workdir)
-                    config = get_config(workdir)
-                    logger.info(
-                        "Chat config: model=%s api_key_set=%s base_url=%s thinking=%s",
-                        config.model, bool(config.model_api_key),
-                        config.model_base_url or "(default)", config.enable_thinking,
-                    )
-
-                    # Fast-fail: check API key before making any network call
-                    if not data.get("model_api_key") and not config.is_ready():
+                    try:
+                        config, runner = resolve_chat_runner(
+                            workdir, data, project.code_paths,
+                        )
+                    except ValueError:
                         logger.warning("Chat no API key: project=%s", project_id)
                         await ws.send_json({
                             "type": "error",
@@ -97,34 +92,11 @@ async def chat_websocket(
                         })
                         continue
 
-                    # Apply per-message overrides from frontend
-                    overrides = {k: data.get(k) for k in ("model", "model_base_url", "model_api_key",
-                                                           "enable_thinking", "thinking_budget") if data.get(k)}
-                    if overrides:
-                        logger.info("Chat overrides: project=%s %s", project_id, overrides)
-                        config.apply_overrides(
-                            model=data.get("model"),
-                            model_base_url=data.get("model_base_url"),
-                            model_api_key=data.get("model_api_key"),
-                            enable_thinking=data.get("enable_thinking"),
-                            thinking_budget=data.get("thinking_budget"),
-                        )
-                        # Must create a new runner — changing config alone
-                        # won't rebuild the underlying agent/model.
-                        from cody.core import AgentRunner
-                        extra_roots = [Path(p) for p in (project.code_paths or []) if p]
-                        runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
-                    else:
-                        from cody.core import AgentRunner
-                        extra_roots = [Path(p) for p in (project.code_paths or []) if p]
-                        if extra_roots:
-                            runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
-                        else:
-                            runner = get_runner(workdir)
-                    if session_store is None:
-                        from ..state import get_session_store
-                        session_store = get_session_store()
-
+                    logger.info(
+                        "Chat config: model=%s api_key_set=%s base_url=%s thinking=%s",
+                        config.model, bool(config.model_api_key),
+                        config.model_base_url or "(default)", config.enable_thinking,
+                    )
                     t0 = time.monotonic()
                     event_count = 0
                     last_event_type = ""

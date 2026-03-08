@@ -16,9 +16,8 @@ from cody.core import SessionStore
 from cody.core.auth import AuthError
 
 from ..db import ProjectStore
-from ..helpers import build_prompt, serialize_stream_event
+from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
 from ..middleware import validate_credential
-from ..state import get_config, get_runner
 
 logger = logging.getLogger("cody.web.task_chat")
 
@@ -27,7 +26,7 @@ async def task_chat_websocket(
     ws: WebSocket,
     task_id: str,
     store: ProjectStore = None,
-    session_store: SessionStore | None = None,
+    session_store: SessionStore = None,
 ):
     """WebSocket endpoint that streams AI responses for a development task."""
     # Authenticate before accepting
@@ -109,54 +108,16 @@ async def task_chat_websocket(
                 )
 
                 try:
-                    config = get_config(workdir)
-
-                    if not data.get("model_api_key") and not config.is_ready():
+                    try:
+                        config, runner = resolve_chat_runner(
+                            workdir, data, project.code_paths,
+                        )
+                    except ValueError:
                         await ws.send_json({
                             "type": "error",
                             "message": "No API key configured — please set your API key in Settings.",
                         })
                         continue
-
-                    # Apply per-message overrides
-                    overrides = {
-                        k: data.get(k)
-                        for k in ("model", "model_base_url", "model_api_key",
-                                  "enable_thinking", "thinking_budget")
-                        if data.get(k)
-                    }
-                    if overrides:
-                        config.apply_overrides(
-                            model=data.get("model"),
-                            model_base_url=data.get("model_base_url"),
-                            model_api_key=data.get("model_api_key"),
-                            enable_thinking=data.get("enable_thinking"),
-                            thinking_budget=data.get("thinking_budget"),
-                        )
-                        from cody.core import AgentRunner
-                        # Pass code_paths as allowed_roots
-                        extra_roots = [Path(p) for p in project.code_paths if p]
-                        runner = AgentRunner(
-                            config=config,
-                            workdir=workdir,
-                            extra_roots=extra_roots,
-                        )
-                    else:
-                        # Build runner with code_paths as extra allowed roots
-                        from cody.core import AgentRunner
-                        extra_roots = [Path(p) for p in project.code_paths if p]
-                        if extra_roots:
-                            runner = AgentRunner(
-                                config=config,
-                                workdir=workdir,
-                                extra_roots=extra_roots,
-                            )
-                        else:
-                            runner = get_runner(workdir)
-
-                    if session_store is None:
-                        from ..state import get_session_store
-                        session_store = get_session_store()
 
                     t0 = time.monotonic()
                     event_count = 0

@@ -93,14 +93,11 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
     async def _run_stream():
-        runner = client.get_runner()
-        await runner.start_mcp()
+        await client.start_mcp()
         try:
-            result = await _render_stream(runner.run_stream(prompt), verbose=verbose)
-            if verbose and result:
-                usage = result.usage()
-                if usage:
-                    console.print(f"[dim]Tokens: {usage.total_tokens}[/dim]")
+            done_chunk = await _render_stream(client.stream(prompt), verbose=verbose)
+            if verbose and done_chunk and done_chunk.usage:
+                console.print(f"[dim]Tokens: {done_chunk.usage.total_tokens}[/dim]")
         finally:
             await client.close()
 
@@ -189,13 +186,8 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
     )
     console.print("[dim]Type your message. Commands: /quit, /sessions, /clear, /help[/dim]\n")
 
-    # Build message history from session
-    message_history = AsyncCodyClient.messages_to_history(session.messages)
-
     async def _chat_loop():
-        nonlocal message_history
-        runner = client.get_runner()
-        await runner.start_mcp()
+        await client.start_mcp()
         try:
             while True:
                 try:
@@ -217,24 +209,15 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
                         break
                     continue
 
-                # Auto-title from first message
+                # Auto-title from first message (before stream, which saves user msg)
                 if client.get_message_count(session.id) == 0:
                     client.update_title(session.id, auto_title(user_input))
 
-                # Save user message
-                client.add_message(session.id, "user", user_input)
-
-                # Run agent with streaming
+                # Run agent with streaming — SDK auto-saves messages via session
                 try:
-                    result = await _render_stream(
-                        runner.run_stream(user_input, message_history=message_history),
+                    await _render_stream(
+                        client.stream(user_input, session_id=session.id),
                     )
-
-                    # Update history for next turn
-                    if result:
-                        message_history = result.all_messages()
-                        client.add_message(session.id, "assistant", result.output)
-
                 except Exception as e:
                     console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
 

@@ -9,11 +9,11 @@ from typing import Any, Optional
 
 from typing import List
 
-from cody.core import Config
+from cody.core import AgentRunner, Config
 from cody.core.errors import CodyAPIError, ErrorCode
 from cody.core.prompt import ImageData, MultimodalPrompt, Prompt
 
-from .state import get_config
+from .state import get_config, get_runner
 
 
 def raise_structured(
@@ -96,6 +96,48 @@ def build_prompt(text: str, images_raw: Optional[List[dict]] = None) -> Prompt:
         for img in images_raw
     ]
     return MultimodalPrompt(text=text, images=images)
+
+
+def resolve_chat_runner(
+    workdir: Path,
+    data: dict,
+    code_paths: list[str] | None = None,
+) -> tuple[Config, AgentRunner]:
+    """Build Config + AgentRunner from WebSocket message data.
+
+    Handles config loading, API key check, per-message overrides, and
+    extra_roots from project code_paths.
+
+    Raises ValueError if no API key is configured.
+    """
+    config = get_config(workdir)
+
+    if not data.get("model_api_key") and not config.is_ready():
+        raise ValueError("No API key configured")
+
+    extra_roots = [Path(p) for p in (code_paths or []) if p]
+
+    overrides = {
+        k: data.get(k)
+        for k in ("model", "model_base_url", "model_api_key",
+                  "enable_thinking", "thinking_budget")
+        if data.get(k)
+    }
+    if overrides:
+        config.apply_overrides(
+            model=data.get("model"),
+            model_base_url=data.get("model_base_url"),
+            model_api_key=data.get("model_api_key"),
+            enable_thinking=data.get("enable_thinking"),
+            thinking_budget=data.get("thinking_budget"),
+        )
+        runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
+    elif extra_roots:
+        runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
+    else:
+        runner = get_runner(workdir)
+
+    return config, runner
 
 
 def config_from_run_request(request) -> Config:

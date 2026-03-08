@@ -307,9 +307,10 @@ class AsyncCodyClient:
             self._session_store = SessionStore(db_path=self._db_path)
         return self._session_store
 
-    # Keep private aliases for internal use
-    _get_runner = get_runner
-    _get_session_store = get_session_store
+    async def start_mcp(self) -> None:
+        """Start MCP servers if configured. Call before stream() if needed."""
+        runner = self.get_runner()
+        await runner.start_mcp()
 
     async def close(self):
         """Clean up resources."""
@@ -362,9 +363,9 @@ class AsyncCodyClient:
             if stream:
                 return self._stream_run(prompt, session_id)
 
-            runner = self._get_runner()
+            runner = self.get_runner()
             # Always use session to enable multi-turn by default
-            store = self._get_session_store()
+            store = self.get_session_store()
             result, sid = await runner.run_with_session(prompt, store, session_id)
 
             run_result = RunResult(
@@ -430,10 +431,10 @@ class AsyncCodyClient:
         session_id: Optional[str] = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects."""
-        runner = self._get_runner()
+        runner = self.get_runner()
 
         if session_id:
-            store = self._get_session_store()
+            store = self.get_session_store()
             async for event, sid in runner.run_stream_with_session(
                 prompt, store, session_id
             ):
@@ -555,7 +556,7 @@ class AsyncCodyClient:
         workdir: str = "",
     ) -> SessionInfo:
         """Create a new session."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         session = store.create_session(
             title=title,
             model=model,
@@ -583,7 +584,7 @@ class AsyncCodyClient:
 
     async def list_sessions(self, limit: int = 20) -> list[SessionInfo]:
         """List recent sessions."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         sessions = store.list_sessions(limit=limit)
         return [
             SessionInfo(
@@ -600,7 +601,7 @@ class AsyncCodyClient:
 
     async def get_session(self, session_id: str) -> SessionDetail:
         """Get session with messages."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         session = store.get_session(session_id)
         if not session:
             raise CodyNotFoundError(
@@ -623,7 +624,7 @@ class AsyncCodyClient:
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         deleted = store.delete_session(session_id)
         if not deleted:
             raise CodyNotFoundError(
@@ -636,7 +637,7 @@ class AsyncCodyClient:
         workdir: str | None = None,
     ) -> SessionInfo | None:
         """Get the most recent session, optionally filtered by workdir."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         session = store.get_latest_session(workdir=workdir)
         if not session:
             return None
@@ -652,17 +653,17 @@ class AsyncCodyClient:
 
     def get_message_count(self, session_id: str) -> int:
         """Get message count for a session."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         return store.get_message_count(session_id)
 
     def add_message(self, session_id: str, role: str, content: str) -> None:
         """Add a message to a session."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         store.add_message(session_id, role, content)
 
     def update_title(self, session_id: str, title: str) -> None:
         """Update session title."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         store.update_title(session_id, title)
 
     @staticmethod
@@ -848,6 +849,10 @@ class CodyClient:
 
     def __exit__(self, *args):
         self.close()
+
+    def start_mcp(self) -> None:
+        """Start MCP servers if configured."""
+        _run_async(self._async.start_mcp())
 
     def close(self):
         _run_async(self._async.close())

@@ -85,8 +85,8 @@ async def test_async_run():
     client = AsyncCodyClient()
     mock_result = _make_result("async result")
 
-    with patch.object(client, "_get_runner") as mock_get_runner, \
-         patch.object(client, "_get_session_store"):
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store"):
         mock_runner = MagicMock()
         mock_runner.run_with_session = AsyncMock(return_value=(mock_result, "sid123"))
         mock_get_runner.return_value = mock_runner
@@ -105,8 +105,8 @@ async def test_async_run_with_session():
     client = AsyncCodyClient()
     mock_result = _make_result("continued")
 
-    with patch.object(client, "_get_runner") as mock_get_runner, \
-         patch.object(client, "_get_session_store"):
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store"):
         mock_runner = MagicMock()
         mock_runner.run_with_session = AsyncMock(return_value=(mock_result, "abc123"))
         mock_get_runner.return_value = mock_runner
@@ -130,7 +130,7 @@ async def test_async_stream():
         yield TextDeltaEvent(content=" async")
         yield DoneEvent(result=CodyResult(output="Hello async"))
 
-    with patch.object(client, "_get_runner") as mock_get_runner:
+    with patch.object(client, "get_runner") as mock_get_runner:
         mock_runner = MagicMock()
         mock_runner.run_stream = fake_stream
         mock_get_runner.return_value = mock_runner

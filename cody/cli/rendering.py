@@ -2,14 +2,11 @@
 
 import asyncio
 import time
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from rich.markup import escape as rich_escape
 
-from ..core.runner import (
-    CodyResult, CompactEvent, ThinkingEvent, TextDeltaEvent,
-    ToolCallEvent, ToolResultEvent, DoneEvent,
-)
+from ..sdk.types import StreamChunk
 from .utils import console
 from ..shared import (
     SPINNER_FRAMES as _SPINNER_FRAMES,
@@ -48,15 +45,19 @@ async def _status_spinner(label: str, start: float, *, done_label: str = "") -> 
         sys.stdout.flush()
 
 
-async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResult]":
-    """Consume a StreamEvent async generator and render to console.
+async def _render_stream(
+    stream: AsyncIterator[StreamChunk],
+    *,
+    verbose: bool = False,
+) -> Optional[StreamChunk]:
+    """Consume a StreamChunk async iterator and render to console.
 
     Shared by both `run` and `chat` commands.
-    Returns the CodyResult from the DoneEvent, or None.
+    Returns the done StreamChunk, or None.
     """
     in_thinking = False
-    thinking_buf = []
-    result = None
+    thinking_buf: list[str] = []
+    done_chunk: Optional[StreamChunk] = None
     spinner_task: Optional[asyncio.Task] = None
     stream_start = time.monotonic()
     got_first_event = False
@@ -77,54 +78,56 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
     )
 
     try:
-        async for event in stream:
+        async for chunk in stream:
             # Stop the initial "Thinking..." spinner on first real event
-            if not got_first_event and not isinstance(event, CompactEvent):
+            if not got_first_event and chunk.type != "compact":
                 got_first_event = True
                 await _stop_spinner()
 
-            if isinstance(event, CompactEvent):
+            if chunk.type == "compact":
                 console.print(
-                    f"  [yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]"
+                    f"  [yellow]{compact_message(chunk.original_messages, chunk.compacted_messages, chunk.estimated_tokens_saved)}[/yellow]"
                 )
-            elif isinstance(event, ThinkingEvent):
+            elif chunk.type == "thinking":
                 in_thinking = True
-                thinking_buf.append(event.content)
-            elif isinstance(event, ToolCallEvent):
+                thinking_buf.append(chunk.content)
+            elif chunk.type == "tool_call":
                 await _stop_spinner()
                 if in_thinking:
                     console.print(rich_escape("".join(thinking_buf)), style="dim")
                     thinking_buf.clear()
                     in_thinking = False
+                args = chunk.args or {}
                 args_str = ", ".join(
-                    f"{k}={_truncate_repr(v)}" for k, v in list(event.args.items())[:3]
+                    f"{k}={_truncate_repr(v)}" for k, v in list(args.items())[:3]
                 )
-                console.print(f"  [dim]→ {rich_escape(event.tool_name)}({rich_escape(args_str)})[/dim]")
+                tool_name = chunk.tool_name or ""
+                console.print(f"  [dim]→ {rich_escape(tool_name)}({rich_escape(args_str)})[/dim]")
                 spinner_task = asyncio.create_task(
                     _status_spinner(
-                        f"{event.tool_name} running...",
+                        f"{tool_name} running...",
                         time.monotonic(),
-                        done_label=f"{event.tool_name} done",
+                        done_label=f"{tool_name} done",
                     )
                 )
-            elif isinstance(event, ToolResultEvent):
+            elif chunk.type == "tool_result":
                 await _stop_spinner()
                 if verbose:
-                    preview = event.result[:200]
+                    preview = chunk.content[:200]
                     console.print(f"    [dim]{rich_escape(preview)}[/dim]")
-            elif isinstance(event, TextDeltaEvent):
+            elif chunk.type == "text_delta":
                 await _stop_spinner()
                 if in_thinking:
                     console.print(rich_escape("".join(thinking_buf)), style="dim")
                     thinking_buf.clear()
                     in_thinking = False
-                console.print(event.content, end="")
-            elif isinstance(event, DoneEvent):
+                console.print(chunk.content, end="")
+            elif chunk.type == "done":
                 await _stop_spinner()
                 if in_thinking:
                     console.print(rich_escape("".join(thinking_buf)), style="dim")
                     thinking_buf.clear()
-                result = event.result
+                done_chunk = chunk
     finally:
         await _stop_spinner()
 
@@ -132,4 +135,4 @@ async def _render_stream(stream, *, verbose: bool = False) -> "Optional[CodyResu
     total = time.monotonic() - stream_start
     console.print()
     console.print(f"  [dim]Completed in {_format_elapsed(total)}[/dim]")
-    return result
+    return done_chunk

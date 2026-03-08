@@ -40,7 +40,7 @@ async def list_projects(store: ProjectStore):
 
 
 async def create_project(body: ProjectCreate, store: ProjectStore,
-                         session_store: SessionStore | None = None):
+                         session_store: SessionStore = None):
     """Create a new project.
 
     Initializes .cody/ in workdir and creates a linked cody session.
@@ -73,9 +73,6 @@ async def create_project(body: ProjectCreate, store: ProjectStore,
 
     # Create a cody session directly via SessionStore
     try:
-        if session_store is None:
-            from ..state import get_session_store
-            session_store = get_session_store()
         session = await asyncio.to_thread(
             session_store.create_session,
             title=body.name, workdir=str(workdir),
@@ -120,7 +117,7 @@ async def update_project(project_id: str, body: ProjectUpdate,
 
 
 async def delete_project(project_id: str, store: ProjectStore,
-                         session_store: SessionStore | None = None):
+                         session_store: SessionStore = None):
     """Delete a project."""
     logger.info("Delete project: id=%s", project_id)
     project = await asyncio.to_thread(store.get_project, project_id)
@@ -133,9 +130,6 @@ async def delete_project(project_id: str, store: ProjectStore,
     # Try to delete linked cody session
     if project.session_id:
         try:
-            if session_store is None:
-                from ..state import get_session_store
-                session_store = get_session_store()
             await asyncio.to_thread(
                 session_store.delete_session, project.session_id,
             )

@@ -234,8 +234,9 @@ class StreamChunk:
     type: str                         # 事件类型（见下表）
     content: str                      # 文本内容
     session_id: Optional[str]         # 会话 ID
-    tool_name: Optional[str]          # 工具名称（type="tool_call" 时）
+    tool_name: Optional[str]          # 工具名称（type="tool_call" / "tool_result" 时）
     args: Optional[dict]              # 工具参数（type="tool_call" 时）
+    tool_call_id: Optional[str]       # 工具调用 ID（type="tool_call" / "tool_result" 时）
     usage: Optional[Usage]            # Token 用量（type="done" 时）
     # v1.7.4+ compact 事件详情
     original_messages: int            # 压缩前消息数（type="compact" 时）
@@ -251,8 +252,8 @@ class StreamChunk:
 | ---- | ---- | -------- |
 | `text_delta` | 文本内容（增量） | `content` |
 | `thinking` | 思考内容（增量） | `content` |
-| `tool_call` | 工具调用 | `tool_name`, `args` |
-| `tool_result` | 工具结果 | `content`（结果文本） |
+| `tool_call` | 工具调用 | `tool_name`, `args`, `tool_call_id` |
+| `tool_result` | 工具结果 | `content`（结果文本）, `tool_name`, `tool_call_id` |
 | `done` | 任务完成 | `usage`（Token 用量） |
 | `compact` | 上下文压缩 | — |
 
@@ -989,6 +990,7 @@ async with client:
 | `client.run(prompt, session_id=)` | 执行任务，返回 `RunResult` |
 | `client.stream(prompt, session_id=)` | 流式执行，yield `StreamChunk` |
 | `client.run_stream(prompt, session_id=)` | `stream()` 的别名 |
+| `client.start_mcp()` | 启动 MCP 服务器（在首次 `stream()` 前调用） |
 | `client.tool(name, params)` | 直接调用工具，返回 `ToolResult` |
 
 ### 会话方法
@@ -1063,7 +1065,7 @@ async with client:
 | 类 | 说明 |
 |------|------|
 | `RunResult` | 执行结果（output, session_id, usage, thinking） |
-| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, usage） |
+| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, tool_call_id, usage） |
 | `ToolResult` | 工具结果（result） |
 | `SessionInfo` | 会话摘要 |
 | `SessionDetail` | 会话详情（含消息列表） |
