@@ -502,14 +502,38 @@ for word in query_words:
 
 ### 测试 (8/10)
 
+**总量**: 684 个测试（588 core/SDK + 96 web backend），51 个测试文件
+
 **亮点**:
-- 51 个测试文件覆盖全部层级
 - `conftest.py` 提供良好的 fixture 基础设施（`isolated_store`、`MockContext`）
 - 文件操作测试正确使用 `tmp_path`
 - Web 测试使用 FastAPI `TestClient` 和 `httpx.AsyncClient`
+- 配置系统测试最全面（60 个测试，覆盖 env override、合并、持久化等）
+- 权限系统测试完整（27 个测试，完整覆盖权限矩阵和优先级）
+- SDK 测试优秀（92 + 45 个测试，覆盖 Builder、事件、指标、错误层级）
 
-**可改进**:
+**测试覆盖率热力图**:
+
+| 模块 | 测试数 | 覆盖率 | 评价 |
+|------|--------|--------|------|
+| `session.py` | 27 | ~90% | 优秀 |
+| `config.py` | 60 | ~85% | 优秀 |
+| `permissions.py` | 27 | ~95% | 优秀 |
+| `skill_manager.py` | 44 | ~90% | 优秀 |
+| `sdk/client.py` | 45 | ~85% | 很好 |
+| `sub_agent.py` | 23 | ~80% | 良好 |
+| `audit.py` | 23 | ~85% | 良好 |
+| `runner.py` | 18 | ~70% | 一般（缺流式事件测试） |
+| `tools/*` | 50+ | ~40% | **不足**（缺真实文件操作、命令执行测试） |
+| `log.py` | 0 | 0% | **缺失** |
+| `deps.py` | 0 | 0% | **缺失** |
+| `model_resolver.py` | 0 | 0% | **缺失** |
+
+**需改进**:
+- **3 个核心模块零测试覆盖**: `log.py`、`deps.py`、`model_resolver.py`
+- 工具实现（`tools/*`）测试不足 —— `exec_command` 安全相关逻辑未直接测试
 - `list_sessions()` 返回 `message_count=0` 的问题应有对应测试覆盖
+- 缺少端到端集成测试（Runner → Tool → Result 全链路）
 - 可增加更多边界条件测试（超大文件、Unicode 路径、并发操作等）
 
 ---
