@@ -31,7 +31,7 @@ from pydantic_ai.messages import (
 
 from .audit import AuditLogger
 from .config import Config
-from .context import CompactResult, compact_messages
+from .context import CompactResult, compact_messages, compact_messages_llm
 from .deps import CodyDeps
 from .file_history import FileHistory
 from .log import log_elapsed
@@ -174,6 +174,7 @@ class CompactEvent:
     original_messages: int
     compacted_messages: int
     estimated_tokens_saved: int
+    used_llm: bool = False
     event_type: Literal["compact"] = "compact"
 
 
@@ -402,7 +403,7 @@ class AgentRunner:
 
     # ── Context compaction ────────────────────────────────────────────────────
 
-    def _compact_history_if_needed(
+    async def _compact_history_if_needed(
         self,
         history: Optional[list[ModelMessage]],
         max_tokens: int = 100_000,
@@ -411,6 +412,9 @@ class AgentRunner:
 
         Converts ModelMessage history to dict format, runs compaction,
         then converts back. Returns (history, compact_result_or_none).
+
+        When ``config.compaction.use_llm`` is enabled, uses an LLM agent to
+        generate a semantic summary. Falls back to truncation on any error.
         """
         if not history:
             return history, None
@@ -427,16 +431,49 @@ class AgentRunner:
                     if hasattr(part, 'content'):
                         msgs.append({"role": "assistant", "content": part.content})
 
-        compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+        # Extract existing summary for incremental compaction
+        existing_summary = ""
+        if (
+            msgs
+            and msgs[0].get("role") == "user"
+            and "Previous conversation summary" in msgs[0].get("content", "")
+        ):
+            existing_summary = msgs[0]["content"]
+            # Remove the [Context] prefix if present
+            if existing_summary.startswith("[Context]\n"):
+                existing_summary = existing_summary[len("[Context]\n"):]
+            msgs = msgs[1:]
+
+        if self.config.compaction.use_llm:
+            try:
+                compacted, result = await compact_messages_llm(
+                    msgs,
+                    config=self.config,
+                    existing_summary=existing_summary,
+                    max_tokens=self.config.compaction.max_tokens,
+                    keep_recent=self.config.compaction.keep_recent,
+                    max_summary_tokens=self.config.compaction.max_summary_tokens,
+                )
+            except Exception:
+                logger.warning(
+                    "LLM compaction failed, falling back to truncation",
+                    exc_info=True,
+                )
+                compacted, result = compact_messages(
+                    msgs, max_tokens=max_tokens,
+                )
+        else:
+            compacted, result = compact_messages(msgs, max_tokens=max_tokens)
 
         if result is None:
             return history, None  # no compaction needed
 
         logger.info(
-            "Context compacted: %d → %d messages, ~%d tokens saved",
+            "Context compacted: %d → %d messages, ~%d tokens saved (llm=%s)",
             result.original_messages,
             result.compacted_messages,
             result.estimated_tokens_saved,
+            result.used_llm,
         )
 
         # Convert back to ModelMessage format
@@ -453,6 +490,51 @@ class AgentRunner:
                 new_history.append(ModelRequest(parts=[UserPromptPart(content=content)]))
             elif role == "assistant":
                 new_history.append(ModelResponse(parts=[TextPart(content=content)]))
+
+        return new_history, result
+
+    def _compact_history_sync(
+        self,
+        history: Optional[list[ModelMessage]],
+        max_tokens: int = 100_000,
+    ) -> tuple[Optional[list[ModelMessage]], Optional[CompactResult]]:
+        """Synchronous compaction — always uses truncation (no LLM)."""
+        if not history:
+            return history, None
+
+        msgs: list[dict] = []
+        for msg in history:
+            if isinstance(msg, ModelRequest):
+                for part in msg.parts:
+                    if hasattr(part, 'content'):
+                        msgs.append({"role": "user", "content": part.content})
+            elif isinstance(msg, ModelResponse):
+                for part in msg.parts:  # type: ignore[assignment]
+                    if hasattr(part, 'content'):
+                        msgs.append({"role": "assistant", "content": part.content})
+
+        compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+        if result is None:
+            return history, None
+
+        new_history: list[ModelMessage] = []
+        for m in compacted:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if role == "system":
+                new_history.append(
+                    ModelRequest(
+                        parts=[UserPromptPart(content=f"[Context]\n{content}")]
+                    )
+                )
+            elif role == "user":
+                new_history.append(
+                    ModelRequest(parts=[UserPromptPart(content=content)])
+                )
+            elif role == "assistant":
+                new_history.append(
+                    ModelResponse(parts=[TextPart(content=content)])
+                )
 
         return new_history, result
 
@@ -501,7 +583,7 @@ class AgentRunner:
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history"""
         deps = self._create_deps()
-        message_history, _compact = self._compact_history_if_needed(message_history)
+        message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
         result = await self.agent.run(  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
@@ -534,13 +616,16 @@ class AgentRunner:
         from pydantic_ai.run import AgentRunResultEvent
 
         deps = self._create_deps()
-        message_history, compact_result = self._compact_history_if_needed(message_history)
+        message_history, compact_result = await self._compact_history_if_needed(
+            message_history,
+        )
 
         if compact_result is not None:
             yield CompactEvent(
                 original_messages=compact_result.original_messages,
                 compacted_messages=compact_result.compacted_messages,
                 estimated_tokens_saved=compact_result.estimated_tokens_saved,
+                used_llm=compact_result.used_llm,
             )
 
         pydantic_prompt = self._to_pydantic_prompt(prompt)
@@ -602,9 +687,17 @@ class AgentRunner:
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
     ) -> CodyResult:
-        """Run agent synchronously"""
+        """Run agent synchronously.
+
+        Note: LLM compaction is not available in sync mode. Falls back to
+        truncation-based compaction regardless of config.compaction.use_llm.
+        """
         deps = self._create_deps()
-        message_history, _compact = self._compact_history_if_needed(message_history)
+        if self.config.compaction.use_llm:
+            logger.debug(
+                "LLM compaction unavailable in run_sync, using truncation"
+            )
+        message_history, _compact = self._compact_history_sync(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
         result = self.agent.run_sync(  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
