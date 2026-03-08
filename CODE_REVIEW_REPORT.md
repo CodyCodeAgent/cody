@@ -131,7 +131,33 @@ client = (
 
 ### 严重问题 (P0)
 
-#### 1. `_stream_run()` 作为 async generator 返回但被 `yield` 调用
+#### 1. CLI 子命令直接导入 Core，违反架构分层
+
+**位置**:
+- `cody/cli/commands/sessions.py:7` — `from ...core import SessionStore`
+- `cody/cli/commands/skills.py:9-10` — `from ...core import Config` + `from ...core.skill_manager import SkillManager`
+- `cody/cli/commands/config.py:7` — `from ...core import Config`
+- `cody/cli/commands/init_cmd.py:8-9` — 直接导入 Core
+- `cody/cli/main.py:11-12` — `from ..core import Config` + `from ..core.log import setup_logging`
+
+CLAUDE.md 明确规定 **"CLI/TUI 通过 SDK（`AsyncCodyClient`）访问 core，不再直接导入 `AgentRunner`/`SessionStore`"**。但 CLI 子命令直接实例化 `SessionStore()` 和 `SkillManager()`，完全绕过了 SDK 层。
+
+```python
+# sessions.py - 当前（违规）
+store = SessionStore()  # 直接使用 Core
+
+# 应该是
+client = AsyncCodyClient(workdir=".")
+sessions = await client.list_sessions(limit=limit)
+```
+
+`main.py` 中的 `Config.load()` 和 `setup_logging()` 可以辩解为"启动必需"，但 `sessions.py`、`skills.py` 完全可以通过 SDK 方法完成，且 SDK 已提供对应方法（`list_sessions()`, `list_skills()`, `get_skill()` 等）。
+
+**影响**: 如果 SDK 层添加了缓存、事件通知、指标收集等增强功能，CLI 子命令将无法受益。更重要的是，这违反了文档中声明的架构原则。
+
+**建议**: 将 `sessions.py` 和 `skills.py` 重构为使用 `AsyncCodyClient`，保持 `main.py` 中的 `Config.load()` 作为唯一允许的直接 Core 导入（用于引导 SDK 客户端创建）。
+
+#### 2. `_stream_run()` 返回类型不明确
 
 **位置**: `cody/sdk/client.py:449-476`
 
@@ -379,7 +405,7 @@ for word in query_words:
 | Core 不导入 TUI | ✅ 通过 | 零违规 |
 | Core 不导入 Web | ✅ 通过 | 零违规 |
 | Core 不导入 SDK | ✅ 通过 | 零违规 |
-| CLI 通过 SDK 访问 Core | ✅ 通过 | `cli/main.py:13` → `AsyncCodyClient` |
+| CLI 通过 SDK 访问 Core | ⚠️ 部分违规 | `main.py` 的 run/chat 正确使用 SDK，但 `commands/sessions.py` 和 `commands/skills.py` 直接导入 Core |
 | TUI 通过 SDK 访问 Core | ✅ 通过 | `tui/app.py` → `AsyncCodyClient` |
 | Web Backend 直接使用 Core | ✅ 符合文档 | `state.py` 导入 `cody.core.*` |
 | client.py 为纯 re-export | ✅ 通过 | 仅 re-export SDK 公开符号 |
@@ -435,15 +461,16 @@ for word in query_words:
 - `_run_async()` 的事件循环处理在 nested loop 场景下有风险
 - `tool()` 方法每次创建新 Config/SkillManager/CodyDeps，不使用缓存
 
-### CLI (8.5/10)
+### CLI (7.5/10)
 
 **亮点**:
-- 正确通过 SDK 访问 Core
-- `run` 和 `chat` 命令的 CLI 参数设计完善（`--model`、`--thinking`、`--workdir`、`--allow-root`）
+- `run` 和 `chat` 命令通过 SDK (`AsyncCodyClient`) 访问 Core —— 正确
+- CLI 参数设计完善（`--model`、`--thinking`、`--workdir`、`--allow-root`）
 - `commands/` 子目录组织清晰
 - `_render_stream` 封装了流式渲染逻辑
 
-**可改进**:
+**需改进**:
+- **架构违规**: `commands/sessions.py` 和 `commands/skills.py` 直接导入 Core（`SessionStore`、`SkillManager`），绕过 SDK 层（P0-1）
 - `chat` 命令中的 `asyncio.get_event_loop()` 在 Python 3.12+ 已弃用
 
 ### TUI (8/10)
@@ -493,9 +520,9 @@ Cody v1.7.4 是一个**工程成熟度很高的 AI Agent 框架**。与上次审
 
 **当前最值得关注的 3 个改进方向**：
 
-1. **SDK 类型安全** (P0-1): `run(stream=True)` 返回类型不明确，`_run_async()` 事件循环处理需更安全
-2. **Web Backend 并发安全** (P1-3): 配置和 Runner 缓存需加锁保护
-3. **`list_sessions()` 消息计数准确性** (P1-7): 返回真实的 message_count 而非始终为 0
+1. **CLI 架构违规修复** (P0-1): CLI 子命令（sessions/skills）直接导入 Core 而非通过 SDK，违反文档声明的分层架构
+2. **SDK 类型安全** (P0-2/P0-3): `run(stream=True)` 返回类型不明确，`_run_async()` 事件循环处理需更安全
+3. **Web Backend 并发安全** (P1-3): 配置和 Runner 缓存需加锁保护
 
 **项目成熟度**: **Production-Ready**。架构边界严格执行，安全防护多层覆盖，适合作为构建 AI Coding Agent 的框架基础。
 
