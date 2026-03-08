@@ -49,7 +49,7 @@ web/backend/            →  core/runner.py  →  core/tools/
 |------|------|
 | `core/prompt.py` | 多模态 Prompt 类型 — ImageData, MultimodalPrompt, Prompt |
 | `core/runner.py` | 框架中枢 — Agent 创建、工具注册、run/stream 执行 |
-| `core/tools/` | 工具包（14 个子模块）— file_ops、search、command、skills、agents、mcp、web、lsp、history、todo、user + registry 注册表 + _base/_file_filter 共享工具 |
+| `core/tools/` | 工具包（14 个子模块，28 个工具函数）— file_ops、search、command、skills、agents、mcp、web、lsp、history、todo、user + registry 注册表 + _base/_file_filter 共享工具 |
 | `core/errors.py` | 错误码 + ToolError 异常层级（Web Backend 按类型映射 HTTP 状态码） |
 | `core/log.py` | 统一日志 — setup_logging()，RotatingFileHandler → ~/.cody/logs/ |
 | `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON，is_ready() 检查 |
@@ -102,10 +102,10 @@ cody init                                  # 初始化 .cody/ 目录
 # 安装
 pip install -e ".[dev]"
 
-# 核心测试（570 个）+ SDK 测试（65 个）
+# 核心 + SDK 测试（588 个）
 uv run pytest tests/ -v
 
-# Web 后端测试（54 个）
+# Web 后端测试（85 个）
 PYTHONPATH=. uv run pytest web/tests/ -v
 
 # Web 前端测试（33 个）

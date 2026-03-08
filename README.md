@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/cody-ai.svg)](https://pypi.org/project/cody-ai/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://pypi.org/project/cody-ai/)
-[![Tests](https://img.shields.io/badge/tests-652%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-673%20total-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Cody 提供构建 AI 编程 Agent 所需的完整基础设施：**28 个工具、11 个内置技能、MCP/LSP 集成、子 Agent 编排、会话管理和安全体系**。你可以用 SDK 将它嵌入任何 Python 应用，也可以直接用 CLI/TUI/Web 开箱即用。
@@ -194,10 +194,10 @@ git clone https://github.com/CodyCodeAgent/cody.git
 cd cody
 pip install -e ".[dev]"
 
-# 运行核心 + SDK 测试（576 个）
+# 运行核心 + SDK 测试（588 个）
 uv run pytest tests/ -v
 
-# Web 后端测试（76 个）
+# Web 后端测试（85 个）
 PYTHONPATH=. uv run pytest web/tests/ -v
 
 # Web 前端测试（33 个）

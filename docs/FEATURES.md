@@ -757,7 +757,7 @@ cody run "使用项目 B 的配置"
 - [x] R7: Config 缓存 60s TTL
 - [x] R9: 新增 21 个 Web 路由测试
 
-**v1.6.0 总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
+**v1.6.0 总计：673+ 个测试（588 core/sdk + 85 web），ruff 零告警**
 
 ---
 

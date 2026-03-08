@@ -260,21 +260,32 @@ def create_print_handler() -> EventHandler:
     return handler
 
 
-def create_collector_handler() -> tuple[EventHandler, list[Event]]:
+def create_collector_handler(
+    maxlen: int | None = None,
+) -> tuple[EventHandler, list[Event]]:
     """Create an event collector for testing/debugging.
-    
+
+    Args:
+        maxlen: Optional maximum number of events to retain. When set,
+            uses a collections.deque that automatically discards the
+            oldest events when full. Default None = unlimited list.
+
     Returns:
-        Tuple of (handler, collected_events_list)
-    
+        Tuple of (handler, collected_events_container)
+
     Usage:
         handler, events = create_collector_handler()
         event_manager.register(EventType.TOOL_CALL, handler)
         # ... run operations ...
         print(f"Collected {len(events)} events")
     """
-    collected: list[Event] = []
-    
+    if maxlen is not None:
+        from collections import deque
+        collected = deque(maxlen=maxlen)
+    else:
+        collected = []
+
     def handler(event: Event):
         collected.append(event)
-    
+
     return handler, collected

@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cody.core.session import SessionStore
-from web.backend.app import app, get_project_store
+from web.backend.app import app
 from web.backend.db import ProjectStore
-from web.backend.state import session_store_dep
+from web.backend.state import get_project_store, session_store_dep
 
 
 @pytest.fixture
