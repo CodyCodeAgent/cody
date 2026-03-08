@@ -11,6 +11,17 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base, preserving nested dict keys."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 class AuthConfig(BaseModel):
     """Authentication configuration"""
     type: Literal['oauth', 'api_key'] = 'api_key'
@@ -113,14 +124,14 @@ class Config(BaseModel):
             merged: dict = {}
             if global_config.exists():
                 try:
-                    merged.update(json.loads(
+                    merged = _deep_merge(merged, json.loads(
                         global_config.read_text(encoding="utf-8"),
                     ))
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning("Failed to parse %s: %s, skipping", global_config, e)
             if project_config.exists():
                 try:
-                    merged.update(json.loads(
+                    merged = _deep_merge(merged, json.loads(
                         project_config.read_text(encoding="utf-8"),
                     ))
                 except (json.JSONDecodeError, ValueError) as e:

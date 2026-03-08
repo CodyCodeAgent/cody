@@ -124,6 +124,19 @@ class SubAgentManager:
         self._agents: dict[str, SubAgentResult] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._max_completed: int = 100
+
+    def _cleanup_completed(self) -> None:
+        """Remove oldest completed agents when exceeding _max_completed."""
+        completed = [
+            (aid, r) for aid, r in self._agents.items()
+            if r.status not in (AgentStatus.PENDING, AgentStatus.RUNNING)
+            and aid not in self._tasks
+        ]
+        if len(completed) > self._max_completed:
+            completed.sort(key=lambda x: x[1].completed_at or "")
+            for aid, _ in completed[: len(completed) - self._max_completed]:
+                del self._agents[aid]
 
     # ── Spawn & manage ───────────────────────────────────────────────────────
 
@@ -137,6 +150,8 @@ class SubAgentManager:
 
         Returns agent_id immediately. The agent runs in the background.
         """
+        self._cleanup_completed()
+
         # Validate type
         try:
             atype = AgentType(agent_type)
