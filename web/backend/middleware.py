@@ -19,6 +19,14 @@ from .state import get_audit_logger, get_auth_manager, get_rate_limiter
 logger = logging.getLogger("cody.web.middleware")
 
 
+def _get_client_ip(request: Request) -> str:
+    """Extract real client IP, respecting X-Forwarded-For behind proxies."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 # Endpoints that do not require authentication
 PUBLIC_PATHS: Set[str] = {"/health", "/api/health", "/docs", "/openapi.json", "/redoc"}
 
@@ -115,7 +123,7 @@ async def rate_limit_middleware(request: Request, call_next):
     if path in PUBLIC_PATHS:
         return await call_next(request)
 
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _get_client_ip(request)
     result = limiter.hit(client_ip)
 
     if not result.allowed:
@@ -162,7 +170,7 @@ async def audit_middleware(request: Request, call_next):
         get_audit_logger().log(
             event=AuditEvent.API_REQUEST,
             tool_name=f"{request.method} {path}",
-            args_summary=f"client={request.client.host if request.client else 'unknown'}",
+            args_summary=f"client={_get_client_ip(request)}",
             result_summary=f"status={response.status_code} elapsed={elapsed_ms}ms",
             success=response.status_code < 400,
         )

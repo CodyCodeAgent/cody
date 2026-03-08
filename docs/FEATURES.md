@@ -458,7 +458,7 @@ cody tui --session <id>      # 恢复指定会话
 ## 技术架构
 
 **核心技术栈：**
-- Python 3.9+
+- Python 3.10+
 - Pydantic AI（Agent 框架）
 - FastAPI（HTTP API + Web Backend）
 - Click（CLI）

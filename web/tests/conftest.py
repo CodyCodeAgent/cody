@@ -1,13 +1,13 @@
 """Shared fixtures for web backend tests."""
 
 import pytest
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from cody.core.session import SessionStore
 from web.backend.app import app, get_project_store
 from web.backend.db import ProjectStore
+from web.backend.state import session_store_dep
 
 
 @pytest.fixture
@@ -26,6 +26,6 @@ def session_store(tmp_path):
 def test_client(project_store, session_store):
     """FastAPI TestClient with injected test dependencies."""
     app.dependency_overrides[get_project_store] = lambda: project_store
-    with patch("web.backend.routes.projects.get_session_store", return_value=session_store):
-        yield TestClient(app)
+    app.dependency_overrides[session_store_dep] = lambda: session_store
+    yield TestClient(app)
     app.dependency_overrides.clear()

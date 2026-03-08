@@ -3,13 +3,18 @@
 Provides webfetch and websearch tools for the Cody agent.
 """
 
+import ipaddress
 import json
 import logging
 import re
+import socket
+import urllib.parse
 from html.parser import HTMLParser
 from typing import Optional
 
 import httpx
+
+from .._version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -121,13 +126,27 @@ def html_to_markdown(html: str) -> str:
 
 _DEFAULT_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (compatible; CodyBot/1.0.0; "
-        "+https://github.com/SUT-GC/cody)"
+        f"Mozilla/5.0 (compatible; CodyBot/{__version__}; "
+        "+https://github.com/CodyCodeAgent/cody)"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
 MAX_CONTENT_LENGTH = 500_000  # 500KB max
+
+
+def _is_private_url(url: str) -> bool:
+    """Check if URL resolves to a private/reserved IP address (SSRF prevention)."""
+    try:
+        hostname = urllib.parse.urlparse(url).hostname
+        if not hostname:
+            return True
+        if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            return True
+        addr = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)[0][4][0]
+        return ipaddress.ip_address(addr).is_private
+    except (socket.gaierror, ValueError, IndexError, OSError):
+        return False
 
 
 async def webfetch(url: str, timeout: float = 15.0) -> str:
@@ -140,6 +159,8 @@ async def webfetch(url: str, timeout: float = 15.0) -> str:
     Returns:
         Markdown content of the page, or error string.
     """
+    if _is_private_url(url):
+        return "[Error: Access to private/internal addresses is not allowed]"
     async with httpx.AsyncClient(
         follow_redirects=True,
         timeout=timeout,
@@ -236,7 +257,6 @@ def _parse_ddg_results(html: str, max_results: int) -> list[dict]:
 
         # DuckDuckGo wraps URLs in a redirect; extract the actual URL
         if "uddg=" in url:
-            import urllib.parse
             parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
             url = parsed.get("uddg", [url])[0]
 

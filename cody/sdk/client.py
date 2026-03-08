@@ -63,23 +63,13 @@ class CodyBuilder:
     _enable_thinking: bool = False
     _thinking_budget: Optional[int] = None
     _permissions: dict = field(default_factory=dict)
-    _allowed_roots: list[str] = None
+    _allowed_roots: list[str] = field(default_factory=list)
     _db_path: Optional[str] = None
     _enable_metrics: bool = False
     _enable_events: bool = False
-    _mcp_servers: list[dict] = None
-    _lsp_languages: list[str] = None
-    _event_handlers: list[tuple] = None  # [(event_type_str, handler), ...]
-
-    def __post_init__(self):
-        if self._allowed_roots is None:
-            self._allowed_roots = []
-        if self._mcp_servers is None:
-            self._mcp_servers = []
-        if self._lsp_languages is None:
-            self._lsp_languages = ["python", "typescript", "go"]
-        if self._event_handlers is None:
-            self._event_handlers = []
+    _mcp_servers: list[dict] = field(default_factory=list)
+    _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
+    _event_handlers: list[tuple] = field(default_factory=list)
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -267,7 +257,7 @@ class AsyncCodyClient:
     async def __aexit__(self, *args):
         await self.close()
 
-    # ── Internal: core access ─────────────────────────────────────────────
+    # ── Core access ──────────────────────────────────────────────────────
 
     def _get_config(self):
         """Get or create core Config."""
@@ -286,19 +276,41 @@ class AsyncCodyClient:
                 self._core_config.model_base_url = self._config.model.base_url
         return self._core_config
 
-    def _get_runner(self):
-        """Get or create AgentRunner."""
+    def set_config(self, config) -> None:
+        """Apply a pre-built core Config, replacing any cached config/runner.
+
+        This is the public API for CLI/TUI to inject a Config with overrides
+        (thinking, extra_roots, etc.) without reaching into private attributes.
+        """
+        self._core_config = config
+        self._runner = None  # Force lazy re-creation with updated config
+
+    def get_runner(self):
+        """Get or create the underlying AgentRunner.
+
+        Power-user API for callers that need raw streaming events
+        (ToolCallEvent, ThinkingEvent, etc.) or direct MCP control.
+        """
         if self._runner is None:
             from ..core.runner import AgentRunner
             self._runner = AgentRunner(config=self._get_config(), workdir=self.workdir)
         return self._runner
 
-    def _get_session_store(self):
-        """Get or create SessionStore."""
+    def get_session_store(self):
+        """Get or create the underlying SessionStore.
+
+        Power-user API for callers that need synchronous session access
+        (e.g. TUI on_mount) or direct store operations.
+        """
         if self._session_store is None:
             from ..core.session import SessionStore
             self._session_store = SessionStore(db_path=self._db_path)
         return self._session_store
+
+    async def start_mcp(self) -> None:
+        """Start MCP servers if configured. Call before stream() if needed."""
+        runner = self.get_runner()
+        await runner.start_mcp()
 
     async def close(self):
         """Clean up resources."""
@@ -351,9 +363,9 @@ class AsyncCodyClient:
             if stream:
                 return self._stream_run(prompt, session_id)
 
-            runner = self._get_runner()
+            runner = self.get_runner()
             # Always use session to enable multi-turn by default
-            store = self._get_session_store()
+            store = self.get_session_store()
             result, sid = await runner.run_with_session(prompt, store, session_id)
 
             run_result = RunResult(
@@ -419,10 +431,10 @@ class AsyncCodyClient:
         session_id: Optional[str] = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects."""
-        runner = self._get_runner()
+        runner = self.get_runner()
 
         if session_id:
-            store = self._get_session_store()
+            store = self.get_session_store()
             async for event, sid in runner.run_stream_with_session(
                 prompt, store, session_id
             ):
@@ -544,7 +556,7 @@ class AsyncCodyClient:
         workdir: str = "",
     ) -> SessionInfo:
         """Create a new session."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         session = store.create_session(
             title=title,
             model=model,
@@ -572,7 +584,7 @@ class AsyncCodyClient:
 
     async def list_sessions(self, limit: int = 20) -> list[SessionInfo]:
         """List recent sessions."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         sessions = store.list_sessions(limit=limit)
         return [
             SessionInfo(
@@ -589,7 +601,7 @@ class AsyncCodyClient:
 
     async def get_session(self, session_id: str) -> SessionDetail:
         """Get session with messages."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         session = store.get_session(session_id)
         if not session:
             raise CodyNotFoundError(
@@ -612,13 +624,53 @@ class AsyncCodyClient:
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
-        store = self._get_session_store()
+        store = self.get_session_store()
         deleted = store.delete_session(session_id)
         if not deleted:
             raise CodyNotFoundError(
                 f"Session not found: {session_id}",
                 code="SESSION_NOT_FOUND",
             )
+
+    async def get_latest_session(
+        self,
+        workdir: str | None = None,
+    ) -> SessionInfo | None:
+        """Get the most recent session, optionally filtered by workdir."""
+        store = self.get_session_store()
+        session = store.get_latest_session(workdir=workdir)
+        if not session:
+            return None
+        return SessionInfo(
+            id=session.id,
+            title=session.title,
+            model=session.model,
+            workdir=session.workdir,
+            message_count=len(session.messages),
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
+    def get_message_count(self, session_id: str) -> int:
+        """Get message count for a session."""
+        store = self.get_session_store()
+        return store.get_message_count(session_id)
+
+    def add_message(self, session_id: str, role: str, content: str) -> None:
+        """Add a message to a session."""
+        store = self.get_session_store()
+        store.add_message(session_id, role, content)
+
+    def update_title(self, session_id: str, title: str) -> None:
+        """Update session title."""
+        store = self.get_session_store()
+        store.update_title(session_id, title)
+
+    @staticmethod
+    def messages_to_history(messages) -> list:
+        """Convert stored session messages to pydantic-ai message format."""
+        from ..core.runner import AgentRunner
+        return AgentRunner.messages_to_history(messages)
 
     # ── Skills ────────────────────────────────────────────────────────────
 
@@ -798,6 +850,10 @@ class CodyClient:
     def __exit__(self, *args):
         self.close()
 
+    def start_mcp(self) -> None:
+        """Start MCP servers if configured."""
+        _run_async(self._async.start_mcp())
+
     def close(self):
         _run_async(self._async.close())
 
@@ -839,6 +895,22 @@ class CodyClient:
 
     def get_skill(self, skill_name: str):
         return _run_async(self._async.get_skill(skill_name))
+
+    def get_latest_session(self, workdir: str | None = None):
+        return _run_async(self._async.get_latest_session(workdir=workdir))
+
+    def get_message_count(self, session_id: str) -> int:
+        return self._async.get_message_count(session_id)
+
+    def add_message(self, session_id: str, role: str, content: str) -> None:
+        self._async.add_message(session_id, role, content)
+
+    def update_title(self, session_id: str, title: str) -> None:
+        self._async.update_title(session_id, title)
+
+    @staticmethod
+    def messages_to_history(messages) -> list:
+        return AsyncCodyClient.messages_to_history(messages)
 
     def read_file(self, path: str) -> str:
         return _run_async(self._async.read_file(path))

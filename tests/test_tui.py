@@ -75,18 +75,19 @@ def test_tui_with_options(tmp_path):
     assert app._continue_last is True
 
 
-# ── CodyTUI async pilot tests ───────────────────────────────────────────────
+# ── Helper to set up TUI mocks ──────────────────────────────────────────────
 
 
-@pytest.mark.asyncio
-@patch("cody.tui.app.Config.load")
-@patch("cody.tui.app.AgentRunner")
-@patch("cody.tui.app.SessionStore")
-async def test_tui_mounts(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
-    """TUI app mounts without crashing."""
+def _setup_tui_mocks(mock_client_cls, mock_config_load):
+    """Common mock setup for TUI tests."""
     mock_config = MagicMock()
     mock_config.model = "test-model"
+    mock_config.model_api_key = None
+    mock_config.model_base_url = None
     mock_config_load.return_value = mock_config
+
+    mock_client = MagicMock()
+    mock_client_cls.return_value = mock_client
 
     mock_store = MagicMock()
     mock_session = MagicMock()
@@ -95,11 +96,23 @@ async def test_tui_mounts(mock_store_cls, mock_runner_cls, mock_config_load, tmp
     mock_store.get_latest_session.return_value = None
     mock_store.create_session.return_value = mock_session
     mock_store.get_message_count.return_value = 0
-    mock_store_cls.return_value = mock_store
+    mock_client.get_session_store.return_value = mock_store
+    mock_client.get_message_count.return_value = 0
 
-    mock_runner = MagicMock()
-    mock_runner_cls.return_value = mock_runner
-    mock_runner_cls.messages_to_history.return_value = []
+    mock_client_cls.messages_to_history.return_value = []
+
+    return mock_config, mock_client, mock_store, mock_session
+
+
+# ── CodyTUI async pilot tests ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AsyncCodyClient")
+async def test_tui_mounts(mock_client_cls, mock_config_load, tmp_path):
+    """TUI app mounts without crashing."""
+    _setup_tui_mocks(mock_client_cls, mock_config_load)
 
     app = CodyTUI(workdir=tmp_path)
     async with app.run_test():
@@ -111,26 +124,10 @@ async def test_tui_mounts(mock_store_cls, mock_runner_cls, mock_config_load, tmp
 
 @pytest.mark.asyncio
 @patch("cody.tui.app.Config.load")
-@patch("cody.tui.app.AgentRunner")
-@patch("cody.tui.app.SessionStore")
-async def test_tui_slash_help(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
+@patch("cody.tui.app.AsyncCodyClient")
+async def test_tui_slash_help(mock_client_cls, mock_config_load, tmp_path):
     """Typing /help shows help text."""
-    mock_config = MagicMock()
-    mock_config.model = "test-model"
-    mock_config_load.return_value = mock_config
-
-    mock_store = MagicMock()
-    mock_session = MagicMock()
-    mock_session.id = "test123"
-    mock_session.messages = []
-    mock_store.get_latest_session.return_value = None
-    mock_store.create_session.return_value = mock_session
-    mock_store.get_message_count.return_value = 0
-    mock_store_cls.return_value = mock_store
-
-    mock_runner = MagicMock()
-    mock_runner_cls.return_value = mock_runner
-    mock_runner_cls.messages_to_history.return_value = []
+    _setup_tui_mocks(mock_client_cls, mock_config_load)
 
     app = CodyTUI(workdir=tmp_path)
     async with app.run_test() as pilot:
@@ -146,31 +143,19 @@ async def test_tui_slash_help(mock_store_cls, mock_runner_cls, mock_config_load,
 
 @pytest.mark.asyncio
 @patch("cody.tui.app.Config.load")
-@patch("cody.tui.app.AgentRunner")
-@patch("cody.tui.app.SessionStore")
-async def test_tui_new_session(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
+@patch("cody.tui.app.AsyncCodyClient")
+async def test_tui_new_session(mock_client_cls, mock_config_load, tmp_path):
     """Ctrl+N creates a new session."""
-    mock_config = MagicMock()
-    mock_config.model = "test-model"
-    mock_config_load.return_value = mock_config
-
-    mock_store = MagicMock()
-    mock_session = MagicMock()
+    mock_config, mock_client, mock_store, mock_session = _setup_tui_mocks(
+        mock_client_cls, mock_config_load
+    )
     mock_session.id = "session1"
-    mock_session.messages = []
 
     new_session = MagicMock()
     new_session.id = "session2"
     new_session.messages = []
 
-    mock_store.get_latest_session.return_value = None
     mock_store.create_session.side_effect = [mock_session, new_session]
-    mock_store.get_message_count.return_value = 0
-    mock_store_cls.return_value = mock_store
-
-    mock_runner = MagicMock()
-    mock_runner_cls.return_value = mock_runner
-    mock_runner_cls.messages_to_history.return_value = []
 
     app = CodyTUI(workdir=tmp_path)
     async with app.run_test() as pilot:
@@ -185,26 +170,10 @@ async def test_tui_new_session(mock_store_cls, mock_runner_cls, mock_config_load
 
 @pytest.mark.asyncio
 @patch("cody.tui.app.Config.load")
-@patch("cody.tui.app.AgentRunner")
-@patch("cody.tui.app.SessionStore")
-async def test_tui_slash_clear(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
+@patch("cody.tui.app.AsyncCodyClient")
+async def test_tui_slash_clear(mock_client_cls, mock_config_load, tmp_path):
     """/clear removes chat bubbles."""
-    mock_config = MagicMock()
-    mock_config.model = "test-model"
-    mock_config_load.return_value = mock_config
-
-    mock_store = MagicMock()
-    mock_session = MagicMock()
-    mock_session.id = "test123"
-    mock_session.messages = []
-    mock_store.get_latest_session.return_value = None
-    mock_store.create_session.return_value = mock_session
-    mock_store.get_message_count.return_value = 0
-    mock_store_cls.return_value = mock_store
-
-    mock_runner = MagicMock()
-    mock_runner_cls.return_value = mock_runner
-    mock_runner_cls.messages_to_history.return_value = []
+    _setup_tui_mocks(mock_client_cls, mock_config_load)
 
     app = CodyTUI(workdir=tmp_path)
     async with app.run_test() as pilot:
@@ -258,26 +227,10 @@ def test_tui_with_extra_roots(tmp_path):
 
 @pytest.mark.asyncio
 @patch("cody.tui.app.Config.load")
-@patch("cody.tui.app.AgentRunner")
-@patch("cody.tui.app.SessionStore")
-async def test_tui_slash_unknown(mock_store_cls, mock_runner_cls, mock_config_load, tmp_path):
+@patch("cody.tui.app.AsyncCodyClient")
+async def test_tui_slash_unknown(mock_client_cls, mock_config_load, tmp_path):
     """Unknown slash commands show an error."""
-    mock_config = MagicMock()
-    mock_config.model = "test-model"
-    mock_config_load.return_value = mock_config
-
-    mock_store = MagicMock()
-    mock_session = MagicMock()
-    mock_session.id = "test123"
-    mock_session.messages = []
-    mock_store.get_latest_session.return_value = None
-    mock_store.create_session.return_value = mock_session
-    mock_store.get_message_count.return_value = 0
-    mock_store_cls.return_value = mock_store
-
-    mock_runner = MagicMock()
-    mock_runner_cls.return_value = mock_runner
-    mock_runner_cls.messages_to_history.return_value = []
+    _setup_tui_mocks(mock_client_cls, mock_config_load)
 
     app = CodyTUI(workdir=tmp_path)
     async with app.run_test() as pilot:

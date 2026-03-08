@@ -3,7 +3,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from cody.core.runner import CodyResult, TextDeltaEvent, DoneEvent
+from cody.core.runner import (
+    CodyResult, TextDeltaEvent, DoneEvent,
+    ToolCallEvent, ToolResultEvent, CompactEvent, ThinkingEvent,
+)
 
 from cody.client import (
     AsyncCodyClient,
@@ -65,6 +68,98 @@ def test_usage_from_result_without_usage():
     assert usage.total_tokens == 0
 
 
+def test_event_to_chunk_tool_call():
+    event = ToolCallEvent(
+        tool_name="read_file", args={"path": "test.py"}, tool_call_id="tc_42",
+    )
+    chunk = _event_to_chunk(event, session_id="s1")
+    assert chunk.type == "tool_call"
+    assert chunk.tool_name == "read_file"
+    assert chunk.args == {"path": "test.py"}
+    assert chunk.tool_call_id == "tc_42"
+    assert chunk.content == "read_file"
+    assert chunk.session_id == "s1"
+
+
+def test_event_to_chunk_tool_result():
+    event = ToolResultEvent(
+        tool_name="read_file", tool_call_id="tc_42", result="file contents here",
+    )
+    chunk = _event_to_chunk(event, session_id="s2")
+    assert chunk.type == "tool_result"
+    assert chunk.tool_name == "read_file"
+    assert chunk.tool_call_id == "tc_42"
+    assert chunk.content == "file contents here"
+    assert chunk.session_id == "s2"
+
+
+def test_event_to_chunk_compact():
+    event = CompactEvent(
+        original_messages=20, compacted_messages=5, estimated_tokens_saved=8000,
+    )
+    chunk = _event_to_chunk(event)
+    assert chunk.type == "compact"
+    assert chunk.original_messages == 20
+    assert chunk.compacted_messages == 5
+    assert chunk.estimated_tokens_saved == 8000
+
+
+def test_event_to_chunk_thinking():
+    event = ThinkingEvent(content="Let me think...")
+    chunk = _event_to_chunk(event, session_id="s3")
+    assert chunk.type == "thinking"
+    assert chunk.content == "Let me think..."
+    assert chunk.session_id == "s3"
+
+
+# ── Async client: start_mcp ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_async_start_mcp():
+    client = AsyncCodyClient()
+    mock_runner = MagicMock()
+    mock_runner.start_mcp = AsyncMock()
+
+    with patch.object(client, "get_runner", return_value=mock_runner):
+        await client.start_mcp()
+
+    mock_runner.start_mcp.assert_awaited_once()
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_stream_with_tool_events():
+    """Verify stream() yields StreamChunks with tool_call_id for tool events."""
+    client = AsyncCodyClient()
+
+    async def fake_stream(prompt, message_history=None):
+        yield ToolCallEvent(tool_name="grep", args={"pattern": "foo"}, tool_call_id="tc_1")
+        yield ToolResultEvent(tool_name="grep", tool_call_id="tc_1", result="match found")
+        yield DoneEvent(result=CodyResult(output="done"))
+
+    with patch.object(client, "get_runner") as mock_get_runner:
+        mock_runner = MagicMock()
+        mock_runner.run_stream = fake_stream
+        mock_get_runner.return_value = mock_runner
+
+        chunks = []
+        async for chunk in client.stream("test"):
+            chunks.append(chunk)
+
+    tool_call = [c for c in chunks if c.type == "tool_call"][0]
+    assert tool_call.tool_name == "grep"
+    assert tool_call.tool_call_id == "tc_1"
+    assert tool_call.args == {"pattern": "foo"}
+
+    tool_result = [c for c in chunks if c.type == "tool_result"][0]
+    assert tool_result.tool_name == "grep"
+    assert tool_result.tool_call_id == "tc_1"
+    assert tool_result.content == "match found"
+
+    await client.close()
+
+
 # ── Async client: health ─────────────────────────────────────────────────────
 
 
@@ -85,8 +180,8 @@ async def test_async_run():
     client = AsyncCodyClient()
     mock_result = _make_result("async result")
 
-    with patch.object(client, "_get_runner") as mock_get_runner, \
-         patch.object(client, "_get_session_store"):
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store"):
         mock_runner = MagicMock()
         mock_runner.run_with_session = AsyncMock(return_value=(mock_result, "sid123"))
         mock_get_runner.return_value = mock_runner
@@ -105,8 +200,8 @@ async def test_async_run_with_session():
     client = AsyncCodyClient()
     mock_result = _make_result("continued")
 
-    with patch.object(client, "_get_runner") as mock_get_runner, \
-         patch.object(client, "_get_session_store"):
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store"):
         mock_runner = MagicMock()
         mock_runner.run_with_session = AsyncMock(return_value=(mock_result, "abc123"))
         mock_get_runner.return_value = mock_runner
@@ -130,7 +225,7 @@ async def test_async_stream():
         yield TextDeltaEvent(content=" async")
         yield DoneEvent(result=CodyResult(output="Hello async"))
 
-    with patch.object(client, "_get_runner") as mock_get_runner:
+    with patch.object(client, "get_runner") as mock_get_runner:
         mock_runner = MagicMock()
         mock_runner.run_stream = fake_stream
         mock_get_runner.return_value = mock_runner

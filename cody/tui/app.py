@@ -1,6 +1,7 @@
 """TUI main application for Cody."""
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Optional
@@ -19,12 +20,15 @@ except ImportError:
         "  pip install cody-ai[tui]"
     )
 
-from ..core import AgentRunner, Config, SessionStore
+from ..core import Config
+from ..sdk.client import AsyncCodyClient
 from ..shared import (
     SPINNER_FRAMES, compact_message, auto_title,
     format_elapsed, format_session_line, truncate_repr as _truncate_repr,
 )
 from .widgets import MessageBubble, StreamBubble, StatusLine
+
+logger = logging.getLogger(__name__)
 
 
 class CodyTUI(App):
@@ -86,8 +90,7 @@ class CodyTUI(App):
 
         # Initialized in on_mount
         self._config: Optional[Config] = None
-        self._runner: Optional[AgentRunner] = None
-        self._store: Optional[SessionStore] = None
+        self._client: Optional[AsyncCodyClient] = None
         self._session_id: Optional[str] = None
         self._message_history: list = []
         self._cancel_event: Optional[asyncio.Event] = None
@@ -106,22 +109,25 @@ class CodyTUI(App):
             extra_roots=self._extra_roots or None,
         )
 
-        self._runner = AgentRunner(
-            config=self._config,
-            workdir=self._workdir,
-            extra_roots=[Path(r) for r in self._extra_roots],
+        self._client = AsyncCodyClient(
+            workdir=str(self._workdir),
+            model=self._config.model,
+            api_key=self._config.model_api_key,
+            base_url=self._config.model_base_url,
         )
-        self._store = SessionStore()
+        self._client.set_config(self._config)
+
+        store = self._client.get_session_store()
 
         # Resolve or create session
         session = None
         if self._session_id_arg:
-            session = self._store.get_session(self._session_id_arg)
+            session = store.get_session(self._session_id_arg)
         elif self._continue_last:
-            session = self._store.get_latest_session(workdir=str(self._workdir))
+            session = store.get_latest_session(workdir=str(self._workdir))
 
         if session is None:
-            session = self._store.create_session(
+            session = store.create_session(
                 title="TUI session",
                 model=self._config.model,
                 workdir=str(self._workdir),
@@ -133,7 +139,7 @@ class CodyTUI(App):
         for msg in session.messages:
             self._add_bubble(msg.role, msg.content)
 
-        self._message_history = AgentRunner.messages_to_history(session.messages)
+        self._message_history = AsyncCodyClient.messages_to_history(session.messages)
         self._update_status()
         self.query_one("#prompt-input", Input).focus()
 
@@ -143,20 +149,19 @@ class CodyTUI(App):
     @work(thread=False)
     async def _start_services(self) -> None:
         """Start MCP servers in the background."""
-        if self._runner:
+        if self._client:
             try:
-                await self._runner.start_mcp()
+                await self._client.start_mcp()
             except Exception:
-                pass
+                logger.debug("MCP start failed", exc_info=True)
 
     async def _stop_services(self) -> None:
         """Stop MCP and LSP servers."""
-        if self._runner:
+        if self._client:
             try:
-                await self._runner.stop_mcp()
-                await self._runner.stop_lsp()
+                await self._client.close()
             except Exception:
-                pass
+                logger.debug("Service stop failed", exc_info=True)
 
     # ── UI helpers ───────────────────────────────────────────────────────────
 
@@ -185,8 +190,8 @@ class CodyTUI(App):
         model = self._config.model if self._config else "?"
         sid = self._session_id or "?"
         msg_count = (
-            self._store.get_message_count(self._session_id)
-            if self._store and self._session_id
+            self._client.get_message_count(self._session_id)
+            if self._client and self._session_id
             else 0
         )
         self.query_one("#status-line", StatusLine).update(
@@ -248,15 +253,12 @@ class CodyTUI(App):
         # Show user message
         self._add_bubble("user", text)
 
-        # Auto-title
-        if self._store and self._store.get_message_count(self._session_id) == 0:
-            self._store.update_title(self._session_id, auto_title(text))
+        # Auto-title (before stream, which auto-saves user message)
+        assert self._session_id is not None
+        if self._client and self._client.get_message_count(self._session_id) == 0:
+            self._client.update_title(self._session_id, auto_title(text))
 
-        # Save user message
-        if self._store:
-            self._store.add_message(self._session_id, "user", text)
-
-        # Run agent
+        # Run agent — SDK auto-saves user+assistant messages via session
         self._run_agent(text)
 
     _SPINNER_FRAMES = SPINNER_FRAMES
@@ -292,12 +294,8 @@ class CodyTUI(App):
 
     @work(thread=False)
     async def _run_agent(self, prompt: str) -> None:
-        """Stream agent response with structured events."""
-        from ..core.runner import (
-            CompactEvent, ThinkingEvent, TextDeltaEvent, ToolCallEvent,
-            ToolResultEvent, DoneEvent,
-        )
-
+        """Stream agent response via SDK StreamChunk API."""
+        assert self._session_id is not None
         self.is_running = True
         self._set_input_enabled(False)
         self._cancel_event = asyncio.Event()
@@ -308,44 +306,43 @@ class CodyTUI(App):
         self._start_processing()
 
         try:
-            async for event in self._runner.run_stream(
-                prompt, message_history=self._message_history
+            assert self._client is not None
+            async for chunk in self._client.stream(
+                prompt, session_id=self._session_id
             ):
                 if self._cancel_event.is_set():
                     bubble.append("\n\n[dim italic](cancelled)[/dim italic]")
                     break
 
-                if isinstance(event, CompactEvent):
+                if chunk.type == "compact":
                     self._add_bubble(
                         "system",
-                        f"[yellow]{compact_message(event.original_messages, event.compacted_messages, event.estimated_tokens_saved)}[/yellow]",
+                        f"[yellow]{compact_message(chunk.original_messages, chunk.compacted_messages, chunk.estimated_tokens_saved)}[/yellow]",
                     )
-                elif isinstance(event, ThinkingEvent):
-                    bubble.append(f"[dim]{event.content}[/dim]")
-                elif isinstance(event, ToolCallEvent):
-                    self._set_processing_state(f"Running {event.tool_name}...")
+                elif chunk.type == "thinking":
+                    bubble.append(f"[dim]{chunk.content}[/dim]")
+                elif chunk.type == "tool_call":
+                    tool_name = chunk.tool_name or ""
+                    self._set_processing_state(f"Running {tool_name}...")
+                    args = chunk.args or {}
                     args_str = ", ".join(
                         f"{k}={_truncate_repr(v)}"
-                        for k, v in list(event.args.items())[:3]
+                        for k, v in list(args.items())[:3]
                     )
-                    bubble.append(f"\n[dim]→ {event.tool_name}({args_str})[/dim]\n")
-                elif isinstance(event, ToolResultEvent):
+                    bubble.append(f"\n[dim]→ {tool_name}({args_str})[/dim]\n")
+                elif chunk.type == "tool_result":
                     self._set_processing_state("Generating...")
-                    result_len = len(event.result) if event.result else 0
+                    result_len = len(chunk.content) if chunk.content else 0
+                    tool_name = chunk.tool_name or ""
                     bubble.append(
-                        f"[dim]✓ {event.tool_name} done ({result_len} chars)[/dim]\n"
+                        f"[dim]✓ {tool_name} done ({result_len} chars)[/dim]\n"
                     )
-                elif isinstance(event, TextDeltaEvent):
+                elif chunk.type == "text_delta":
                     self._set_processing_state("Generating...")
-                    bubble.append(event.content)
-                elif isinstance(event, DoneEvent):
-                    # Use real message history from pydantic-ai (includes tool calls)
-                    self._message_history = event.result.all_messages()
-                    # Save assistant message
-                    if self._store and not self._cancel_event.is_set():
-                        self._store.add_message(
-                            self._session_id, "assistant", event.result.output
-                        )
+                    bubble.append(chunk.content)
+                elif chunk.type == "done":
+                    # Update message history from SDK stream
+                    self._message_history = chunk.message_history or []
 
         except Exception as e:
             bubble.append(f"\n\n[bold red]Error: {e}[/bold red]")
@@ -399,16 +396,17 @@ class CodyTUI(App):
             self._add_bubble("system", f"[yellow]Unknown command: {cmd}[/yellow]\nType /help")
 
     def _show_sessions(self) -> None:
-        if not self._store:
+        if not self._client:
             return
-        sessions = self._store.list_sessions(limit=10)
+        store = self._client.get_session_store()
+        sessions = store.list_sessions(limit=10)
         if not sessions:
             self._add_bubble("system", "[yellow]No sessions found[/yellow]")
             return
 
         lines = ["[bold]Recent sessions:[/bold]"]
         for s in sessions:
-            count = self._store.get_message_count(s.id)
+            count = self._client.get_message_count(s.id)
             line = format_session_line(
                 s.id, s.title, count, s.updated_at, self._session_id or ""
             )
@@ -418,10 +416,11 @@ class CodyTUI(App):
     # ── Actions ──────────────────────────────────────────────────────────────
 
     def action_new_session(self) -> None:
-        if not self._store or not self._config:
+        if not self._client or not self._config:
             return
 
-        session = self._store.create_session(
+        store = self._client.get_session_store()
+        session = store.create_session(
             title="TUI session",
             model=self._config.model,
             workdir=str(self._workdir),

@@ -234,9 +234,16 @@ class StreamChunk:
     type: str                         # 事件类型（见下表）
     content: str                      # 文本内容
     session_id: Optional[str]         # 会话 ID
-    tool_name: Optional[str]          # 工具名称（type="tool_call" 时）
+    tool_name: Optional[str]          # 工具名称（type="tool_call" / "tool_result" 时）
     args: Optional[dict]              # 工具参数（type="tool_call" 时）
+    tool_call_id: Optional[str]       # 工具调用 ID（type="tool_call" / "tool_result" 时）
     usage: Optional[Usage]            # Token 用量（type="done" 时）
+    # v1.7.4+ compact 事件详情
+    original_messages: int            # 压缩前消息数（type="compact" 时）
+    compacted_messages: int           # 压缩后消息数（type="compact" 时）
+    estimated_tokens_saved: int       # 估计节省的 token 数（type="compact" 时）
+    # v1.7.4+ done 事件消息历史
+    message_history: Optional[list]   # 完整对话历史（type="done" 时）
 ```
 
 **流式事件类型：**
@@ -245,8 +252,8 @@ class StreamChunk:
 | ---- | ---- | -------- |
 | `text_delta` | 文本内容（增量） | `content` |
 | `thinking` | 思考内容（增量） | `content` |
-| `tool_call` | 工具调用 | `tool_name`, `args` |
-| `tool_result` | 工具结果 | `content`（结果文本） |
+| `tool_call` | 工具调用 | `tool_name`, `args`, `tool_call_id` |
+| `tool_result` | 工具结果 | `content`（结果文本）, `tool_name`, `tool_call_id` |
 | `done` | 任务完成 | `usage`（Token 用量） |
 | `compact` | 上下文压缩 | — |
 
@@ -983,6 +990,7 @@ async with client:
 | `client.run(prompt, session_id=)` | 执行任务，返回 `RunResult` |
 | `client.stream(prompt, session_id=)` | 流式执行，yield `StreamChunk` |
 | `client.run_stream(prompt, session_id=)` | `stream()` 的别名 |
+| `client.start_mcp()` | 启动 MCP 服务器（在首次 `stream()` 前调用） |
 | `client.tool(name, params)` | 直接调用工具，返回 `ToolResult` |
 
 ### 会话方法
@@ -993,6 +1001,11 @@ async with client:
 | `client.list_sessions(limit=)` | 列出会话 |
 | `client.get_session(session_id)` | 获取会话详情 |
 | `client.delete_session(session_id)` | 删除会话 |
+| `client.get_latest_session(workdir=)` | 获取最近的会话（v1.7.4+） |
+| `client.get_message_count(session_id)` | 获取会话消息数（v1.7.4+） |
+| `client.add_message(session_id, role, content)` | 添加消息到会话（v1.7.4+） |
+| `client.update_title(session_id, title)` | 更新会话标题（v1.7.4+） |
+| `AsyncCodyClient.messages_to_history(messages)` | 将消息列表转换为对话历史（静态方法，v1.7.4+） |
 
 ### 技能方法
 
@@ -1000,6 +1013,14 @@ async with client:
 |------|------|
 | `client.list_skills()` | 列出所有技能 |
 | `client.get_skill(name)` | 获取技能详情和文档 |
+
+### 高级方法（Power-user API）
+
+| 方法 | 说明 |
+|------|------|
+| `client.set_config(config)` | 注入预构建的 core Config（含 thinking、extra_roots 等覆盖），重置 runner（v1.7.4+） |
+| `client.get_runner()` | 获取底层 AgentRunner，用于原始流式事件或 MCP 控制（v1.7.4+） |
+| `client.get_session_store()` | 获取底层 SessionStore，用于同步会话操作（v1.7.4+） |
 
 ### 其他方法
 
@@ -1044,7 +1065,7 @@ async with client:
 | 类 | 说明 |
 |------|------|
 | `RunResult` | 执行结果（output, session_id, usage, thinking） |
-| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, usage） |
+| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, tool_call_id, usage） |
 | `ToolResult` | 工具结果（result） |
 | `SessionInfo` | 会话摘要 |
 | `SessionDetail` | 会话详情（含消息列表） |
@@ -1075,4 +1096,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-05
+**最后更新:** 2026-03-07

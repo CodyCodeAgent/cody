@@ -3,7 +3,8 @@
 import pytest
 from pathlib import Path
 from click.testing import CliRunner
-from cody.cli import main, _handle_command, _build_history_from_session
+from cody.cli import main, _handle_command
+from cody.sdk.client import AsyncCodyClient
 from cody.core.session import SessionStore, Session, Message
 
 
@@ -194,7 +195,7 @@ def test_build_history_empty():
         id="test", title="test", messages=[],
         model="", workdir="", created_at="", updated_at="",
     )
-    history = _build_history_from_session(session)
+    history = AsyncCodyClient.messages_to_history(session.messages)
     assert history == []
 
 
@@ -208,7 +209,7 @@ def test_build_history_with_messages():
         ],
         model="", workdir="", created_at="", updated_at="",
     )
-    history = _build_history_from_session(session)
+    history = AsyncCodyClient.messages_to_history(session.messages)
     assert len(history) == 3
 
 
@@ -268,7 +269,7 @@ def test_build_history_preserves_roles():
         ],
         model="", workdir="", created_at="", updated_at="",
     )
-    history = _build_history_from_session(session)
+    history = AsyncCodyClient.messages_to_history(session.messages)
     assert len(history) == 2
     # pydantic-ai returns ModelRequest for user, ModelResponse for assistant
     assert isinstance(history[0], ModelRequest)

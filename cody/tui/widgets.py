@@ -47,7 +47,7 @@ class StreamBubble(Static):
         try:
             self.parent.scroll_end(animate=False)
         except Exception:
-            pass
+            pass  # scroll_end may fail if widget is detached
 
     def append(self, text: str) -> None:
         self._buffer += text

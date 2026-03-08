@@ -40,7 +40,9 @@ from .models import (
     HealthResponse, ProjectCreate, ProjectUpdate, ProjectResponse,
     TaskCreate, TaskUpdate, TaskResponse,
 )
-from .state import get_project_store
+from cody.core import SessionStore
+
+from .state import get_project_store, session_store_dep
 from .middleware import auth_middleware, rate_limit_middleware, audit_middleware
 
 from .routes.directories import router as directories_router
@@ -143,8 +145,9 @@ async def list_projects_endpoint(
 async def create_project_endpoint(
     body: ProjectCreate,
     store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
-    return await _projects.create_project(body=body, store=store)
+    return await _projects.create_project(body=body, store=store, session_store=session_store)
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectResponse)
@@ -170,8 +173,9 @@ async def update_project_endpoint(
 async def delete_project_endpoint(
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
-    return await _projects.delete_project(project_id=project_id, store=store)
+    return await _projects.delete_project(project_id=project_id, store=store, session_store=session_store)
 
 
 @app.post("/api/projects/{project_id}/init")
@@ -199,8 +203,11 @@ async def create_task_endpoint(
     project_id: str,
     body: TaskCreate,
     store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
-    return await _tasks.create_task(project_id=project_id, body=body, store=store)
+    return await _tasks.create_task(
+        project_id=project_id, body=body, store=store, session_store=session_store,
+    )
 
 
 @app.get("/api/tasks/{task_id}", response_model=TaskResponse)
@@ -224,8 +231,9 @@ async def update_task_endpoint(
 async def delete_task_endpoint(
     task_id: str,
     store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
-    return await _tasks.delete_task(task_id=task_id, store=store)
+    return await _tasks.delete_task(task_id=task_id, store=store, session_store=session_store)
 
 
 # Chat WebSocket (task-level) — must be before project-level to avoid "task" matching as project_id
@@ -234,8 +242,11 @@ async def task_chat_websocket_endpoint(
     ws: WebSocket,
     task_id: str,
     store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
-    await _task_chat.task_chat_websocket(ws=ws, task_id=task_id, store=store)
+    await _task_chat.task_chat_websocket(
+        ws=ws, task_id=task_id, store=store, session_store=session_store,
+    )
 
 
 # Chat WebSocket (project-level)
@@ -244,8 +255,11 @@ async def chat_websocket_endpoint(
     ws: WebSocket,
     project_id: str,
     store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
-    await _chat.chat_websocket(ws=ws, project_id=project_id, store=store)
+    await _chat.chat_websocket(
+        ws=ws, project_id=project_id, store=store, session_store=session_store,
+    )
 
 
 # Health (RPC endpoint)

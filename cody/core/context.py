@@ -197,10 +197,13 @@ def select_relevant_context(
 
     if not query_words:
         # No meaningful keywords — return files by size (smallest first)
-        scored = [(len(content), path, content) for path, content in files.items()]
+        scored: list[tuple[float, str, str]] = [
+            (float(len(content)), path, content)
+            for path, content in files.items()
+        ]
         scored.sort()
     else:
-        scored: list[tuple[float, str, str]] = []
+        scored = []
         for path, content in files.items():
             score = _relevance_score(query_words, path, content)
             scored.append((-score, path, content))  # negative for descending sort

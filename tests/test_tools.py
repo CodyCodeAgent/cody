@@ -1,12 +1,15 @@
 """Tests for core tools"""
 
+import re
+
 import pytest
 from pathlib import Path
 from cody.core.tools import (
     read_file, write_file, edit_file, list_directory,
     grep, glob, patch, search_files,
-    _is_binary, _parse_gitignore, _is_gitignored, _iter_files,
 )
+from cody.core.tools._file_filter import _is_binary, _parse_gitignore, _is_gitignored, _iter_files
+from cody.core.tools.command import _BLOCKED_COMMAND_PATTERNS
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
 from cody.core.deps import CodyDeps
@@ -678,3 +681,63 @@ async def test_empty_allowed_roots_same_as_before(tmp_path):
     ctx = MockContext(tmp_path, allowed_roots=[])
     with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
         await write_file(ctx, "../../outside.txt", "bad")
+
+
+# ── Blocked command pattern tests ───────────────────────────────────────────
+
+
+def _matches_any_blocked(command: str) -> bool:
+    """Helper: check if a command matches any blocked pattern after normalization."""
+    normalized = re.sub(r'\s+', ' ', command.strip())
+    return any(p.search(normalized) for p in _BLOCKED_COMMAND_PATTERNS)
+
+
+class TestBlockedCommandPatterns:
+    """Tests for regex-based command blocklist (S3 fix)."""
+
+    def test_basic_rm_rf_root(self):
+        assert _matches_any_blocked("rm -rf /")
+
+    def test_rm_rf_extra_spaces(self):
+        """Multiple spaces between args should still be blocked."""
+        assert _matches_any_blocked("rm  -rf  /")
+
+    def test_rm_rf_tabs(self):
+        """Tabs between args should still be blocked."""
+        assert _matches_any_blocked("rm\t-rf\t/")
+
+    def test_rm_separate_flags(self):
+        """rm -r -f / (separate flags) should be blocked."""
+        assert _matches_any_blocked("rm -r -f /")
+
+    def test_rm_fr_root(self):
+        """rm -fr / (reversed flag order) should be blocked."""
+        assert _matches_any_blocked("rm -fr /")
+
+    def test_rm_rf_home(self):
+        assert _matches_any_blocked("rm -rf ~")
+
+    def test_rm_rf_home_slash(self):
+        assert _matches_any_blocked("rm -rf ~/")
+
+    def test_rm_rf_wildcard(self):
+        assert _matches_any_blocked("rm -rf /*")
+
+    def test_dd_if(self):
+        assert _matches_any_blocked("dd if=/dev/zero of=/dev/sda")
+
+    def test_fork_bomb(self):
+        assert _matches_any_blocked(":() { :|:& };:")
+
+    def test_mkfs(self):
+        assert _matches_any_blocked("mkfs.ext4 /dev/sda1")
+
+    def test_overwrite_disk(self):
+        assert _matches_any_blocked("echo bad > /dev/sda")
+
+    def test_safe_command_not_blocked(self):
+        """Normal commands should not be blocked."""
+        assert not _matches_any_blocked("ls -la")
+        assert not _matches_any_blocked("python script.py")
+        assert not _matches_any_blocked("rm temp_file.txt")
+        assert not _matches_any_blocked("cat /etc/hosts")

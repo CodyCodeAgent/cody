@@ -8,11 +8,12 @@ import click
 from rich.markup import escape as rich_escape
 from rich.panel import Panel
 
-from ..core import Config, AgentRunner, SessionStore
+from ..core import Config
 from ..core.log import setup_logging
+from ..sdk.client import AsyncCodyClient
 from .utils import (
     console, _ensure_config_ready, _get_input,
-    _handle_command, _build_history_from_session,
+    _handle_command,
 )
 from .rendering import _render_stream
 from ..shared import auto_title
@@ -76,26 +77,29 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
         extra_roots=list(extra_roots) or None,
     )
 
-    runner = AgentRunner(config=cfg, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
+    client = AsyncCodyClient(
+        workdir=str(workdir_path),
+        model=cfg.model,
+        api_key=cfg.model_api_key,
+        base_url=cfg.model_base_url,
+    )
+    client.set_config(cfg)
 
     if verbose:
         console.print(f"[dim]Model: {cfg.model}[/dim]")
-        console.print(f"[dim]Workdir: {runner.workdir}[/dim]")
+        console.print(f"[dim]Workdir: {workdir_path}[/dim]")
         if cfg.enable_thinking:
             budget = f" (budget: {cfg.thinking_budget})" if cfg.thinking_budget else ""
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
     async def _run_stream():
-        await runner.start_mcp()
+        await client.start_mcp()
         try:
-            result = await _render_stream(runner.run_stream(prompt), verbose=verbose)
-            if verbose and result:
-                usage = result.usage()
-                if usage:
-                    console.print(f"[dim]Tokens: {usage.total_tokens}[/dim]")
+            done_chunk = await _render_stream(client.stream(prompt), verbose=verbose)
+            if verbose and done_chunk and done_chunk.usage:
+                console.print(f"[dim]Tokens: {done_chunk.usage.total_tokens}[/dim]")
         finally:
-            await runner.stop_mcp()
-            await runner.stop_lsp()
+            await client.close()
 
     asyncio.run(_run_stream())
 
@@ -136,10 +140,18 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         thinking_budget=thinking_budget,
         extra_roots=list(extra_roots) or None,
     )
-    store = SessionStore()
 
-    # Resolve session
+    client = AsyncCodyClient(
+        workdir=str(workdir_path),
+        model=cfg.model,
+        api_key=cfg.model_api_key,
+        base_url=cfg.model_base_url,
+    )
+    client.set_config(cfg)
+
+    # Resolve session via SDK
     session = None
+    store = client.get_session_store()
     if session_id:
         session = store.get_session(session_id)
         if not session:
@@ -162,8 +174,6 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
             workdir=str(workdir_path),
         )
 
-    runner = AgentRunner(config=cfg, workdir=workdir_path, extra_roots=[Path(r) for r in extra_roots])
-
     # Print header
     console.print(
         Panel(
@@ -176,12 +186,8 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
     )
     console.print("[dim]Type your message. Commands: /quit, /sessions, /clear, /help[/dim]\n")
 
-    # Build message history from session
-    message_history = _build_history_from_session(session)
-
     async def _chat_loop():
-        nonlocal message_history
-        await runner.start_mcp()
+        await client.start_mcp()
         try:
             while True:
                 try:
@@ -203,30 +209,20 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
                         break
                     continue
 
-                # Auto-title from first message
-                if store.get_message_count(session.id) == 0:
-                    store.update_title(session.id, auto_title(user_input))
+                # Auto-title from first message (before stream, which saves user msg)
+                if client.get_message_count(session.id) == 0:
+                    client.update_title(session.id, auto_title(user_input))
 
-                # Save user message
-                store.add_message(session.id, "user", user_input)
-
-                # Run agent with streaming
+                # Run agent with streaming — SDK auto-saves messages via session
                 try:
-                    result = await _render_stream(
-                        runner.run_stream(user_input, message_history=message_history),
+                    await _render_stream(
+                        client.stream(user_input, session_id=session.id),
                     )
-
-                    # Update history for next turn
-                    if result:
-                        message_history = result.all_messages()
-                        store.add_message(session.id, "assistant", result.output)
-
                 except Exception as e:
                     console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")
 
         finally:
-            await runner.stop_mcp()
-            await runner.stop_lsp()
+            await client.close()
 
     try:
         asyncio.run(_chat_loop())

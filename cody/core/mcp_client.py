@@ -229,6 +229,7 @@ class MCPClient:
 
         line = json.dumps(request) + "\n"
         try:
+            assert sp.process.stdin is not None
             sp.process.stdin.write(line.encode())
             await sp.process.stdin.drain()
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
@@ -254,6 +255,7 @@ class MCPClient:
             return
 
         try:
+            assert sp.process.stdout is not None
             while True:
                 line = await sp.process.stdout.readline()
                 if not line:

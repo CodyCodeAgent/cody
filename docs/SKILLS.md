@@ -146,7 +146,7 @@ Python 单元测试和集成测试的最佳实践。
 
 ## 先决条件
 
-- Python 3.9+
+- Python 3.10+
 - pytest 安装：`pip install pytest`
 
 ## 测试文件命名
