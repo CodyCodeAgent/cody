@@ -51,9 +51,21 @@ class AuditLogger:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
         self._init_db()
+        self._conn: sqlite3.Connection | None = sqlite3.connect(str(self.db_path))
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self.db_path))
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path))
+        return self._conn
+
+    def close(self) -> None:
+        """Close the persistent database connection."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+    def __del__(self):
+        self.close()
 
     def _init_db(self) -> None:
         with self._connect() as conn:
