@@ -131,49 +131,15 @@ client = (
 
 ### 严重问题 (P0)
 
-#### 1. CLI 子命令直接导入 Core，违反架构分层
+#### 1. ~~CLI 子命令直接导入 Core，违反架构分层~~ ✅ 已修复
 
-**位置**:
-- `cody/cli/commands/sessions.py:7` — `from ...core import SessionStore`
-- `cody/cli/commands/skills.py:9-10` — `from ...core import Config` + `from ...core.skill_manager import SkillManager`
-- `cody/cli/commands/config.py:7` — `from ...core import Config`
-- `cody/cli/commands/init_cmd.py:8-9` — 直接导入 Core
-- `cody/cli/main.py:11-12` — `from ..core import Config` + `from ..core.log import setup_logging`
+`sessions.py` 和 `skills.py` 已重构为使用 `CodyClient`（SDK 同步包装器），不再直接导入 Core 的 `SessionStore` 和 `SkillManager`。同时在 SDK 中新增了 `enable_skill()` 和 `disable_skill()` 方法。`main.py` 中的 `Config.load()` 和 `setup_logging()` 保留为引导代码。
 
-CLAUDE.md 明确规定 **"CLI/TUI 通过 SDK（`AsyncCodyClient`）访问 core，不再直接导入 `AgentRunner`/`SessionStore`"**。但 CLI 子命令直接实例化 `SessionStore()` 和 `SkillManager()`，完全绕过了 SDK 层。
+#### 2. ~~`_stream_run()` 返回类型不明确~~ ✅ 已修复
 
-```python
-# sessions.py - 当前（违规）
-store = SessionStore()  # 直接使用 Core
+已为 `run()` 方法添加 `@overload` 声明：`stream=False` 返回 `RunResult`，`stream=True` 返回 `AsyncIterator[StreamChunk]`。
 
-# 应该是
-client = AsyncCodyClient(workdir=".")
-sessions = await client.list_sessions(limit=limit)
-```
-
-`main.py` 中的 `Config.load()` 和 `setup_logging()` 可以辩解为"启动必需"，但 `sessions.py`、`skills.py` 完全可以通过 SDK 方法完成，且 SDK 已提供对应方法（`list_sessions()`, `list_skills()`, `get_skill()` 等）。
-
-**影响**: 如果 SDK 层添加了缓存、事件通知、指标收集等增强功能，CLI 子命令将无法受益。更重要的是，这违反了文档中声明的架构原则。
-
-**建议**: 将 `sessions.py` 和 `skills.py` 重构为使用 `AsyncCodyClient`，保持 `main.py` 中的 `Config.load()` 作为唯一允许的直接 Core 导入（用于引导 SDK 客户端创建）。
-
-#### 2. `_stream_run()` 返回类型不明确
-
-**位置**: `cody/sdk/client.py:449-476`
-
-```python
-async def _stream_run(self, prompt, session_id=None):
-    """Internal streaming run (called when run(stream=True))."""
-    async for chunk in self.stream(prompt, session_id=session_id):
-        ...
-        yield chunk
-```
-
-`_stream_run()` 是一个 async generator，但在 `run()` 方法中（`client.py:364`）它被 `return self._stream_run(...)` 返回。这意味着 `run(stream=True)` 返回的是一个未经类型注解的 async generator，而 `run()` 方法的返回类型声明中未体现这一点。调用者需要知道 `stream=True` 时返回的是 `AsyncIterator` 而非 `RunResult`。
-
-**建议**: 添加返回类型重载声明（`@overload`），或将 `run(stream=True)` 重定向到 `stream()` 方法以保持 API 清晰。
-
-#### 2. `CodyClient` 同步包装器中的事件循环冲突
+#### 3. `CodyClient` 同步包装器中的事件循环冲突
 
 **位置**: `cody/sdk/client.py:825-833`
 
@@ -265,56 +231,17 @@ def compact_messages(messages, max_tokens=100_000, keep_recent=4):
 - 检查 `rg`（ripgrep）是否可用，优先使用 subprocess 调用
 - 或至少并发化文件读取（`asyncio.to_thread` + `asyncio.gather`）
 
-#### 7. `list_sessions()` 返回的 Session 对象包含空 messages 列表
+#### 7. ~~`list_sessions()` 返回的 Session 对象包含空 messages 列表~~ ✅ 已修复
 
-**位置**: `cody/core/session.py:183-203`
+`Session` 数据类新增 `message_count: int | None` 字段。`list_sessions()` 使用 SQL `COUNT()` 子查询填充实际消息数，SDK 的 `list_sessions()` 优先使用该字段。
 
-```python
-def list_sessions(self, limit=20):
-    # ...返回 Session(messages=[])
-```
+#### 8. ~~Web Backend 中 `get_auth_manager()` 和 `get_rate_limiter()` 异常被静默吞掉~~ ✅ 已修复
 
-`list_sessions()` 为效率不查 messages，但返回的 `Session` 对象的 `messages` 字段是空列表 `[]`。这容易误导调用者认为会话没有消息。SDK 层 (`client.py:586-600`) 使用 `len(s.messages)` 作为 `message_count`，始终返回 0。
+已添加 `logger.warning("Failed to initialize ...", exc_info=True)` 记录初始化失败原因。
 
-**建议**:
-- `list_sessions()` 应使用 SQL `COUNT()` 子查询返回实际消息数
-- 或在 `Session` 中添加 `message_count: int | None` 字段，`messages` 设为 `None` 表示未加载
+#### 9. ~~Runner 缓存 fingerprint 不完整~~ ✅ 已修复
 
-#### 8. Web Backend 中 `get_auth_manager()` 和 `get_rate_limiter()` 异常被静默吞掉
-
-**位置**: `web/backend/state.py:64-86`
-
-```python
-def get_auth_manager():
-    try:
-        config = Config.load(workdir=Path.cwd())
-        _state.auth_manager = AuthManager(config=config.auth)
-    except Exception:
-        return None
-
-def get_rate_limiter():
-    try:
-        ...
-    except Exception:
-        pass
-```
-
-配置加载失败时静默返回 `None`，不记录日志。这意味着认证和限流可能在部署中悄无声息地被禁用。
-
-**建议**: 至少添加 `logger.warning()` 记录初始化失败原因。
-
-#### 9. Runner 缓存 fingerprint 不完整
-
-**位置**: `web/backend/state.py:132-134`
-
-```python
-def _config_fingerprint(config: Config) -> str:
-    return f"{config.model}|{config.model_base_url}|{config.model_api_key}|{config.enable_thinking}"
-```
-
-缺少 `thinking_budget` 字段。当用户在 Settings 中修改 thinking budget 时，缓存的 AgentRunner 不会被刷新，仍使用旧的 budget 值。
-
-**建议**: 将 `config.thinking_budget` 加入 fingerprint 字符串。
+`_config_fingerprint()` 已加入 `config.thinking_budget` 字段。
 
 #### 10. 前端 `useProjects` hook 使用模块级可变状态
 
@@ -506,16 +433,16 @@ for word in query_words:
 - `_run_async()` 的事件循环处理在 nested loop 场景下有风险
 - `tool()` 方法每次创建新 Config/SkillManager/CodyDeps，不使用缓存
 
-### CLI (7.5/10)
+### CLI (8.5/10)
 
 **亮点**:
 - `run` 和 `chat` 命令通过 SDK (`AsyncCodyClient`) 访问 Core —— 正确
+- `sessions.py` 和 `skills.py` 已重构为通过 SDK (`CodyClient`) 访问 Core —— 架构违规已修复
 - CLI 参数设计完善（`--model`、`--thinking`、`--workdir`、`--allow-root`）
 - `commands/` 子目录组织清晰
 - `_render_stream` 封装了流式渲染逻辑
 
 **需改进**:
-- **架构违规**: `commands/sessions.py` 和 `commands/skills.py` 直接导入 Core（`SessionStore`、`SkillManager`），绕过 SDK 层（P0-1）
 - `chat` 命令中的 `asyncio.get_event_loop()` 在 Python 3.12+ 已弃用
 
 ### TUI (8/10)
@@ -598,8 +525,8 @@ Cody v1.7.4 是一个**工程成熟度很高的 AI Agent 框架**。与上次审
 
 **当前最值得关注的 3 个改进方向**：
 
-1. **CLI 架构违规修复** (P0-1): CLI 子命令（sessions/skills）直接导入 Core 而非通过 SDK，违反文档声明的分层架构
-2. **SDK 类型安全** (P0-2/P0-3): `run(stream=True)` 返回类型不明确，`_run_async()` 事件循环处理需更安全
+1. ~~**CLI 架构违规修复** (P0-1)~~ ✅ 已修复
+2. **SDK 事件循环安全** (P0-3): `_run_async()` 在嵌套事件循环环境中有风险
 3. **Web Backend 并发安全** (P1-3): 配置和 Runner 缓存需加锁保护
 
 **项目成熟度**: **Production-Ready**。架构边界严格执行，安全防护多层覆盖，适合作为构建 AI Coding Agent 的框架基础。

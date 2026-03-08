@@ -11,7 +11,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Literal, Optional, overload
 
 from .config import SDKConfig, config as make_config
 from .errors import (
@@ -328,13 +328,23 @@ class AsyncCodyClient:
 
     # ── Run ───────────────────────────────────────────────────────────────
 
+    @overload
+    async def run(
+        self, prompt, *, session_id: Optional[str] = None, stream: Literal[False] = False,
+    ) -> RunResult: ...
+
+    @overload
+    async def run(
+        self, prompt, *, session_id: Optional[str] = None, stream: Literal[True],
+    ) -> AsyncIterator[StreamChunk]: ...
+
     async def run(
         self,
         prompt,
         *,
         session_id: Optional[str] = None,
         stream: bool = False,
-    ):
+    ) -> RunResult | AsyncIterator[StreamChunk]:
         """Run agent with prompt.
 
         Args:
@@ -592,7 +602,7 @@ class AsyncCodyClient:
                 title=s.title,
                 model=s.model,
                 workdir=s.workdir,
-                message_count=len(s.messages),
+                message_count=s.message_count if s.message_count is not None else len(s.messages),
                 created_at=s.created_at,
                 updated_at=s.updated_at,
             )
@@ -705,6 +715,36 @@ class AsyncCodyClient:
             "enabled": skill.enabled,
             "documentation": skill.documentation,
         }
+
+    async def enable_skill(self, skill_name: str) -> None:
+        """Enable a skill and persist the change to config."""
+        from ..core.skill_manager import SkillManager
+        from ..shared import resolve_config_path
+        cfg = self._get_config()
+        sm = SkillManager(config=cfg, workdir=self.workdir)
+        skill = sm.get_skill(skill_name)
+        if not skill:
+            raise CodyNotFoundError(
+                f"Skill not found: {skill_name}",
+                code="SKILL_NOT_FOUND",
+            )
+        sm.enable_skill(skill_name)
+        cfg.save(resolve_config_path())
+
+    async def disable_skill(self, skill_name: str) -> None:
+        """Disable a skill and persist the change to config."""
+        from ..core.skill_manager import SkillManager
+        from ..shared import resolve_config_path
+        cfg = self._get_config()
+        sm = SkillManager(config=cfg, workdir=self.workdir)
+        skill = sm.get_skill(skill_name)
+        if not skill:
+            raise CodyNotFoundError(
+                f"Skill not found: {skill_name}",
+                code="SKILL_NOT_FOUND",
+            )
+        sm.disable_skill(skill_name)
+        cfg.save(resolve_config_path())
 
     # ── Convenience Methods ──────────────────────────────────────────────
 
@@ -898,6 +938,12 @@ class CodyClient:
 
     def get_latest_session(self, workdir: str | None = None):
         return _run_async(self._async.get_latest_session(workdir=workdir))
+
+    def enable_skill(self, skill_name: str):
+        return _run_async(self._async.enable_skill(skill_name))
+
+    def disable_skill(self, skill_name: str):
+        return _run_async(self._async.disable_skill(skill_name))
 
     def get_message_count(self, session_id: str) -> int:
         return self._async.get_message_count(session_id)

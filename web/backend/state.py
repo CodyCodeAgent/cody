@@ -16,6 +16,7 @@ module-level globals and improve testability / thread safety.
 """
 
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Optional
@@ -31,6 +32,7 @@ from cody.core.skill_manager import SkillManager
 
 from .db import ProjectStore
 
+logger = logging.getLogger(__name__)
 
 _CONFIG_CACHE_TTL = 60.0  # seconds
 _RUNNER_CACHE_TTL = 300.0  # 5 minutes
@@ -67,6 +69,7 @@ def get_auth_manager() -> Optional[AuthManager]:
             config = Config.load(workdir=Path.cwd())
             _state.auth_manager = AuthManager(config=config.auth)
         except Exception:
+            logger.warning("Failed to initialize AuthManager", exc_info=True)
             return None
     return _state.auth_manager
 
@@ -82,7 +85,7 @@ def get_rate_limiter() -> Optional[RateLimiter]:
                     window_seconds=config.rate_limit.window_seconds,
                 )
         except Exception:
-            pass
+            logger.warning("Failed to initialize RateLimiter", exc_info=True)
     return _state.rate_limiter
 
 
@@ -131,7 +134,10 @@ def create_full_deps(config: Config, workdir: Path) -> CodyDeps:
 
 def _config_fingerprint(config: Config) -> str:
     """Return a short fingerprint of config fields that affect the agent."""
-    return f"{config.model}|{config.model_base_url}|{config.model_api_key}|{config.enable_thinking}"
+    return (
+        f"{config.model}|{config.model_base_url}|{config.model_api_key}"
+        f"|{config.enable_thinking}|{config.thinking_budget}"
+    )
 
 
 def get_runner(workdir: Path):
