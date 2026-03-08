@@ -30,6 +30,7 @@ class Session:
     workdir: str
     created_at: str
     updated_at: str
+    message_count: int | None = None  # populated by list_sessions(), None means not loaded
 
 
 class SessionStore:
@@ -184,8 +185,9 @@ class SessionStore:
         """List recent sessions (without messages for efficiency)"""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, title, model, workdir, created_at, updated_at "
-                "FROM sessions ORDER BY updated_at DESC LIMIT ?",
+                "SELECT s.id, s.title, s.model, s.workdir, s.created_at, s.updated_at, "
+                "(SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS msg_count "
+                "FROM sessions s ORDER BY s.updated_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
 
@@ -198,6 +200,7 @@ class SessionStore:
                     workdir=r[3],
                     created_at=r[4],
                     updated_at=r[5],
+                    message_count=r[6],
                 )
                 for r in rows
             ]

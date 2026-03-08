@@ -1,6 +1,7 @@
 """TUI widget classes for Cody."""
 
 try:
+    from textual.timer import Timer
     from textual.widgets import Static
 except ImportError:
     raise SystemExit(
@@ -34,7 +35,7 @@ class StreamBubble(Static):
         super().__init__("[bold green]Cody[/bold green]\n", **kwargs)
         self._buffer: str = ""
         self._dirty: bool = False
-        self._timer = None
+        self._timer: Timer | None = None
 
     def on_mount(self) -> None:
         self._timer = self.set_interval(1 / 30, self._flush)
@@ -45,7 +46,9 @@ class StreamBubble(Static):
         self._dirty = False
         self.update(f"[bold green]Cody[/bold green]\n{self._buffer}")
         try:
-            self.parent.scroll_end(animate=False)
+            parent = self.parent
+            if parent is not None and hasattr(parent, "scroll_end"):
+                parent.scroll_end(animate=False)  # type: ignore[union-attr]
         except Exception:
             pass  # scroll_end may fail if widget is detached
 

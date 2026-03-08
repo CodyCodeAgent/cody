@@ -525,6 +525,32 @@ async def test_grep_gitignore_negation(tmp_path):
     assert "important.log" in result
 
 
+@pytest.mark.asyncio
+async def test_grep_reports_skipped_large_files(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "small.py").write_text("hello world\n")
+    # Create a file just over 1 MB
+    large = tmp_path / "big.sql"
+    large.write_text("hello world\n" * 100_000)  # ~1.2 MB
+
+    result = await grep(ctx, "hello")
+    assert "small.py" in result
+    assert "big.sql" not in result.split("[NOTE]")[0]  # not in matches
+    assert "[NOTE]" in result
+    assert "big.sql" in result  # mentioned in the skip note
+    assert "large file" in result
+
+
+@pytest.mark.asyncio
+async def test_grep_no_note_when_no_large_files(tmp_path):
+    ctx = MockContext(tmp_path)
+    (tmp_path / "a.py").write_text("hello\n")
+
+    result = await grep(ctx, "hello")
+    assert "a.py" in result
+    assert "[NOTE]" not in result
+
+
 # ── Default ignore tests (glob) ──────────────────────────────────────────────
 
 

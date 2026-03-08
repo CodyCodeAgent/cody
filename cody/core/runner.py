@@ -117,7 +117,7 @@ class CodyResult:
                         tool_traces.append(trace)
 
             elif isinstance(msg, ModelRequest):
-                for part in msg.parts:
+                for part in msg.parts:  # type: ignore[assignment]
                     if part.part_kind == "tool-return":
                         if part.tool_call_id in tool_calls:
                             content = part.content
@@ -317,7 +317,7 @@ class AgentRunner:
 
         tools.register_tools(agent, include_mcp=bool(self._mcp_client))
 
-        return agent
+        return agent  # type: ignore[return-value]
 
     def _create_deps(self) -> CodyDeps:
         """Create dependencies"""
@@ -423,7 +423,7 @@ class AgentRunner:
                     if hasattr(part, 'content'):
                         msgs.append({"role": "user", "content": part.content})
             elif isinstance(msg, ModelResponse):
-                for part in msg.parts:
+                for part in msg.parts:  # type: ignore[assignment]
                     if hasattr(part, 'content'):
                         msgs.append({"role": "assistant", "content": part.content})
 
@@ -503,7 +503,7 @@ class AgentRunner:
         deps = self._create_deps()
         message_history, _compact = self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        result = await self.agent.run(
+        result = await self.agent.run(  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )
@@ -544,15 +544,15 @@ class AgentRunner:
             )
 
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        async for event in self.agent.run_stream_events(
+        async for event in self.agent.run_stream_events(  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         ):
             if isinstance(event, PartStartEvent):
                 part = event.part
-                if part.part_kind == "thinking" and getattr(part, "content", ""):
+                if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
                     yield ThinkingEvent(content=part.content)
-                elif part.part_kind == "text" and getattr(part, "content", ""):
+                elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
                     yield TextDeltaEvent(content=part.content)
 
             elif isinstance(event, PartDeltaEvent):
@@ -606,7 +606,7 @@ class AgentRunner:
         deps = self._create_deps()
         message_history, _compact = self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        result = self.agent.run_sync(
+        result = self.agent.run_sync(  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )

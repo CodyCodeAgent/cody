@@ -279,13 +279,12 @@ def create_collector_handler(
         # ... run operations ...
         print(f"Collected {len(events)} events")
     """
+    collected: list[Event] = []
     if maxlen is not None:
         from collections import deque
-        collected = deque(maxlen=maxlen)
-    else:
-        collected = []
+        collected = deque(maxlen=maxlen)  # type: ignore[assignment]
 
-    def handler(event: Event):
+    def handler(event: Event) -> None:
         collected.append(event)
 
     return handler, collected
