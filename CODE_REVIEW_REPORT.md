@@ -303,11 +303,56 @@ def get_rate_limiter():
 
 **建议**: 至少添加 `logger.warning()` 记录初始化失败原因。
 
+#### 9. Runner 缓存 fingerprint 不完整
+
+**位置**: `web/backend/state.py:132-134`
+
+```python
+def _config_fingerprint(config: Config) -> str:
+    return f"{config.model}|{config.model_base_url}|{config.model_api_key}|{config.enable_thinking}"
+```
+
+缺少 `thinking_budget` 字段。当用户在 Settings 中修改 thinking budget 时，缓存的 AgentRunner 不会被刷新，仍使用旧的 budget 值。
+
+**建议**: 将 `config.thinking_budget` 加入 fingerprint 字符串。
+
+#### 10. 前端 `useProjects` hook 使用模块级可变状态
+
+**位置**: `web/src/hooks/useProjects.ts`
+
+```typescript
+let cached: Project[] | null = null;
+const listeners = new Set<() => void>();
+```
+
+使用模块级全局可变状态代替 React Context 或状态管理库。问题：
+- 并发刷新可能导致竞态条件
+- 组件在异步操作期间卸载时，listener 变为过期引用
+- 无 loading 和 error 状态暴露给调用者
+
+**建议**: 使用 React Context + useReducer，或暴露 `isLoading` / `error` 状态给调用者。
+
+#### 11. 前端 WebSocket 重连无最大重试限制
+
+**位置**: `web/src/api/client.ts`
+
+WebSocket 自动重连使用指数退避（最大 60s），但永远不会停止重试。如果服务器长期不可用，客户端会无限重连。
+
+**建议**: 添加最大重试次数（如 20 次 ≈ 30 分钟），超过后通知用户手动刷新。
+
+#### 12. 前端 API 请求无超时控制
+
+**位置**: `web/src/api/client.ts`
+
+`fetch()` 调用没有设置超时，请求可能无限期挂起。
+
+**建议**: 使用 `AbortController` + `setTimeout` 添加 30s 超时。
+
 ---
 
 ### 可选改进 (P2)
 
-#### 9. `CodyBuilder` 的 `mcp_server()` 和 `lsp_languages()` 类型不严谨
+#### 13. `CodyBuilder` 的 `mcp_server()` 类型不严谨
 
 **位置**: `cody/sdk/client.py:131-139`
 
@@ -325,7 +370,7 @@ def lsp_languages(self, languages: list[str]) -> "CodyBuilder":
 
 **建议**: 使用 `TypedDict` 或 Pydantic model 约束 `server` 参数结构。
 
-#### 10. `exec_command` 中 `$()` 被完全禁止可能过于严格
+#### 14. `exec_command` 中 `$()` 被完全禁止可能过于严格
 
 **位置**: `cody/core/tools/command.py:29`
 
@@ -340,7 +385,7 @@ re.compile(r'\$\('),  # command substitution $(...)
 - 或提供 config 选项允许用户放宽此限制
 - `exec` 匹配改为更精确的 `\bexec\s+` 以减少误报
 
-#### 11. 多处使用 `Optional[X]` 而非 `X | None`
+#### 15. 多处使用 `Optional[X]` 而非 `X | None`
 
 **位置**: 全局（`runner.py`、`deps.py`、`session.py`、`sub_agent.py` 等）
 
@@ -348,7 +393,7 @@ CLAUDE.md 规定项目使用 Python 3.10+，应优先使用 `X | None` 联合类
 
 **建议**: 这不影响功能，但为保持代码风格一致性，可逐步迁移到 `X | None` 语法（优先在新代码中使用）。
 
-#### 12. `CodyResult.from_raw()` 中的 `part_kind` 字符串匹配
+#### 16. `CodyResult.from_raw()` 中的 `part_kind` 字符串匹配
 
 **位置**: `cody/core/runner.py:98-127`
 
@@ -363,7 +408,7 @@ elif part.part_kind == "tool-call":
 
 **建议**: 使用 `isinstance()` 检查或导入 pydantic-ai 的具体 Part 类型进行匹配，而非依赖字符串。
 
-#### 13. `shared.py` 中的中文硬编码
+#### 17. `shared.py` 中的中文硬编码
 
 **位置**: `cody/shared.py:33-37`
 
@@ -379,7 +424,7 @@ UI 文本硬编码为中文，不利于国际化。
 
 **建议**: 如果项目定位面向国际用户，考虑使用 i18n 框架或至少提供英文版。如果仅面向中文用户则无需改动。
 
-#### 14. `_relevance_score()` 中的 `content.lower()` 全文小写化
+#### 18. `_relevance_score()` 中的 `content.lower()` 全文小写化
 
 **位置**: `cody/core/context.py:254-260`
 
@@ -499,6 +544,15 @@ for word in query_words:
 - TypeScript 类型定义完整 (`types/index.ts`)
 - 组件分层清晰（pages/ + components/ + hooks/ + api/）
 - API client 封装良好
+- `ChatWindow.tsx` 使用 RAF 缓冲区批处理流事件，避免高频渲染抖动 —— 优秀的性能优化
+- WebSocket 自动重连 + 指数退避
+- 支持图片粘贴/上传
+
+**可改进**:
+- `useProjects` hook 使用模块级可变状态（P1-10）
+- WebSocket 重连无上限（P1-11）
+- API 请求无超时控制（P1-12）
+- `types/index.ts` 中 `HealthResponse` 类型与后端模型不匹配
 
 ### 测试 (8/10)
 
