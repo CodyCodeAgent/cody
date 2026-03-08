@@ -46,6 +46,7 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
         base["original_messages"] = event.original_messages
         base["compacted_messages"] = event.compacted_messages
         base["estimated_tokens_saved"] = event.estimated_tokens_saved
+        base["used_llm"] = event.used_llm
     elif isinstance(event, ThinkingEvent):
         base["content"] = event.content
     elif isinstance(event, TextDeltaEvent):

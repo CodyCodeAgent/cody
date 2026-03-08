@@ -6,10 +6,16 @@ Handles:
 - Smart context selection: only feed relevant code to the LLM
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from .config import Config
+
+logger = logging.getLogger(__name__)
 
 
 # ── Token estimation ─────────────────────────────────────────────────────────
@@ -41,6 +47,7 @@ class CompactResult:
     original_messages: int
     compacted_messages: int
     estimated_tokens_saved: int
+    used_llm: bool = False
 
 
 def compact_messages(
@@ -100,6 +107,127 @@ def _summarize_message(content: str, max_len: int = 200) -> str:
     if len(content) <= max_len:
         return content
     return content[:max_len] + "..."
+
+
+# ── LLM-based compaction ────────────────────────────────────────────────────
+
+_SUMMARIZATION_PROMPT = """\
+You are a conversation summarizer for an AI coding assistant.
+
+Summarize the conversation below. Preserve:
+- User goals and intent
+- Key decisions made
+- File paths and code locations mentioned
+- Tool results (especially errors and warnings)
+- Constraints or requirements stated
+
+Format: bullet points, 300 words or fewer. Do NOT include code blocks \
+unless they contain critical one-liners.
+"""
+
+
+def _resolve_compaction_model(config: "Config"):
+    """Build a pydantic-ai model instance for compaction summarization."""
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    cc = config.compaction
+    model_name = cc.model or config.model
+    base_url = cc.model_base_url or config.model_base_url
+    api_key = cc.model_api_key or config.model_api_key
+
+    if not base_url:
+        raise ValueError(
+            "model_base_url is required for LLM compaction. "
+            "Set it in compaction config or main config."
+        )
+
+    provider = OpenAIProvider(base_url=base_url, api_key=api_key or "")
+    return OpenAIChatModel(model_name, provider=provider)
+
+
+def _format_messages_for_summary(messages: list[dict]) -> str:
+    """Format message dicts into a readable transcript for the summarizer."""
+    parts: list[str] = []
+    for msg in messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            content = str(content)
+        # Truncate very long individual messages to avoid blowing up the prompt
+        if len(content) > 2000:
+            content = content[:2000] + "... [truncated]"
+        parts.append(f"[{role}] {content}")
+    return "\n\n".join(parts)
+
+
+async def compact_messages_llm(
+    messages: list[dict],
+    config: "Config",
+    existing_summary: str = "",
+    max_tokens: int = 100_000,
+    keep_recent: int = 4,
+    max_summary_tokens: int = 500,
+) -> tuple[list[dict], CompactResult | None]:
+    """Compact messages using an LLM agent to generate a semantic summary.
+
+    Falls back to truncation-based ``compact_messages`` on any error.
+
+    Args:
+        messages: Conversation messages as dicts with ``role`` and ``content``.
+        config: Cody Config (used to resolve the summarization model).
+        existing_summary: Previous compaction summary for incremental merging.
+        max_tokens: Token threshold that triggers compaction.
+        keep_recent: Number of recent messages to keep intact.
+        max_summary_tokens: Maximum tokens for the generated summary.
+
+    Returns:
+        ``(compacted_messages, CompactResult | None)``
+    """
+    total_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
+
+    if total_tokens <= max_tokens or len(messages) <= keep_recent:
+        return messages, None
+
+    old_messages = messages[:-keep_recent]
+    recent_messages = messages[-keep_recent:]
+
+    # Build the summarization prompt
+    prompt_parts: list[str] = [_SUMMARIZATION_PROMPT]
+    if existing_summary:
+        prompt_parts.append(
+            f"Previous summary to incorporate:\n{existing_summary}\n"
+        )
+    prompt_parts.append(
+        "Conversation to summarize:\n"
+        + _format_messages_for_summary(old_messages)
+    )
+    prompt_text = "\n\n".join(prompt_parts)
+
+    # Spawn a lightweight pydantic-ai Agent (no tools, no deps)
+    from pydantic_ai import Agent
+
+    model = _resolve_compaction_model(config)
+    agent = Agent(model)
+
+    result = await agent.run(prompt_text)
+    summary_text = "Previous conversation summary:\n" + result.output
+
+    old_tokens = sum(
+        estimate_tokens(m.get("content", "")) for m in old_messages
+    )
+    summary_tokens = estimate_tokens(summary_text)
+
+    compacted = [{"role": "system", "content": summary_text}] + recent_messages
+
+    compact_result = CompactResult(
+        summary=summary_text,
+        original_messages=len(messages),
+        compacted_messages=len(compacted),
+        estimated_tokens_saved=old_tokens - summary_tokens,
+        used_llm=True,
+    )
+    return compacted, compact_result
 
 
 # ── Large file chunking ─────────────────────────────────────────────────────

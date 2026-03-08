@@ -1,10 +1,18 @@
 """Tests for context management module"""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from cody.core.config import CompactionConfig, Config
 from cody.core.context import (
     CompactResult,
     FileChunk,
+    _format_messages_for_summary,
+    _resolve_compaction_model,
     chunk_file,
     compact_messages,
+    compact_messages_llm,
     estimate_tokens,
     select_relevant_context,
 )
@@ -199,3 +207,221 @@ def test_file_chunk_fields():
     assert c.path == "test.py"
     assert c.start_line == 1
     assert c.total_chunks == 2
+
+
+# ── CompactResult.used_llm ──────────────────────────────────────────────────
+
+
+def test_compact_result_used_llm_default():
+    r = CompactResult(summary="s", original_messages=10, compacted_messages=5,
+                      estimated_tokens_saved=100)
+    assert r.used_llm is False
+
+
+def test_compact_result_used_llm_explicit():
+    r = CompactResult(summary="s", original_messages=10, compacted_messages=5,
+                      estimated_tokens_saved=100, used_llm=True)
+    assert r.used_llm is True
+
+
+# ── CompactionConfig defaults ───────────────────────────────────────────────
+
+
+def test_compaction_config_defaults():
+    cc = CompactionConfig()
+    assert cc.use_llm is False
+    assert cc.model is None
+    assert cc.model_base_url is None
+    assert cc.model_api_key is None
+    assert cc.max_tokens == 100_000
+    assert cc.keep_recent == 4
+    assert cc.max_summary_tokens == 500
+
+
+def test_config_has_compaction():
+    c = Config()
+    assert isinstance(c.compaction, CompactionConfig)
+    assert c.compaction.use_llm is False
+
+
+# ── _format_messages_for_summary ────────────────────────────────────────────
+
+
+def test_format_messages_for_summary():
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi there"},
+    ]
+    result = _format_messages_for_summary(msgs)
+    assert "[user] hello" in result
+    assert "[assistant] hi there" in result
+
+
+def test_format_messages_truncates_long():
+    msgs = [{"role": "user", "content": "x" * 5000}]
+    result = _format_messages_for_summary(msgs)
+    assert "... [truncated]" in result
+    assert len(result) < 5000
+
+
+# ── compact_messages_llm ────────────────────────────────────────────────────
+
+
+def _make_config(use_llm: bool = True) -> Config:
+    return Config(
+        model="test-model",
+        model_base_url="http://localhost:1234",
+        model_api_key="test-key",
+        compaction=CompactionConfig(use_llm=use_llm),
+    )
+
+
+@pytest.mark.asyncio
+async def test_compact_llm_no_compaction_needed():
+    """Under threshold — returns original messages, no LLM call."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
+    config = _make_config()
+    result_msgs, result = await compact_messages_llm(
+        msgs, config, max_tokens=100_000,
+    )
+    assert result_msgs == msgs
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_compact_llm_basic():
+    """LLM compaction produces structured output with used_llm=True."""
+    msgs = []
+    for i in range(20):
+        msgs.append({"role": "user", "content": f"Question {i} " * 50})
+        msgs.append({"role": "assistant", "content": f"Answer {i} " * 50})
+
+    config = _make_config()
+
+    mock_result = MagicMock()
+    mock_result.output = "- User asked 20 questions\n- Assistant answered all"
+
+    with patch("pydantic_ai.Agent") as MockAgent:
+        mock_agent_instance = AsyncMock()
+        mock_agent_instance.run = AsyncMock(return_value=mock_result)
+        MockAgent.return_value = mock_agent_instance
+
+        result_msgs, compact_result = await compact_messages_llm(
+            msgs, config, max_tokens=1000, keep_recent=4,
+        )
+
+    assert compact_result is not None
+    assert compact_result.used_llm is True
+    assert compact_result.compacted_messages == 5  # 1 summary + 4 recent
+    assert compact_result.original_messages == 40
+    assert compact_result.estimated_tokens_saved > 0
+    assert len(result_msgs) == 5
+    assert result_msgs[0]["role"] == "system"
+    assert "Previous conversation summary" in result_msgs[0]["content"]
+    assert "User asked 20 questions" in result_msgs[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_compact_llm_incremental():
+    """Existing summary is passed to the LLM prompt for merging."""
+    msgs = []
+    for i in range(20):
+        msgs.append({"role": "user", "content": f"Question {i} " * 50})
+        msgs.append({"role": "assistant", "content": f"Answer {i} " * 50})
+
+    config = _make_config()
+    existing = "Previous conversation summary:\n- Old context about files"
+
+    mock_result = MagicMock()
+    mock_result.output = "- Merged summary"
+
+    with patch("pydantic_ai.Agent") as MockAgent:
+        mock_agent_instance = AsyncMock()
+        mock_agent_instance.run = AsyncMock(return_value=mock_result)
+        MockAgent.return_value = mock_agent_instance
+
+        await compact_messages_llm(
+            msgs, config, existing_summary=existing,
+            max_tokens=1000, keep_recent=4,
+        )
+
+        # Verify existing summary was included in the prompt
+        call_args = mock_agent_instance.run.call_args
+        prompt_text = call_args[0][0]
+        assert "Old context about files" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_compact_llm_skip_when_disabled():
+    """use_llm=False in config means compact_messages_llm still works
+    (it's the runner that decides which to call), but we verify the function
+    itself does its job independently of the flag."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
+    config = _make_config(use_llm=False)
+    result_msgs, result = await compact_messages_llm(
+        msgs, config, max_tokens=100_000,
+    )
+    assert result is None  # no compaction needed
+
+
+# ── _resolve_compaction_model ───────────────────────────────────────────────
+
+
+def test_resolve_compaction_model_uses_compaction_settings():
+    """Compaction-specific model settings take priority."""
+    config = Config(
+        model="main-model",
+        model_base_url="http://main:1234",
+        model_api_key="main-key",
+        compaction=CompactionConfig(
+            model="compact-model",
+            model_base_url="http://compact:5678",
+            model_api_key="compact-key",
+        ),
+    )
+    with patch(
+        "pydantic_ai.models.openai.OpenAIChatModel",
+    ) as MockModel, patch(
+        "pydantic_ai.providers.openai.OpenAIProvider",
+    ) as MockProvider:
+        _resolve_compaction_model(config)
+        MockProvider.assert_called_once_with(
+            base_url="http://compact:5678", api_key="compact-key",
+        )
+        MockModel.assert_called_once_with(
+            "compact-model", provider=MockProvider.return_value,
+        )
+
+
+def test_resolve_compaction_model_falls_back_to_main():
+    """When compaction model settings are None, use main config."""
+    config = Config(
+        model="main-model",
+        model_base_url="http://main:1234",
+        model_api_key="main-key",
+    )
+    with patch(
+        "pydantic_ai.models.openai.OpenAIChatModel",
+    ) as MockModel, patch(
+        "pydantic_ai.providers.openai.OpenAIProvider",
+    ) as MockProvider:
+        _resolve_compaction_model(config)
+        MockProvider.assert_called_once_with(
+            base_url="http://main:1234", api_key="main-key",
+        )
+        MockModel.assert_called_once_with(
+            "main-model", provider=MockProvider.return_value,
+        )
+
+
+def test_resolve_compaction_model_missing_base_url():
+    """Raises ValueError when no base_url is available."""
+    config = Config(model="test")
+    with pytest.raises(ValueError, match="model_base_url is required"):
+        _resolve_compaction_model(config)

@@ -64,37 +64,43 @@ def test_messages_to_history_skips_unknown_roles():
 # ── _compact_history_if_needed ───────────────────────────────────────────────
 
 
-def test_compact_history_returns_tuple_no_compaction():
+@pytest.mark.asyncio
+async def test_compact_history_returns_tuple_no_compaction():
     """_compact_history_if_needed returns (history, None) when no compaction needed."""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config()
 
     history = [
         ModelRequest(parts=[UserPromptPart(content="hello")]),
         ModelResponse(parts=[TextPart(content="hi")]),
     ]
-    result_history, compact_result = runner._compact_history_if_needed(history)
+    result_history, compact_result = await runner._compact_history_if_needed(history)
     assert result_history is history
     assert compact_result is None
 
 
-def test_compact_history_returns_tuple_none_input():
+@pytest.mark.asyncio
+async def test_compact_history_returns_tuple_none_input():
     """_compact_history_if_needed returns (None, None) for None input."""
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config()
 
-    result_history, compact_result = runner._compact_history_if_needed(None)
+    result_history, compact_result = await runner._compact_history_if_needed(None)
     assert result_history is None
     assert compact_result is None
 
 
-def test_compact_history_returns_compact_result():
+@pytest.mark.asyncio
+async def test_compact_history_returns_compact_result():
     """_compact_history_if_needed returns CompactResult when compaction happens."""
     from pydantic_ai.messages import TextPart, UserPromptPart
     from cody.core.context import CompactResult
 
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
+        runner.config = Config()
 
     # Create enough messages to trigger compaction
     history = []
@@ -102,7 +108,9 @@ def test_compact_history_returns_compact_result():
         history.append(ModelRequest(parts=[UserPromptPart(content=f"msg {i} " * 200)]))
         history.append(ModelResponse(parts=[TextPart(content=f"reply {i} " * 200)]))
 
-    result_history, compact_result = runner._compact_history_if_needed(history, max_tokens=100)
+    result_history, compact_result = await runner._compact_history_if_needed(
+        history, max_tokens=100,
+    )
     assert compact_result is not None
     assert isinstance(compact_result, CompactResult)
     assert compact_result.original_messages == 40

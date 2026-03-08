@@ -74,6 +74,17 @@ class SecurityConfig(BaseModel):
     command_timeout: int = 30
 
 
+class CompactionConfig(BaseModel):
+    """Context compaction configuration."""
+    use_llm: bool = False
+    model: Optional[str] = None
+    model_base_url: Optional[str] = None
+    model_api_key: Optional[str] = None
+    max_tokens: int = 100_000
+    keep_recent: int = 4
+    max_summary_tokens: int = 500
+
+
 class Config(BaseModel):
     """Main configuration"""
     model: str = ''
@@ -87,6 +98,7 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
+    compaction: CompactionConfig = Field(default_factory=CompactionConfig)
 
     def is_ready(self) -> bool:
         """Check if configuration has enough info to make API calls."""
@@ -185,6 +197,14 @@ class Config(BaseModel):
                     "Invalid CODY_THINKING_BUDGET value: %r, ignoring",
                     env_thinking_budget,
                 )
+        env_compaction_llm = os.environ.get("CODY_COMPACTION_USE_LLM")
+        if env_compaction_llm:
+            config.compaction.use_llm = env_compaction_llm.lower() in (
+                "1", "true", "yes",
+            )
+        env_compaction_model = os.environ.get("CODY_COMPACTION_MODEL")
+        if env_compaction_model:
+            config.compaction.model = env_compaction_model
         return config
 
     def apply_overrides(
@@ -234,6 +254,8 @@ class Config(BaseModel):
         data = self.model_dump(exclude_none=True)
         # Exclude sensitive fields from persistence
         data.pop("model_api_key", None)
+        if "compaction" in data:
+            data["compaction"].pop("model_api_key", None)
         if "auth" in data:
             data["auth"].pop("token", None)
             data["auth"].pop("refresh_token", None)
