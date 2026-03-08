@@ -54,6 +54,7 @@ class StreamChunk:
     original_messages: int = 0
     compacted_messages: int = 0
     estimated_tokens_saved: int = 0
+    used_llm: bool = False
     # Message history (populated when type="done") for multi-turn state
     message_history: Optional[list] = None
 
@@ -108,6 +109,7 @@ def _event_to_chunk(
             original_messages=event.original_messages,
             compacted_messages=event.compacted_messages,
             estimated_tokens_saved=event.estimated_tokens_saved,
+            used_llm=event.used_llm,
         )
     elif isinstance(event, DoneEvent):
         return StreamChunk(

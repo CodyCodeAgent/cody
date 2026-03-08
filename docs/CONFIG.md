@@ -65,6 +65,14 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "enabled": false,
     "max_requests": 60,
     "window_seconds": 60.0
+  },
+  "compaction": {
+    "use_llm": false,
+    "model": null,
+    "model_base_url": null,
+    "max_tokens": 100000,
+    "keep_recent": 4,
+    "max_summary_tokens": 500
   }
 }
 ```
@@ -462,6 +470,85 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ---
 
+### 上下文压缩配置 (`compaction`)
+
+控制对话历史自动压缩行为。当消息总 token 数超过阈值时，自动将旧消息压缩为摘要。
+
+#### `compaction.use_llm`
+
+**类型:** `boolean`
+**默认:** `false`
+**说明:** 是否启用 LLM 语义摘要。关闭时使用截断式压缩（每条消息截取前 200 字符）
+
+```json
+{
+  "compaction": {
+    "use_llm": true
+  }
+}
+```
+
+---
+
+#### `compaction.model`
+
+**类型:** `string | null`
+**默认:** `null`（沿用主 `model` 配置）
+**说明:** 用于生成摘要的模型名称。建议使用低成本模型（如 `gpt-4o-mini`）
+
+---
+
+#### `compaction.model_base_url`
+
+**类型:** `string | null`
+**默认:** `null`（沿用主 `model_base_url` 配置）
+**说明:** 摘要模型的 API 地址。允许将摘要请求发送到独立的模型服务
+
+---
+
+#### `compaction.max_tokens`
+
+**类型:** `integer`
+**默认:** `100000`
+**说明:** 触发压缩的 token 阈值。当消息总 token 数超过此值时开始压缩
+
+---
+
+#### `compaction.keep_recent`
+
+**类型:** `integer`
+**默认:** `4`
+**说明:** 压缩时保留的最近消息数，这些消息不会被压缩
+
+---
+
+#### `compaction.max_summary_tokens`
+
+**类型:** `integer`
+**默认:** `500`
+**说明:** LLM 生成摘要的最大 token 数
+
+---
+
+**完整示例：** 使用低成本模型做上下文压缩
+
+```json
+{
+  "compaction": {
+    "use_llm": true,
+    "model": "gpt-4o-mini",
+    "model_base_url": "https://api.openai.com/v1",
+    "max_tokens": 80000,
+    "keep_recent": 6,
+    "max_summary_tokens": 600
+  }
+}
+```
+
+> **注意：** `run_sync()` 同步模式下 LLM 压缩不可用，会自动降级为截断式压缩。
+
+---
+
 ## 环境变量
 
 所有配置项都可以通过环境变量覆盖：
@@ -474,6 +561,8 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 | `CODY_CODING_PLAN_KEY` | `model_api_key`（兼容旧配置） | `sk-sp-...` |
 | `CODY_ENABLE_THINKING` | `enable_thinking` | `true` |
 | `CODY_THINKING_BUDGET` | `thinking_budget` | `10000` |
+| `CODY_COMPACTION_USE_LLM` | `compaction.use_llm` | `true` |
+| `CODY_COMPACTION_MODEL` | `compaction.model` | `gpt-4o-mini` |
 | `CODY_CORS_ORIGINS` | Web CORS 允许的源（逗号分隔） | `http://localhost:5173,http://localhost:3000` |
 
 **优先级：** 环境变量 > 配置文件 > 默认值

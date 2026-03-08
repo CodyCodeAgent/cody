@@ -14,6 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **SDK 类属性别名移除** — 删除 `_get_runner = get_runner` / `_get_session_store = get_session_store` 不安全别名，内部统一使用 `self.get_runner()` / `self.get_session_store()`
 
 ### Added
+- **LLM 上下文压缩** (`core/context.py`) — 新增 `compact_messages_llm()` 异步函数，用轻量 pydantic-ai Agent 生成语义摘要替代硬截断。支持增量合并（多轮压缩时融合旧摘要）、独立模型配置、失败自动 fallback 到原有截断逻辑。通过 `CompactionConfig` 配置，默认关闭
+- **CompactionConfig** (`core/config.py`) — 新增压缩配置模型：`use_llm`、`model`、`model_base_url`、`max_tokens`、`keep_recent`、`max_summary_tokens`。支持 `CODY_COMPACTION_USE_LLM` / `CODY_COMPACTION_MODEL` 环境变量
+- **CompactEvent.used_llm** — 压缩事件新增 `used_llm` 布尔字段，标识本次压缩使用了 LLM 还是截断
 - **统一日志系统** (`core/log.py`) — 所有日志写入 `~/.cody/logs/cody.log`，RotatingFileHandler 自动轮转（5 MB / 3 备份），CLI/TUI/Web 统一接入。`cody run -v` 同时输出到 stderr
 - **StreamChunk.tool_call_id** — 流式事件新增 `tool_call_id` 字段，`tool_call` 和 `tool_result` 类型均携带工具调用 ID
 - **AsyncCodyClient.start_mcp()** — 新增公开方法，用于在 `stream()` 前启动 MCP 服务器

@@ -616,6 +616,7 @@ cody run "使用项目 B 的配置"
 
 **P2：上下文管理**
 - [x] Auto Compact — `compact_messages()` 接近窗口限制时自动摘要压缩旧消息
+- [x] LLM 语义压缩 — `compact_messages_llm()` 用轻量 Agent 生成语义摘要，支持增量合并、独立模型配置、失败自动 fallback
 - [x] 大文件分块读取 — `chunk_file()` 带重叠的分块切割
 - [x] 智能上下文选择 — `select_relevant_context()` 关键词匹配评分，token 预算控制
 
