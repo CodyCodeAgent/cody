@@ -289,7 +289,7 @@ class CodyTUI(App):
         """Stop the processing indicator and restore normal status line."""
         if hasattr(self, '_processing_timer') and self._processing_timer is not None:
             self._processing_timer.stop()
-            self._processing_timer = None
+            self._processing_timer = None  # type: ignore[assignment]
         self._update_status()
 
     @work(thread=False)
