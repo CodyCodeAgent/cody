@@ -40,13 +40,15 @@ class SessionStore:
             db_path = Path.home() / ".cody" / "sessions.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
+        self._conn: sqlite3.Connection | None = None
         self._init_db()
-        self._conn: sqlite3.Connection | None = sqlite3.connect(str(self.db_path))
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.execute("PRAGMA foreign_keys = ON")
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self._conn.execute("PRAGMA foreign_keys = ON")
         return self._conn
 

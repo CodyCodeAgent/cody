@@ -50,12 +50,15 @@ class AuditLogger:
             db_path = Path.home() / ".cody" / "audit.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
+        self._conn: sqlite3.Connection | None = None
         self._init_db()
-        self._conn: sqlite3.Connection | None = sqlite3.connect(str(self.db_path))
+        # Reuse the connection created during _init_db (or create fresh)
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         return self._conn
 
     def close(self) -> None:

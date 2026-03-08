@@ -2,8 +2,6 @@
 
 import fnmatch
 import re
-import shutil
-import subprocess
 
 from pydantic_ai import RunContext
 
@@ -50,32 +48,7 @@ async def grep(
     max_matches = 200
     workdir_resolved = ctx.deps.workdir.resolve()
 
-    # Try ripgrep for better performance on directories
-    if full_path.is_dir():
-        rg_path = shutil.which("rg")
-        if rg_path:
-            try:
-                args = [rg_path, "-n", "--no-heading", "-m", str(max_matches), pattern, str(full_path)]
-                if include:
-                    args.extend(["-g", include])
-                result = subprocess.run(
-                    args, capture_output=True, text=True, timeout=30, cwd=str(ctx.deps.workdir)
-                )
-                if result.returncode <= 1:  # 0=found, 1=not found
-                    output = result.stdout.strip()
-                    if not output:
-                        return f"No matches found for pattern: {pattern}"
-                    lines = []
-                    prefix = str(workdir_resolved) + "/"
-                    for line in output.splitlines()[:max_matches]:
-                        if line.startswith(prefix):
-                            line = line[len(prefix):]
-                        lines.append(line)
-                    return "\n".join(lines)
-            except (subprocess.TimeoutExpired, OSError):
-                pass  # Fall through to Python implementation
-
-    # Python fallback
+    # Python implementation
     matches: list[str] = []
 
     if full_path.is_file():
