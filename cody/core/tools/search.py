@@ -50,6 +50,7 @@ async def grep(
 
     # Python implementation
     matches: list[str] = []
+    skipped_large: list[str] = []
 
     if full_path.is_file():
         files = [full_path]
@@ -65,9 +66,13 @@ async def grep(
         if _is_binary(file_path):
             continue
 
-        # Skip files larger than _MAX_FILE_SIZE
+        # Skip files larger than _MAX_FILE_SIZE but record them
         try:
-            if file_path.stat().st_size > _MAX_FILE_SIZE:
+            file_size = file_path.stat().st_size
+            if file_size > _MAX_FILE_SIZE:
+                rel = file_path.relative_to(workdir_resolved)
+                size_mb = file_size / 1_048_576
+                skipped_large.append(f"{rel} ({size_mb:.1f} MB)")
                 continue
         except OSError:
             continue
@@ -83,12 +88,28 @@ async def grep(
                 matches.append(f"{rel}:{line_no}: {line.rstrip()}")
                 if len(matches) >= max_matches:
                     matches.append(f"... (truncated at {max_matches} matches)")
+                    if skipped_large:
+                        matches.append(
+                            f"\n[NOTE] {len(skipped_large)} large file(s) skipped "
+                            f"(>{_MAX_FILE_SIZE // 1_048_576} MB): "
+                            + ", ".join(skipped_large[:10])
+                        )
                     return "\n".join(matches)
 
-    if not matches:
+    if not matches and not skipped_large:
         return f"No matches found for pattern: {pattern}"
 
-    return "\n".join(matches)
+    lines = matches or [f"No matches found for pattern: {pattern}"]
+    if skipped_large:
+        lines.append(
+            f"\n[NOTE] {len(skipped_large)} large file(s) skipped "
+            f"(>{_MAX_FILE_SIZE // 1_048_576} MB): "
+            + ", ".join(skipped_large[:10])
+        )
+        if len(skipped_large) > 10:
+            lines.append(f"  ... and {len(skipped_large) - 10} more")
+
+    return "\n".join(lines)
 
 
 async def glob(
