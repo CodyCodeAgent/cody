@@ -147,21 +147,41 @@ f"⚡ 上下文已压缩：{original} → {compacted} 条消息，节省约 ~{to
 **问题**: Core 层有 `ToolError` → `ToolPermissionDenied`/`ToolPathDenied`/`ToolInvalidParams`，SDK 层有 `CodyError` → `CodyToolError`/`CodyPermissionError` 等。当错误从 core 传播到 SDK 时，`sdk/client.py:558` 做了 `raise CodyToolError(...) from e`，但丢失了 core 层的 `ErrorCode`。
 **建议**: SDK 错误应保留 core 的 `ErrorCode`，方便上层根据精确错误码处理。
 
+#### 12. Streaming 模式下指标（Metrics）未被记录
+**文件**: `cody/sdk/client.py:367-374`
+**问题**: `run()` 方法在第 367-370 行调用 `self._metrics.start_run()`，但当 `stream=True` 时直接 `return self._stream_run()`（第 373-374 行），跳过了第 389-397 行的 `self._metrics.end_run()`。这意味着所有流式运行都不会被计入指标摘要。
+**建议**: 在 `_stream_run()` 的 DoneEvent 处理中调用 `end_run()`。
+
+#### 13. SDK 和 Core 存在双重 Config 对象，状态可能不同步
+**文件**: `cody/sdk/client.py:220-237, 262-277`
+**问题**: `AsyncCodyClient` 同时维护 `self._config`（SDKConfig）和 `self._core_config`（core.Config）。`_get_config()` 从 SDKConfig 向 core Config 应用 model/thinking/api_key 覆盖，但 `set_config()` 只更新 `_core_config`，导致 `_config` 变为陈旧状态。如果后续有代码读取 `self._config.model.model`，它不会反映 `set_config()` 的变更。
+**建议**: 考虑消除双重 Config，或让 `set_config()` 同步更新两边。
+
+#### 14. `config()` 工厂函数的 `**kwargs` 接受任意属性，无校验
+**文件**: `cody/sdk/config.py:257-259`
+```python
+for key, value in kwargs.items():
+    if hasattr(cfg, key):
+        setattr(cfg, key, value)
+```
+**问题**: 如果传入不存在的 key，静默忽略，不报错。用户拼错参数名（如 `enable_metric` vs `enable_metrics`）时不会得到任何反馈。
+**建议**: 对未知 key 抛出 `TypeError` 或至少记录 warning。
+
 ---
 
 ### 可选 (P2) — 锦上添花
 
-#### 12. `SessionStore` 使用 `check_same_thread=False` 但无线程同步
+#### 15. `SessionStore` 使用 `check_same_thread=False` 但无线程同步
 **文件**: `cody/core/session.py:47`
 **问题**: `check_same_thread=False` 允许多线程访问同一个 SQLite 连接，但没有加锁。在 Web 多请求并发场景下，可能出现 `database is locked` 或数据竞争。
 **建议**: 添加 `threading.Lock` 保护数据库操作，或使用 WAL 模式（`PRAGMA journal_mode=WAL`）提高并发性。
 
-#### 13. `list_directory` 没有递归选项和文件大小信息
+#### 16. `list_directory` 没有递归选项和文件大小信息
 **文件**: `cody/core/tools/file_ops.py:89-110`
 **问题**: 只列出直接子项，不支持递归。也没有显示文件大小、修改时间等有用信息。
 **建议**: 增加 `recursive: bool = False` 参数和可选的详细模式。
 
-#### 14. `_config_fingerprint` 将 API key 放入指纹字符串
+#### 17. `_config_fingerprint` 将 API key 放入指纹字符串
 **文件**: `web/backend/state.py:136-140`
 ```python
 def _config_fingerprint(config: Config) -> str:
@@ -173,7 +193,7 @@ def _config_fingerprint(config: Config) -> str:
 **问题**: 虽然 fingerprint 不会被持久化或外传，但将 API key 放入字符串仍不是最佳实践。如果 key 被日志意外打印，会泄露凭证。
 **建议**: 对 API key 取 hash 后再放入 fingerprint。
 
-#### 15. `CodyBuilder._lsp_languages` 默认值硬编码
+#### 18. `CodyBuilder._lsp_languages` 默认值硬编码
 **文件**: `cody/sdk/client.py:71`
 ```python
 _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
@@ -181,17 +201,17 @@ _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript
 **问题**: 默认支持的 LSP 语言硬编码在 Builder 中，与 SDK Config 中的默认值重复。
 **建议**: 统一到 `LSPConfig` 中的默认值。
 
-#### 16. `sub_agent.py` 每次 `_execute()` 都新建 `AuditLogger` 和 `PermissionManager`
+#### 19. `sub_agent.py` 每次 `_execute()` 都新建 `AuditLogger` 和 `PermissionManager`
 **文件**: `cody/core/sub_agent.py:309-311`
 **问题**: 每个子 agent 运行时都创建新的 `AuditLogger()` 和 `PermissionManager()`。`AuditLogger` 内部会打开新的日志文件句柄。
 **建议**: 从 `SubAgentManager` 传递主 agent 的 `AuditLogger` 实例。
 
-#### 17. Stream 事件中缺少 `ErrorEvent`
+#### 20. Stream 事件中缺少 `ErrorEvent`
 **文件**: `cody/core/runner.py:187-190`
 **问题**: `StreamEvent` 联合类型中有 `DoneEvent` 但没有 `ErrorEvent`。如果流中间出错，调用方只能通过异常捕获，无法通过事件系统优雅处理。
 **建议**: 添加 `ErrorEvent` 类型。
 
-#### 18. `_run_async` 中的 ThreadPoolExecutor 可能导致死锁
+#### 21. `_run_async` 中的 ThreadPoolExecutor 可能导致死锁
 **文件**: `cody/sdk/client.py:865-873`
 ```python
 def _run_async(coro):
