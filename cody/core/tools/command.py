@@ -7,7 +7,7 @@ from pydantic_ai import RunContext
 
 from ..deps import CodyDeps
 from ..errors import ToolPermissionDenied
-from ._base import _check_permission
+from ._base import _audit_tool_call, _check_permission
 
 # Regex-based blocked command patterns — handles whitespace variations and
 # argument reordering that simple substring matching would miss.
@@ -34,11 +34,12 @@ _BLOCKED_COMMAND_PATTERNS = [
 ]
 
 
-async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
+async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int = 0) -> str:
     """Execute shell command
 
     Args:
         command: Command to execute
+        timeout: Timeout in seconds (0 = use config default)
     """
     _check_permission(ctx, "exec_command")
 
@@ -66,6 +67,8 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
             if base_cmd and base_cmd not in ctx.deps.config.security.allowed_commands:
                 raise ToolPermissionDenied(f"Command not allowed: {base_cmd}")
 
+    effective_timeout = timeout or ctx.deps.config.security.command_timeout
+
     try:
         result = subprocess.run(
             command,
@@ -73,7 +76,7 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
             cwd=ctx.deps.workdir,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=effective_timeout,
         )
 
         output = result.stdout
@@ -83,29 +86,19 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str) -> str:
         if result.returncode != 0:
             output += f"\n[exit code: {result.returncode}]"
 
-        # Audit log
-        if ctx.deps.audit_logger:
-            ctx.deps.audit_logger.log(
-                event="command_exec",
-                tool_name="exec_command",
-                args_summary=f"command={command}",
-                result_summary=f"exit_code={result.returncode}",
-                workdir=str(ctx.deps.workdir),
-                success=result.returncode == 0,
-            )
+        _audit_tool_call(
+            ctx, "command_exec", "exec_command",
+            f"command={command}", f"exit_code={result.returncode}",
+            success=result.returncode == 0,
+        )
 
         return output or "[no output]"
 
     except subprocess.TimeoutExpired:
-        if ctx.deps.audit_logger:
-            ctx.deps.audit_logger.log(
-                event="command_exec",
-                tool_name="exec_command",
-                args_summary=f"command={command}",
-                result_summary="timeout",
-                workdir=str(ctx.deps.workdir),
-                success=False,
-            )
-        return "[ERROR] Command timed out after 30 seconds"
+        _audit_tool_call(
+            ctx, "command_exec", "exec_command",
+            f"command={command}", "timeout", success=False,
+        )
+        return f"[ERROR] Command timed out after {effective_timeout} seconds"
     except Exception as e:
         return f"[ERROR] {str(e)}"

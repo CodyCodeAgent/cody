@@ -7,7 +7,7 @@ from pydantic_ai import RunContext
 
 from ..deps import CodyDeps
 from ..errors import ToolInvalidParams
-from ._base import _check_permission, _resolve_and_check
+from ._base import _audit_tool_call, _check_permission, _resolve_and_check
 from ._file_filter import (
     _DEFAULT_IGNORE_FILES,
     _is_binary,
@@ -239,15 +239,7 @@ async def patch(
         original_content = "".join(original_lines)
         ctx.deps.file_history.record(path, original_content, patched_content, operation="patch")
 
-    # Audit log
-    if ctx.deps.audit_logger:
-        ctx.deps.audit_logger.log(
-            event="file_edit",
-            tool_name="patch",
-            args_summary=f"path={path}",
-            result_summary=f"Patched {path}",
-            workdir=str(ctx.deps.workdir),
-        )
+    _audit_tool_call(ctx, "file_edit", "patch", f"path={path}", f"Patched {path}")
 
     return f"Patched {path} successfully"
 
