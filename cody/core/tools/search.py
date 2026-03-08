@@ -7,7 +7,7 @@ from pydantic_ai import RunContext
 
 from ..deps import CodyDeps
 from ..errors import ToolInvalidParams
-from ._base import _check_permission, _resolve_and_check
+from ._base import _audit_tool_call, _check_permission, _resolve_and_check
 from ._file_filter import (
     _DEFAULT_IGNORE_FILES,
     _is_binary,
@@ -16,6 +16,8 @@ from ._file_filter import (
     _iter_files,
     _parse_gitignore,
 )
+
+_MAX_FILE_SIZE = 1_048_576  # 1 MB — skip files larger than this in Python grep
 
 
 async def grep(
@@ -43,9 +45,11 @@ async def grep(
     except re.error as e:
         raise ToolInvalidParams(f"Invalid regex pattern: {e}")
 
-    matches: list[str] = []
     max_matches = 200
     workdir_resolved = ctx.deps.workdir.resolve()
+
+    # Python implementation
+    matches: list[str] = []
 
     if full_path.is_file():
         files = [full_path]
@@ -59,6 +63,13 @@ async def grep(
         if include and not fnmatch.fnmatch(file_path.name, include):
             continue
         if _is_binary(file_path):
+            continue
+
+        # Skip files larger than _MAX_FILE_SIZE
+        try:
+            if file_path.stat().st_size > _MAX_FILE_SIZE:
+                continue
+        except OSError:
             continue
 
         try:
@@ -206,7 +217,13 @@ async def patch(
             # Process hunk lines
             while i < len(diff_lines) and not diff_lines[i].startswith("@@"):
                 dl = diff_lines[i]
-                if dl.startswith("-"):
+                if dl.startswith("\\"):
+                    # "\ No newline at end of file" marker
+                    if result_lines and result_lines[-1].endswith("\n"):
+                        result_lines[-1] = result_lines[-1][:-1]
+                    i += 1
+                    continue
+                elif dl.startswith("-"):
                     # Remove line — skip it from original
                     orig_idx += 1
                 elif dl.startswith("+"):
@@ -216,8 +233,16 @@ async def patch(
                         content += "\n"
                     result_lines.append(content)
                 elif dl.startswith(" ") or dl.strip() == "":
-                    # Context line
+                    # Context line — validate it matches original
                     if orig_idx < len(original_lines):
+                        expected = original_lines[orig_idx]
+                        context_content = dl[1:] if dl.startswith(" ") else dl
+                        if context_content.rstrip("\n") != expected.rstrip("\n"):
+                            raise ToolInvalidParams(
+                                f"Context mismatch at line {orig_idx + 1}: "
+                                f"expected {expected.rstrip()!r}, "
+                                f"got {context_content.rstrip()!r}"
+                            )
                         result_lines.append(original_lines[orig_idx])
                     orig_idx += 1
                 else:
@@ -239,15 +264,7 @@ async def patch(
         original_content = "".join(original_lines)
         ctx.deps.file_history.record(path, original_content, patched_content, operation="patch")
 
-    # Audit log
-    if ctx.deps.audit_logger:
-        ctx.deps.audit_logger.log(
-            event="file_edit",
-            tool_name="patch",
-            args_summary=f"path={path}",
-            result_summary=f"Patched {path}",
-            workdir=str(ctx.deps.workdir),
-        )
+    _audit_tool_call(ctx, "file_edit", "patch", f"path={path}", f"Patched {path}")
 
     return f"Patched {path} successfully"
 

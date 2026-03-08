@@ -1,7 +1,6 @@
 """WebSocket chat proxy — relays messages between frontend and core engine.
 
-Uses core AgentRunner directly (no HTTP SDK). This is a plain async function
-called by app.py with injected dependencies.
+Uses core AgentRunner directly (no HTTP SDK). Router registered in app.py.
 """
 
 import json
@@ -9,7 +8,7 @@ import logging
 import time
 from pathlib import Path
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from cody.core import SessionStore
 from cody.core.auth import AuthError
@@ -17,15 +16,19 @@ from cody.core.auth import AuthError
 from ..db import ProjectStore
 from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
 from ..middleware import validate_credential
+from ..state import get_project_store, session_store_dep
 
 logger = logging.getLogger("cody.web.chat")
 
+router = APIRouter(tags=["chat"])
 
+
+@router.websocket("/ws/chat/{project_id}")
 async def chat_websocket(
     ws: WebSocket,
     project_id: str,
-    store: ProjectStore = None,
-    session_store: SessionStore = None,
+    store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
     """WebSocket endpoint that streams AI responses for a project."""
     # Authenticate before accepting

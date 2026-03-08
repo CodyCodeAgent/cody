@@ -206,8 +206,8 @@ def test_config_load_with_custom_model(tmp_path):
     assert config.model_api_key is None
 
 
-def test_config_save_includes_api_key(tmp_path):
-    """Save should persist model_api_key to disk"""
+def test_config_save_excludes_api_key(tmp_path):
+    """Save should NOT persist model_api_key to disk (security)."""
     config = Config(
         model="glm-4",
         model_base_url="https://open.bigmodel.cn/api/paas/v4/",
@@ -217,7 +217,7 @@ def test_config_save_includes_api_key(tmp_path):
     config.save(config_path)
 
     saved_data = json.loads(config_path.read_text())
-    assert saved_data["model_api_key"] == "sk-secret-key"
+    assert "model_api_key" not in saved_data
     assert saved_data["model"] == "glm-4"
     assert saved_data["model_base_url"] == "https://open.bigmodel.cn/api/paas/v4/"
 

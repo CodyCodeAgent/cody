@@ -11,6 +11,17 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base, preserving nested dict keys."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 class AuthConfig(BaseModel):
     """Authentication configuration"""
     type: Literal['oauth', 'api_key'] = 'api_key'
@@ -59,6 +70,8 @@ class SecurityConfig(BaseModel):
     restricted_paths: list[str] = Field(default_factory=list)
     allowed_roots: list[str] = Field(default_factory=list)
     require_confirmation: bool = True
+    allow_private_urls: bool = False
+    command_timeout: int = 30
 
 
 class Config(BaseModel):
@@ -111,14 +124,14 @@ class Config(BaseModel):
             merged: dict = {}
             if global_config.exists():
                 try:
-                    merged.update(json.loads(
+                    merged = _deep_merge(merged, json.loads(
                         global_config.read_text(encoding="utf-8"),
                     ))
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning("Failed to parse %s: %s, skipping", global_config, e)
             if project_config.exists():
                 try:
-                    merged.update(json.loads(
+                    merged = _deep_merge(merged, json.loads(
                         project_config.read_text(encoding="utf-8"),
                     ))
                 except (json.JSONDecodeError, ValueError) as e:
@@ -213,10 +226,21 @@ class Config(BaseModel):
     def save(self, path: Union[Path, str]):
         """Save configuration to file.
 
-        model_api_key is persisted to the config file for convenience.
-        Use environment variables (CODY_MODEL_API_KEY) to override if needed.
+        Sensitive fields (API keys, tokens) are excluded from persistence.
+        Use environment variables (CODY_MODEL_API_KEY) to supply secrets.
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.model_dump(exclude_none=True)
+        # Exclude sensitive fields from persistence
+        data.pop("model_api_key", None)
+        if "auth" in data:
+            data["auth"].pop("token", None)
+            data["auth"].pop("refresh_token", None)
+            data["auth"].pop("api_key", None)
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        # Restrict file permissions (owner read/write only)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass

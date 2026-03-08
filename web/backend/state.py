@@ -10,6 +10,9 @@ Caching strategy:
     newly added/changed skill files are visible immediately.
   - AuditLogger, AuthManager, RateLimiter: global singletons (config-stable).
   - ProjectStore: global singleton for web.db.
+
+All mutable state is encapsulated in the ServerState class to avoid
+module-level globals and improve testability / thread safety.
 """
 
 import asyncio
@@ -29,61 +32,64 @@ from cody.core.skill_manager import SkillManager
 from .db import ProjectStore
 
 
-# ── Server-level singletons ─────────────────────────────────────────────────
-
-_audit_logger: Optional[AuditLogger] = None
-_auth_manager: Optional[AuthManager] = None
-_rate_limiter: Optional[RateLimiter] = None
-_rate_limiter_checked = False
-_session_store: Optional[SessionStore] = None
-_config_cache: dict[str, tuple[Config, float]] = {}
 _CONFIG_CACHE_TTL = 60.0  # seconds
-_sub_agent_manager = None
-_sub_agent_lock = asyncio.Lock()
-_project_store: Optional[ProjectStore] = None
-_runner_cache: dict[str, tuple] = {}  # key -> (AgentRunner, created_at, config_fingerprint)
 _RUNNER_CACHE_TTL = 300.0  # 5 minutes
 
 
+class ServerState:
+    """Encapsulates all server-level mutable singletons."""
+
+    def __init__(self):
+        self.audit_logger: Optional[AuditLogger] = None
+        self.auth_manager: Optional[AuthManager] = None
+        self.rate_limiter: Optional[RateLimiter] = None
+        self.rate_limiter_checked: bool = False
+        self.session_store: Optional[SessionStore] = None
+        self.config_cache: dict[str, tuple[Config, float]] = {}
+        self.sub_agent_manager = None
+        self.sub_agent_lock: asyncio.Lock = asyncio.Lock()
+        self.project_store: Optional[ProjectStore] = None
+        self.runner_cache: dict[str, tuple] = {}  # key -> (AgentRunner, created_at, fingerprint)
+
+
+_state = ServerState()
+
+
 def get_audit_logger() -> AuditLogger:
-    global _audit_logger
-    if _audit_logger is None:
-        _audit_logger = AuditLogger()
-    return _audit_logger
+    if _state.audit_logger is None:
+        _state.audit_logger = AuditLogger()
+    return _state.audit_logger
 
 
 def get_auth_manager() -> Optional[AuthManager]:
-    global _auth_manager
-    if _auth_manager is None:
+    if _state.auth_manager is None:
         try:
             config = Config.load(workdir=Path.cwd())
-            _auth_manager = AuthManager(config=config.auth)
+            _state.auth_manager = AuthManager(config=config.auth)
         except Exception:
             return None
-    return _auth_manager
+    return _state.auth_manager
 
 
 def get_rate_limiter() -> Optional[RateLimiter]:
-    global _rate_limiter, _rate_limiter_checked
-    if not _rate_limiter_checked:
-        _rate_limiter_checked = True
+    if not _state.rate_limiter_checked:
+        _state.rate_limiter_checked = True
         try:
             config = Config.load(workdir=Path.cwd())
             if config.rate_limit.enabled:
-                _rate_limiter = RateLimiter(
+                _state.rate_limiter = RateLimiter(
                     max_requests=config.rate_limit.max_requests,
                     window_seconds=config.rate_limit.window_seconds,
                 )
         except Exception:
             pass
-    return _rate_limiter
+    return _state.rate_limiter
 
 
 def get_session_store() -> SessionStore:
-    global _session_store
-    if _session_store is None:
-        _session_store = SessionStore()
-    return _session_store
+    if _state.session_store is None:
+        _state.session_store = SessionStore()
+    return _state.session_store
 
 
 def get_config(workdir: Path) -> Config:
@@ -94,12 +100,12 @@ def get_config(workdir: Path) -> Config:
     """
     key = str(workdir)
     now = time.monotonic()
-    if key in _config_cache:
-        cached_config, cached_at = _config_cache[key]
+    if key in _state.config_cache:
+        cached_config, cached_at = _state.config_cache[key]
         if now - cached_at < _CONFIG_CACHE_TTL:
             return cached_config.model_copy(deep=True)
-    _config_cache[key] = (Config.load(workdir=workdir), now)
-    return _config_cache[key][0].model_copy(deep=True)
+    _state.config_cache[key] = (Config.load(workdir=workdir), now)
+    return _state.config_cache[key][0].model_copy(deep=True)
 
 
 def get_skill_manager(config: Config, workdir: Path) -> SkillManager:
@@ -142,33 +148,31 @@ def get_runner(workdir: Path):
     config = get_config(workdir)
     fp = _config_fingerprint(config)
 
-    if key in _runner_cache:
-        runner, created_at, cached_fp = _runner_cache[key]
+    if key in _state.runner_cache:
+        runner, created_at, cached_fp = _state.runner_cache[key]
         if now - created_at < _RUNNER_CACHE_TTL and cached_fp == fp:
             return runner
 
     runner = AgentRunner(config=config, workdir=workdir)
-    _runner_cache[key] = (runner, now, fp)
+    _state.runner_cache[key] = (runner, now, fp)
     return runner
 
 
 def get_project_store() -> ProjectStore:
-    global _project_store
-    if _project_store is None:
-        _project_store = ProjectStore()
-    return _project_store
+    if _state.project_store is None:
+        _state.project_store = ProjectStore()
+    return _state.project_store
 
 
 async def get_sub_agent_manager(workdir: Optional[Path] = None):
-    global _sub_agent_manager
-    if _sub_agent_manager is None:
-        async with _sub_agent_lock:
-            if _sub_agent_manager is None:
+    if _state.sub_agent_manager is None:
+        async with _state.sub_agent_lock:
+            if _state.sub_agent_manager is None:
                 from cody.core.sub_agent import SubAgentManager
                 wd = workdir or Path.cwd()
                 config = get_config(wd)
-                _sub_agent_manager = SubAgentManager(config=config, workdir=wd)
-    return _sub_agent_manager
+                _state.sub_agent_manager = SubAgentManager(config=config, workdir=wd)
+    return _state.sub_agent_manager
 
 
 # ── FastAPI Depends() wrappers ───────────────────────────────────────────────
@@ -193,14 +197,5 @@ def audit_logger_dep() -> AuditLogger:
 
 def reset_state():
     """Reset all singletons for testing."""
-    global _audit_logger, _auth_manager, _rate_limiter, _rate_limiter_checked
-    global _session_store, _config_cache, _sub_agent_manager, _project_store, _runner_cache
-    _audit_logger = None
-    _auth_manager = None
-    _rate_limiter = None
-    _rate_limiter_checked = False
-    _session_store = None
-    _config_cache.clear()
-    _sub_agent_manager = None
-    _project_store = None
-    _runner_cache.clear()
+    global _state
+    _state = ServerState()

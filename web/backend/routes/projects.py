@@ -1,12 +1,13 @@
-"""Project CRUD business logic.
+"""Project CRUD routes.
 
-Uses core SessionStore directly (no HTTP SDK). These are plain async
-functions called by app.py with injected dependencies.
+Uses core SessionStore directly (no HTTP SDK). Router registered in app.py.
 """
 
 import asyncio
 import logging
 from pathlib import Path
+
+from fastapi import APIRouter, Depends
 
 from cody.core import Config, SessionStore
 from cody.core.errors import ErrorCode
@@ -15,8 +16,11 @@ from cody.core.project_instructions import generate_project_instructions
 from ..db import ProjectStore
 from ..helpers import raise_structured
 from ..models import ProjectCreate, ProjectUpdate, ProjectResponse
+from ..state import get_project_store, session_store_dep
 
 logger = logging.getLogger("cody.web.projects")
+
+router = APIRouter(tags=["projects"])
 
 
 def _project_response(p) -> ProjectResponse:
@@ -32,15 +36,22 @@ def _project_response(p) -> ProjectResponse:
     )
 
 
-async def list_projects(store: ProjectStore):
+@router.get("/api/projects", response_model=list[ProjectResponse])
+async def list_projects(
+    store: ProjectStore = Depends(get_project_store),
+):
     """List all projects."""
     projects = await asyncio.to_thread(store.list_projects)
     logger.info("List projects: count=%d", len(projects))
     return [_project_response(p) for p in projects]
 
 
-async def create_project(body: ProjectCreate, store: ProjectStore,
-                         session_store: SessionStore = None):
+@router.post("/api/projects", response_model=ProjectResponse, status_code=201)
+async def create_project(
+    body: ProjectCreate,
+    store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
+):
     """Create a new project.
 
     Initializes .cody/ in workdir and creates a linked cody session.
@@ -91,7 +102,11 @@ async def create_project(body: ProjectCreate, store: ProjectStore,
     return _project_response(project)
 
 
-async def get_project(project_id: str, store: ProjectStore):
+@router.get("/api/projects/{project_id}", response_model=ProjectResponse)
+async def get_project(
+    project_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
     """Get a project by ID."""
     project = await asyncio.to_thread(store.get_project, project_id)
     if project is None:
@@ -101,8 +116,12 @@ async def get_project(project_id: str, store: ProjectStore):
     return _project_response(project)
 
 
-async def update_project(project_id: str, body: ProjectUpdate,
-                         store: ProjectStore):
+@router.put("/api/projects/{project_id}", response_model=ProjectResponse)
+async def update_project(
+    project_id: str,
+    body: ProjectUpdate,
+    store: ProjectStore = Depends(get_project_store),
+):
     """Update project name and/or description."""
     project = await asyncio.to_thread(
         store.update_project,
@@ -116,8 +135,12 @@ async def update_project(project_id: str, body: ProjectUpdate,
     return _project_response(project)
 
 
-async def delete_project(project_id: str, store: ProjectStore,
-                         session_store: SessionStore = None):
+@router.delete("/api/projects/{project_id}")
+async def delete_project(
+    project_id: str,
+    store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
+):
     """Delete a project."""
     logger.info("Delete project: id=%s", project_id)
     project = await asyncio.to_thread(store.get_project, project_id)
@@ -143,7 +166,11 @@ async def delete_project(project_id: str, store: ProjectStore,
     return {"status": "deleted", "id": project_id}
 
 
-async def init_project_cody_md(project_id: str, store: ProjectStore):
+@router.post("/api/projects/{project_id}/init")
+async def init_project_cody_md(
+    project_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
     """Generate CODY.md for a project using AI analysis (like `cody init`)."""
     logger.info("Init CODY.md: project=%s", project_id)
     project = await asyncio.to_thread(store.get_project, project_id)

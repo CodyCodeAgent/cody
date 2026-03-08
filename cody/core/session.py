@@ -40,10 +40,26 @@ class SessionStore:
             db_path = Path.home() / ".cody" / "sessions.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
+        self._conn: sqlite3.Connection | None = None
         self._init_db()
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        self._conn.execute("PRAGMA foreign_keys = ON")
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self.db_path))
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self._conn.execute("PRAGMA foreign_keys = ON")
+        return self._conn
+
+    def close(self) -> None:
+        """Close the persistent database connection."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+    def __del__(self):
+        self.close()
 
     def _init_db(self) -> None:
         """Create tables if they don't exist"""
@@ -187,9 +203,8 @@ class SessionStore:
             ]
 
     def delete_session(self, session_id: str) -> bool:
-        """Delete a session and its messages"""
+        """Delete a session and its messages (messages cascade via FK)"""
         with self._connect() as conn:
-            conn.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
             cursor = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             return cursor.rowcount > 0
 

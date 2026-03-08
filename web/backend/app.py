@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 try:
-    from fastapi import Depends, FastAPI, Request, WebSocket
+    from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
     from fastapi.staticfiles import StaticFiles
@@ -35,14 +35,7 @@ from cody import __version__
 from cody.core.errors import CodyAPIError
 from cody.core.log import setup_logging
 
-from .db import ProjectStore
-from .models import (
-    HealthResponse, ProjectCreate, ProjectUpdate, ProjectResponse,
-    TaskCreate, TaskUpdate, TaskResponse,
-)
-from cody.core import SessionStore
-
-from .state import get_project_store, session_store_dep
+from .models import HealthResponse
 from .middleware import auth_middleware, rate_limit_middleware, audit_middleware
 
 from .routes.directories import router as directories_router
@@ -54,10 +47,10 @@ from .routes.audit_routes import router as audit_router
 from .routes.agents import router as agents_router
 from .routes.websocket import router as ws_router
 from .routes.config import router as config_router
-from .routes import projects as _projects
-from .routes import tasks as _tasks
-from .routes import chat as _chat
-from .routes import task_chat as _task_chat
+from .routes.projects import router as projects_router
+from .routes.tasks import router as tasks_router
+from .routes.task_chat import router as task_chat_router
+from .routes.chat import router as chat_router
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
@@ -132,134 +125,11 @@ app.include_router(config_router)
 # ── Web routes ──────────────────────────────────────────────────────────────
 
 app.include_router(directories_router)
-
-
-@app.get("/api/projects", response_model=list[ProjectResponse])
-async def list_projects_endpoint(
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _projects.list_projects(store=store)
-
-
-@app.post("/api/projects", response_model=ProjectResponse, status_code=201)
-async def create_project_endpoint(
-    body: ProjectCreate,
-    store: ProjectStore = Depends(get_project_store),
-    session_store: SessionStore = Depends(session_store_dep),
-):
-    return await _projects.create_project(body=body, store=store, session_store=session_store)
-
-
-@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
-async def get_project_endpoint(
-    project_id: str,
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _projects.get_project(project_id=project_id, store=store)
-
-
-@app.put("/api/projects/{project_id}", response_model=ProjectResponse)
-async def update_project_endpoint(
-    project_id: str,
-    body: ProjectUpdate,
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _projects.update_project(
-        project_id=project_id, body=body, store=store
-    )
-
-
-@app.delete("/api/projects/{project_id}")
-async def delete_project_endpoint(
-    project_id: str,
-    store: ProjectStore = Depends(get_project_store),
-    session_store: SessionStore = Depends(session_store_dep),
-):
-    return await _projects.delete_project(project_id=project_id, store=store, session_store=session_store)
-
-
-@app.post("/api/projects/{project_id}/init")
-async def init_project_endpoint(
-    project_id: str,
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _projects.init_project_cody_md(
-        project_id=project_id, store=store
-    )
-
-
-# ── Task routes ────────────────────────────────────────────────────────────
-
-@app.get("/api/projects/{project_id}/tasks", response_model=list[TaskResponse])
-async def list_tasks_endpoint(
-    project_id: str,
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _tasks.list_tasks(project_id=project_id, store=store)
-
-
-@app.post("/api/projects/{project_id}/tasks", response_model=TaskResponse, status_code=201)
-async def create_task_endpoint(
-    project_id: str,
-    body: TaskCreate,
-    store: ProjectStore = Depends(get_project_store),
-    session_store: SessionStore = Depends(session_store_dep),
-):
-    return await _tasks.create_task(
-        project_id=project_id, body=body, store=store, session_store=session_store,
-    )
-
-
-@app.get("/api/tasks/{task_id}", response_model=TaskResponse)
-async def get_task_endpoint(
-    task_id: str,
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _tasks.get_task(task_id=task_id, store=store)
-
-
-@app.put("/api/tasks/{task_id}", response_model=TaskResponse)
-async def update_task_endpoint(
-    task_id: str,
-    body: TaskUpdate,
-    store: ProjectStore = Depends(get_project_store),
-):
-    return await _tasks.update_task(task_id=task_id, body=body, store=store)
-
-
-@app.delete("/api/tasks/{task_id}")
-async def delete_task_endpoint(
-    task_id: str,
-    store: ProjectStore = Depends(get_project_store),
-    session_store: SessionStore = Depends(session_store_dep),
-):
-    return await _tasks.delete_task(task_id=task_id, store=store, session_store=session_store)
-
-
-# Chat WebSocket (task-level) — must be before project-level to avoid "task" matching as project_id
-@app.websocket("/ws/chat/task/{task_id}")
-async def task_chat_websocket_endpoint(
-    ws: WebSocket,
-    task_id: str,
-    store: ProjectStore = Depends(get_project_store),
-    session_store: SessionStore = Depends(session_store_dep),
-):
-    await _task_chat.task_chat_websocket(
-        ws=ws, task_id=task_id, store=store, session_store=session_store,
-    )
-
-
-# Chat WebSocket (project-level)
-@app.websocket("/ws/chat/{project_id}")
-async def chat_websocket_endpoint(
-    ws: WebSocket,
-    project_id: str,
-    store: ProjectStore = Depends(get_project_store),
-    session_store: SessionStore = Depends(session_store_dep),
-):
-    await _chat.chat_websocket(
-        ws=ws, project_id=project_id, store=store, session_store=session_store,
-    )
+app.include_router(projects_router)
+# Task-level chat WS must be before project-level to avoid "task" matching as project_id
+app.include_router(task_chat_router)
+app.include_router(tasks_router)
+app.include_router(chat_router)
 
 
 # Health (RPC endpoint)

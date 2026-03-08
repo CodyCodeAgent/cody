@@ -4,7 +4,7 @@ from pydantic_ai import RunContext
 
 from ..deps import CodyDeps
 from ..errors import ToolInvalidParams
-from ._base import _check_permission, _resolve_and_check
+from ._base import _audit_tool_call, _check_permission, _resolve_and_check
 
 
 async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
@@ -45,15 +45,7 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
     if ctx.deps.file_history:
         ctx.deps.file_history.record(path, old_content, content, operation="write")
 
-    # Audit log
-    if ctx.deps.audit_logger:
-        ctx.deps.audit_logger.log(
-            event="file_write",
-            tool_name="write_file",
-            args_summary=f"path={path}",
-            result_summary=f"Written {len(content)} bytes",
-            workdir=str(ctx.deps.workdir),
-        )
+    _audit_tool_call(ctx, "file_write", "write_file", f"path={path}", f"Written {len(content)} bytes")
 
     return f"Written {len(content)} bytes to {path}"
 
@@ -89,15 +81,7 @@ async def edit_file(
     if ctx.deps.file_history:
         ctx.deps.file_history.record(path, content, new_content, operation="edit")
 
-    # Audit log
-    if ctx.deps.audit_logger:
-        ctx.deps.audit_logger.log(
-            event="file_edit",
-            tool_name="edit_file",
-            args_summary=f"path={path}",
-            result_summary=f"Replaced text in {path}",
-            workdir=str(ctx.deps.workdir),
-        )
+    _audit_tool_call(ctx, "file_edit", "edit_file", f"path={path}", f"Replaced text in {path}")
 
     return f"Edited {path}: replaced text"
 

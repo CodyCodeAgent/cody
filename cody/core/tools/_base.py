@@ -1,13 +1,19 @@
 """Shared helpers used across tool modules."""
 
+from __future__ import annotations
+
 import functools
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from pydantic_ai import ModelRetry, RunContext
 from pathlib import Path
 
 from ..errors import ToolError, ToolPathDenied
+
+if TYPE_CHECKING:
+    from ..deps import CodyDeps
 
 _tool_logger = logging.getLogger("cody.core.tools")
 
@@ -85,5 +91,21 @@ def _with_model_retry(func):
     return wrapper
 
 
-# Forward import for type hints used in _check_permission
-from ..deps import CodyDeps  # noqa: E402
+def _audit_tool_call(
+    ctx: RunContext['CodyDeps'],
+    event: str,
+    tool_name: str,
+    args_summary: str,
+    result_summary: str,
+    success: bool = True,
+) -> None:
+    """Log a tool call to the audit logger if available."""
+    if ctx.deps.audit_logger:
+        ctx.deps.audit_logger.log(
+            event=event,
+            tool_name=tool_name,
+            args_summary=args_summary,
+            result_summary=result_summary,
+            workdir=str(ctx.deps.workdir),
+            success=success,
+        )
