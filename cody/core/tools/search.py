@@ -2,6 +2,8 @@
 
 import fnmatch
 import re
+import shutil
+import subprocess
 
 from pydantic_ai import RunContext
 
@@ -16,6 +18,8 @@ from ._file_filter import (
     _iter_files,
     _parse_gitignore,
 )
+
+_MAX_FILE_SIZE = 1_048_576  # 1 MB — skip files larger than this in Python grep
 
 
 async def grep(
@@ -43,9 +47,36 @@ async def grep(
     except re.error as e:
         raise ToolInvalidParams(f"Invalid regex pattern: {e}")
 
-    matches: list[str] = []
     max_matches = 200
     workdir_resolved = ctx.deps.workdir.resolve()
+
+    # Try ripgrep for better performance on directories
+    if full_path.is_dir():
+        rg_path = shutil.which("rg")
+        if rg_path:
+            try:
+                args = [rg_path, "-n", "--no-heading", "-m", str(max_matches), pattern, str(full_path)]
+                if include:
+                    args.extend(["-g", include])
+                result = subprocess.run(
+                    args, capture_output=True, text=True, timeout=30, cwd=str(ctx.deps.workdir)
+                )
+                if result.returncode <= 1:  # 0=found, 1=not found
+                    output = result.stdout.strip()
+                    if not output:
+                        return f"No matches found for pattern: {pattern}"
+                    lines = []
+                    prefix = str(workdir_resolved) + "/"
+                    for line in output.splitlines()[:max_matches]:
+                        if line.startswith(prefix):
+                            line = line[len(prefix):]
+                        lines.append(line)
+                    return "\n".join(lines)
+            except (subprocess.TimeoutExpired, OSError):
+                pass  # Fall through to Python implementation
+
+    # Python fallback
+    matches: list[str] = []
 
     if full_path.is_file():
         files = [full_path]
@@ -59,6 +90,13 @@ async def grep(
         if include and not fnmatch.fnmatch(file_path.name, include):
             continue
         if _is_binary(file_path):
+            continue
+
+        # Skip files larger than _MAX_FILE_SIZE
+        try:
+            if file_path.stat().st_size > _MAX_FILE_SIZE:
+                continue
+        except OSError:
             continue
 
         try:
@@ -206,7 +244,13 @@ async def patch(
             # Process hunk lines
             while i < len(diff_lines) and not diff_lines[i].startswith("@@"):
                 dl = diff_lines[i]
-                if dl.startswith("-"):
+                if dl.startswith("\\"):
+                    # "\ No newline at end of file" marker
+                    if result_lines and result_lines[-1].endswith("\n"):
+                        result_lines[-1] = result_lines[-1][:-1]
+                    i += 1
+                    continue
+                elif dl.startswith("-"):
                     # Remove line — skip it from original
                     orig_idx += 1
                 elif dl.startswith("+"):
@@ -216,8 +260,16 @@ async def patch(
                         content += "\n"
                     result_lines.append(content)
                 elif dl.startswith(" ") or dl.strip() == "":
-                    # Context line
+                    # Context line — validate it matches original
                     if orig_idx < len(original_lines):
+                        expected = original_lines[orig_idx]
+                        context_content = dl[1:] if dl.startswith(" ") else dl
+                        if context_content.rstrip("\n") != expected.rstrip("\n"):
+                            raise ToolInvalidParams(
+                                f"Context mismatch at line {orig_idx + 1}: "
+                                f"expected {expected.rstrip()!r}, "
+                                f"got {context_content.rstrip()!r}"
+                            )
                         result_lines.append(original_lines[orig_idx])
                     orig_idx += 1
                 else:

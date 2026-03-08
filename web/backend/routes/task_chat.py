@@ -1,7 +1,7 @@
 """WebSocket chat for development tasks.
 
 Similar to chat.py but operates on a Task (which has its own session and
-uses the project's code_paths as allowed_roots).
+uses the project's code_paths as allowed_roots). Router registered in app.py.
 """
 
 import json
@@ -10,7 +10,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from cody.core import SessionStore
 from cody.core.auth import AuthError
@@ -18,15 +18,19 @@ from cody.core.auth import AuthError
 from ..db import ProjectStore
 from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
 from ..middleware import validate_credential
+from ..state import get_project_store, session_store_dep
 
 logger = logging.getLogger("cody.web.task_chat")
 
+router = APIRouter(tags=["task_chat"])
 
+
+@router.websocket("/ws/chat/task/{task_id}")
 async def task_chat_websocket(
     ws: WebSocket,
     task_id: str,
-    store: ProjectStore = None,
-    session_store: SessionStore = None,
+    store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
 ):
     """WebSocket endpoint that streams AI responses for a development task."""
     # Authenticate before accepting

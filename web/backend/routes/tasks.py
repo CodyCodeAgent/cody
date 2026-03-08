@@ -1,7 +1,7 @@
-"""Task CRUD and branch management for development tasks.
+"""Task CRUD routes and branch management for development tasks.
 
 Each task represents a development task under a project, with its own
-git branch and chat session.
+git branch and chat session. Router registered in app.py.
 """
 
 import asyncio
@@ -9,14 +9,19 @@ import logging
 import subprocess
 from pathlib import Path
 
+from fastapi import APIRouter, Depends
+
 from cody.core import SessionStore
 from cody.core.errors import ErrorCode
 
 from ..db import ProjectStore
 from ..helpers import raise_structured
 from ..models import TaskCreate, TaskUpdate, TaskResponse
+from ..state import get_project_store, session_store_dep
 
 logger = logging.getLogger("cody.web.tasks")
+
+router = APIRouter(tags=["tasks"])
 
 
 def _task_response(t) -> TaskResponse:
@@ -32,7 +37,11 @@ def _task_response(t) -> TaskResponse:
     )
 
 
-async def list_tasks(project_id: str, store: ProjectStore):
+@router.get("/api/projects/{project_id}/tasks", response_model=list[TaskResponse])
+async def list_tasks(
+    project_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
     """List all tasks for a project."""
     project = await asyncio.to_thread(store.get_project, project_id)
     if project is None:
@@ -42,8 +51,13 @@ async def list_tasks(project_id: str, store: ProjectStore):
     return [_task_response(t) for t in tasks]
 
 
-async def create_task(project_id: str, body: TaskCreate, store: ProjectStore,
-                      session_store: SessionStore = None):
+@router.post("/api/projects/{project_id}/tasks", response_model=TaskResponse, status_code=201)
+async def create_task(
+    project_id: str,
+    body: TaskCreate,
+    store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
+):
     """Create a development task: create git branch and chat session."""
     logger.info(
         "Create task: project=%s name=%s branch=%s",
@@ -150,7 +164,11 @@ async def create_task(project_id: str, body: TaskCreate, store: ProjectStore,
     return _task_response(task)
 
 
-async def get_task(task_id: str, store: ProjectStore):
+@router.get("/api/tasks/{task_id}", response_model=TaskResponse)
+async def get_task(
+    task_id: str,
+    store: ProjectStore = Depends(get_project_store),
+):
     """Get a task by ID."""
     task = await asyncio.to_thread(store.get_task, task_id)
     if task is None:
@@ -158,7 +176,12 @@ async def get_task(task_id: str, store: ProjectStore):
     return _task_response(task)
 
 
-async def update_task(task_id: str, body: TaskUpdate, store: ProjectStore):
+@router.put("/api/tasks/{task_id}", response_model=TaskResponse)
+async def update_task(
+    task_id: str,
+    body: TaskUpdate,
+    store: ProjectStore = Depends(get_project_store),
+):
     """Update a task."""
     task = await asyncio.to_thread(
         store.update_task, task_id, name=body.name, status=body.status,
@@ -168,8 +191,12 @@ async def update_task(task_id: str, body: TaskUpdate, store: ProjectStore):
     return _task_response(task)
 
 
-async def delete_task(task_id: str, store: ProjectStore,
-                      session_store: SessionStore = None):
+@router.delete("/api/tasks/{task_id}")
+async def delete_task(
+    task_id: str,
+    store: ProjectStore = Depends(get_project_store),
+    session_store: SessionStore = Depends(session_store_dep),
+):
     """Delete a task and its linked session."""
     logger.info("Delete task: id=%s", task_id)
     task = await asyncio.to_thread(store.get_task, task_id)
