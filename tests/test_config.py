@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from cody.core.config import (
     AuthConfig,
     Config,
