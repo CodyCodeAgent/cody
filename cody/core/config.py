@@ -128,7 +128,7 @@ class Config(BaseModel):
         """
         if path is None:
             if workdir is None:
-                raise TypeError("Config.load() requires workdir when path is not given")
+                workdir = Path.cwd()
             project_config = Path(workdir) / ".cody" / "config.json"
             global_config = Path.home() / ".cody" / "config.json"
 
