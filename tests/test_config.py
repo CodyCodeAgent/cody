@@ -390,10 +390,11 @@ def test_config_load_workdir_finds_project_config(tmp_path, monkeypatch):
     assert config.model == "project-model"
 
 
-def test_config_load_requires_workdir_when_no_path():
-    """Config.load() without path or workdir raises TypeError."""
-    with pytest.raises(TypeError, match="requires workdir"):
-        Config.load()
+def test_config_load_defaults_workdir_to_cwd(tmp_path, monkeypatch):
+    """Config.load() without path or workdir defaults workdir to cwd."""
+    monkeypatch.chdir(tmp_path)
+    config = Config.load()
+    assert isinstance(config, Config)
 
 
 def test_config_load_workdir_no_project_config_falls_to_global(tmp_path, monkeypatch):
