@@ -224,3 +224,79 @@ def test_mixed_messages_with_and_without_images(store):
     assert len(loaded.messages[0].images) == 1
     assert loaded.messages[1].images == []
     assert loaded.messages[2].images == []
+
+
+# ── Compaction checkpoint ─────────────────────────────────────────────────────
+
+
+def test_save_and_load_compaction_checkpoint(store):
+    """Compaction summary and up_to are persisted and loaded."""
+    session = store.create_session(title="Compact Test")
+    store.add_message(session.id, "user", "msg1")
+    store.add_message(session.id, "assistant", "msg2")
+    store.add_message(session.id, "user", "msg3")
+
+    last_id = store.get_last_message_id(session.id)
+    assert last_id is not None
+
+    store.save_compaction(session.id, "summary of conversation", last_id)
+
+    loaded = store.get_session(session.id)
+    assert loaded.compacted_summary == "summary of conversation"
+    assert loaded.compacted_up_to == last_id
+
+
+def test_get_messages_after(store):
+    """get_messages_after returns only messages with id > after_id."""
+    session = store.create_session(title="After Test")
+    store.add_message(session.id, "user", "old1")
+    store.add_message(session.id, "assistant", "old2")
+
+    cutoff_id = store.get_last_message_id(session.id)
+
+    store.add_message(session.id, "user", "new1")
+    store.add_message(session.id, "assistant", "new2")
+
+    after = store.get_messages_after(session.id, cutoff_id)
+    assert len(after) == 2
+    assert after[0].content == "new1"
+    assert after[1].content == "new2"
+
+
+def test_get_last_message_id(store):
+    """get_last_message_id returns the rowid of the most recent message."""
+    session = store.create_session(title="Last ID Test")
+    assert store.get_last_message_id(session.id) is None
+
+    store.add_message(session.id, "user", "first")
+    id1 = store.get_last_message_id(session.id)
+    assert id1 is not None
+
+    store.add_message(session.id, "assistant", "second")
+    id2 = store.get_last_message_id(session.id)
+    assert id2 > id1
+
+
+def test_compaction_checkpoint_defaults_to_none(store):
+    """New sessions have no compaction checkpoint."""
+    session = store.create_session(title="No Compact")
+    loaded = store.get_session(session.id)
+    assert loaded.compacted_summary is None
+    assert loaded.compacted_up_to is None
+
+
+def test_compaction_checkpoint_update_overwrites(store):
+    """Saving compaction again overwrites the previous checkpoint."""
+    session = store.create_session(title="Overwrite Test")
+    store.add_message(session.id, "user", "msg1")
+    id1 = store.get_last_message_id(session.id)
+    store.save_compaction(session.id, "summary v1", id1)
+
+    store.add_message(session.id, "user", "msg2")
+    store.add_message(session.id, "assistant", "msg3")
+    id2 = store.get_last_message_id(session.id)
+    store.save_compaction(session.id, "summary v2", id2)
+
+    loaded = store.get_session(session.id)
+    assert loaded.compacted_summary == "summary v2"
+    assert loaded.compacted_up_to == id2
