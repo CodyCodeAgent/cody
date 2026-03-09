@@ -15,7 +15,7 @@
 
 **优先级**: P1
 **前置条件**: Web 后端已启动
-**涉及功能**: `POST /projects` + `GET /projects`
+**涉及功能**: `POST /api/projects` + `GET /api/projects`
 
 ### 操作步骤
 
@@ -24,13 +24,13 @@ TEST_DIR="$CODY_TEST_DIR/wchat_001"
 mkdir -p "$TEST_DIR"
 
 # 创建项目
-curl -s -X POST http://localhost:18923/projects \
+curl -s -X POST http://localhost:18923/api/projects \
   -H "Content-Type: application/json" \
   -d "{\"name\": \"Test Project\", \"workdir\": \"$TEST_DIR\"}" \
   | tee "$TEST_DIR/create.json"
 
 # 列出项目
-curl -s http://localhost:18923/projects | tee "$TEST_DIR/list.json"
+curl -s http://localhost:18923/api/projects | tee "$TEST_DIR/list.json"
 ```
 
 ### 预期结果
@@ -80,7 +80,7 @@ async def main():
     # 先创建一个项目
     import urllib.request
     req = urllib.request.Request(
-        "http://localhost:18923/projects",
+        "http://localhost:18923/api/projects",
         data=json.dumps({"name": "WS Test", "workdir": "/tmp"}).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
