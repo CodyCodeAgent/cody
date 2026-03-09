@@ -31,6 +31,8 @@ class Session:
     created_at: str
     updated_at: str
     message_count: int | None = None  # populated by list_sessions(), None means not loaded
+    compacted_summary: str | None = None  # compaction checkpoint summary
+    compacted_up_to: int | None = None  # message id up to which compaction covers
 
 
 class SessionStore:
@@ -96,6 +98,15 @@ class SessionStore:
                 )
             except sqlite3.OperationalError:
                 pass  # column already exists
+            # Migration: add compaction checkpoint columns
+            for col in (
+                "compacted_summary TEXT DEFAULT NULL",
+                "compacted_up_to INTEGER DEFAULT NULL",
+            ):
+                try:
+                    conn.execute(f"ALTER TABLE sessions ADD COLUMN {col}")
+                except sqlite3.OperationalError:
+                    pass  # column already exists
 
     def create_session(
         self,
@@ -151,7 +162,8 @@ class SessionStore:
         """Get a session by ID (with messages)"""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id, title, model, workdir, created_at, updated_at "
+                "SELECT id, title, model, workdir, created_at, updated_at, "
+                "compacted_summary, compacted_up_to "
                 "FROM sessions WHERE id = ?",
                 (session_id,),
             ).fetchone()
@@ -179,6 +191,8 @@ class SessionStore:
                 workdir=row[3],
                 created_at=row[4],
                 updated_at=row[5],
+                compacted_summary=row[6],
+                compacted_up_to=row[7],
             )
 
     def list_sessions(self, limit: int = 20) -> list[Session]:
@@ -245,3 +259,44 @@ class SessionStore:
                 "UPDATE sessions SET title = ? WHERE id = ?",
                 (title, session_id),
             )
+
+    def save_compaction(
+        self, session_id: str, summary: str, up_to_message_id: int
+    ) -> None:
+        """Save compaction checkpoint — summary covers messages up to given id."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET compacted_summary = ?, compacted_up_to = ?, "
+                "updated_at = ? WHERE id = ?",
+                (summary, up_to_message_id, now, session_id),
+            )
+
+    def get_messages_after(
+        self, session_id: str, after_id: int
+    ) -> list[Message]:
+        """Get messages with rowid > after_id for a session."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT role, content, timestamp, images FROM messages "
+                "WHERE session_id = ? AND id > ? ORDER BY id ASC",
+                (session_id, after_id),
+            ).fetchall()
+            messages = []
+            for r in rows:
+                imgs = []
+                if r[3]:
+                    imgs = [ImageData.from_dict(d) for d in json.loads(r[3])]
+                messages.append(
+                    Message(role=r[0], content=r[1], timestamp=r[2], images=imgs)
+                )
+            return messages
+
+    def get_last_message_id(self, session_id: str) -> int | None:
+        """Get the rowid of the last message in a session."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(id) FROM messages WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return row[0] if row and row[0] is not None else None

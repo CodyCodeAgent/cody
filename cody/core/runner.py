@@ -386,12 +386,30 @@ class AgentRunner:
     ) -> tuple[str, Optional[list[ModelMessage]]]:
         """Load existing session or create a new one.
 
+        If a compaction checkpoint exists, builds history from the saved summary
+        plus only the messages added after the checkpoint, avoiding redundant
+        re-compaction of already-summarized messages.
+
         Returns (session_id, history_or_none).
         """
         if session_id:
             session = store.get_session(session_id)
             if not session:
                 raise ValueError(f"Session not found: {session_id}")
+
+            # Use compaction checkpoint if available
+            if session.compacted_summary and session.compacted_up_to is not None:
+                recent_msgs = store.get_messages_after(
+                    session_id, session.compacted_up_to
+                )
+                history: list[ModelMessage] = [
+                    ModelRequest(parts=[UserPromptPart(
+                        content=f"[Context]\n{session.compacted_summary}"
+                    )])
+                ]
+                history.extend(self.messages_to_history(recent_msgs))
+                return session.id, history
+
             history = self.messages_to_history(session.messages) if session.messages else None
             return session.id, history
 
@@ -707,6 +725,23 @@ class AgentRunner:
 
     # ── Session-aware run methods ────────────────────────────────────────────
 
+    def _save_compaction_checkpoint(
+        self,
+        store: SessionStore,
+        session_id: str,
+        compact_result: CompactResult,
+    ) -> None:
+        """Persist compaction summary as a checkpoint in the session store."""
+        last_msg_id = store.get_last_message_id(session_id)
+        if last_msg_id is not None:
+            store.save_compaction(
+                session_id, compact_result.summary, last_msg_id,
+            )
+            logger.info(
+                "Compaction checkpoint saved for session %s (up_to=%d)",
+                session_id, last_msg_id,
+            )
+
     @log_elapsed("AgentRunner.run_with_session", level=logging.INFO)
     async def run_with_session(
         self,
@@ -717,8 +752,16 @@ class AgentRunner:
         """Run agent with automatic session persistence.
 
         Returns (CodyResult, session_id). Creates a new session if session_id is None.
+        Compaction checkpoints are persisted so subsequent turns skip
+        re-compacting already-summarized messages.
         """
         sid, history = self.prepare_session(store, session_id)
+
+        # Pre-compact and save checkpoint before running agent
+        history, compact_result = await self._compact_history_if_needed(history)
+        if compact_result is not None:
+            self._save_compaction_checkpoint(store, sid, compact_result)
+
         result = await self.run(prompt, message_history=history)
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
         store.add_message(sid, "assistant", result.output)
@@ -735,8 +778,22 @@ class AgentRunner:
 
         Yields (StreamEvent, session_id) tuples.
         Saves user+assistant messages; assistant message saved when DoneEvent arrives.
+        Compaction checkpoints are persisted so subsequent turns skip
+        re-compacting already-summarized messages.
         """
         sid, history = self.prepare_session(store, session_id)
+
+        # Pre-compact and save checkpoint before streaming
+        history, compact_result = await self._compact_history_if_needed(history)
+        if compact_result is not None:
+            self._save_compaction_checkpoint(store, sid, compact_result)
+            yield CompactEvent(
+                original_messages=compact_result.original_messages,
+                compacted_messages=compact_result.compacted_messages,
+                estimated_tokens_saved=compact_result.estimated_tokens_saved,
+                used_llm=compact_result.used_llm,
+            ), sid
+
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
         async for event in self.run_stream(prompt, message_history=history):

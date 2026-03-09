@@ -95,7 +95,7 @@ curl -s http://localhost:18923/sessions | tee "$TEST_DIR/sessions.json"
 ### 预期结果
 
 - 返回 200
-- 返回 JSON 数组
+- 返回 JSON，包含 `sessions` 字段（数组）
 
 ### 验证方法
 
@@ -103,9 +103,10 @@ curl -s http://localhost:18923/sessions | tee "$TEST_DIR/sessions.json"
 python3 -c "
 import json
 data = json.load(open('$CODY_TEST_DIR/web_003/sessions.json'))
-is_list = isinstance(data, list)
+sessions = data.get('sessions', []) if isinstance(data, dict) else data
+is_list = isinstance(sessions, list)
 print(f'IS_LIST: {is_list}')
-print(f'COUNT: {len(data)}')
+print(f'COUNT: {len(sessions)}')
 "
 ```
 
@@ -128,7 +129,7 @@ curl -s http://localhost:18923/skills | tee "$TEST_DIR/skills.json"
 ### 预期结果
 
 - 返回 200
-- 返回技能列表，包含内置技能（如 git, python 等）
+- 返回 JSON，包含 `skills` 字段（技能列表数组），含内置技能（如 git, python 等）
 
 ### 验证方法
 
@@ -136,12 +137,13 @@ curl -s http://localhost:18923/skills | tee "$TEST_DIR/skills.json"
 python3 -c "
 import json
 data = json.load(open('$CODY_TEST_DIR/web_004/skills.json'))
-is_list = isinstance(data, list)
+skills = data.get('skills', []) if isinstance(data, dict) else data
+is_list = isinstance(skills, list)
 print(f'IS_LIST: {is_list}')
-names = [s.get('name', '') for s in data] if is_list else []
+names = [s.get('name', '') for s in skills] if is_list else []
 print(f'HAS_GIT: {\"git\" in names}')
 print(f'HAS_PYTHON: {\"python\" in names}')
-print(f'SKILL_COUNT: {len(data) if is_list else 0}')
+print(f'SKILL_COUNT: {len(skills)}')
 "
 ```
 
@@ -183,7 +185,7 @@ print(f'MODEL: {data.get(\"model\", \"N/A\")}')
 
 **优先级**: P2
 **前置条件**: Web 后端已启动
-**涉及功能**: `GET /directories`
+**涉及功能**: `GET /api/directories`
 
 ### 操作步骤
 
@@ -195,7 +197,7 @@ echo "test" > "$TEST_DIR/a.txt"
 echo "test" > "$TEST_DIR/b.py"
 mkdir -p "$TEST_DIR/subdir"
 
-curl -s "http://localhost:18923/directories?path=$TEST_DIR" | tee "$TEST_DIR/dir.json"
+curl -s "http://localhost:18923/api/directories?path=$TEST_DIR" | tee "$TEST_DIR/dir.json"
 ```
 
 ### 预期结果
