@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.8.2] - 2026-03-09
+
+### Fixed
+
+- 修复 `test_config_load_requires_workdir_when_no_path` 测试用例，适配 `Config.load()` 默认 workdir 为 cwd 的行为变更
+- 移除 `tests/test_config.py` 中未使用的 `pytest` 导入，修复 ruff F401 告警
+
+---
+
 ## [1.8.0] - 2026-03-08
 
 ### Changed
