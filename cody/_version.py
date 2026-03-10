@@ -1,3 +1,3 @@
 """Single source of truth for the Cody version number."""
 
-__version__ = "1.8.2"
+__version__ = "1.8.3"

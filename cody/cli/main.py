@@ -51,7 +51,9 @@ main.add_command(init)
 @click.option('--allow-root', 'extra_roots', multiple=True, type=click.Path(exists=True),
               help='Additional directory to allow file access (repeatable)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose):
+@click.option('--session', 'session_id', default=None, help='Resume a session by ID')
+@click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
+def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose, session_id, continue_last):
     """Run a single task with Cody
 
     Examples:
@@ -59,6 +61,8 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
         cody run "refactor main.py to use async"
         cody run --model qwen3.5 "写个排序算法"
         cody run --workdir /proj/frontend --allow-root /proj/backend "sync configs"
+        cody run --session abc123 "continue the refactor"
+        cody run --continue "fix the remaining issues"
     """
     setup_logging(verbose=verbose)
 
@@ -85,6 +89,35 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
     )
     client.set_config(cfg)
 
+    # Resolve or create session
+    store = client.get_session_store()
+    resolved_session_id = None
+    if session_id:
+        session = store.get_session(session_id)
+        if not session:
+            console.print(f"[red]Session not found: {session_id}[/red]")
+            return
+        resolved_session_id = session.id
+        if verbose:
+            console.print(f"[dim]Resuming session: {session.title} ({session.id})[/dim]")
+    elif continue_last:
+        session = store.get_latest_session(workdir=str(workdir_path))
+        if not session:
+            console.print("[yellow]No previous session found for this directory[/yellow]")
+        else:
+            resolved_session_id = session.id
+            if verbose:
+                console.print(f"[dim]Continuing session: {session.title} ({session.id})[/dim]")
+
+    # Auto-create session if not resuming
+    if resolved_session_id is None:
+        session = store.create_session(
+            title=auto_title(prompt),
+            model=cfg.model,
+            workdir=str(workdir_path),
+        )
+        resolved_session_id = session.id
+
     if verbose:
         console.print(f"[dim]Model: {cfg.model}[/dim]")
         console.print(f"[dim]Workdir: {workdir_path}[/dim]")
@@ -95,13 +128,17 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose)
     async def _run_stream():
         await client.start_mcp()
         try:
-            done_chunk = await _render_stream(client.stream(prompt), verbose=verbose)
+            done_chunk = await _render_stream(
+                client.stream(prompt, session_id=resolved_session_id),
+                verbose=verbose,
+            )
             if verbose and done_chunk and done_chunk.usage:
                 console.print(f"[dim]Tokens: {done_chunk.usage.total_tokens}[/dim]")
         finally:
             await client.close()
 
     asyncio.run(_run_stream())
+    console.print(f"[dim]Session: {resolved_session_id}[/dim]")
 
 
 # ── Chat command (interactive REPL) ──────────────────────────────────────────
