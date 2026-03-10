@@ -10,6 +10,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.8.4] - 2026-03-10
+
+### Fixed
+
+- 修复 `prepare_session()` 中 mypy 类型错误：compaction checkpoint 分支的 `history` 变量类型注解与 fallback 赋值 `None` 不兼容
+
+### Changed
+
+- CI workflow 扩大触发范围：`feature/**` 分支 push 也会自动运行 lint + mypy + tests
+
+---
+
 ## [1.8.3] - 2026-03-10
 
 ### Added
