@@ -402,15 +402,17 @@ class AgentRunner:
                 recent_msgs = store.get_messages_after(
                     session_id, session.compacted_up_to
                 )
-                history: list[ModelMessage] = [
+                compacted_history: list[ModelMessage] = [
                     ModelRequest(parts=[UserPromptPart(
                         content=f"[Context]\n{session.compacted_summary}"
                     )])
                 ]
-                history.extend(self.messages_to_history(recent_msgs))
-                return session.id, history
+                compacted_history.extend(self.messages_to_history(recent_msgs))
+                return session.id, compacted_history
 
-            history = self.messages_to_history(session.messages) if session.messages else None
+            history: Optional[list[ModelMessage]] = (
+                self.messages_to_history(session.messages) if session.messages else None
+            )
             return session.id, history
 
         session = store.create_session(
