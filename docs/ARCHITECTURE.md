@@ -43,11 +43,11 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 │  │  │ Built-in │ Skill     │ MCP      │ LSP          │      │  │
 │  │  │ Tools    │ System    │ Client   │ Client       │      │  │
 │  │  │          │           │          │              │      │  │
-│  │  │ file ops │ .cody/    │ stdio    │ pyright      │      │  │
-│  │  │ search   │ ~/.cody/  │ JSON-RPC │ tsserver     │      │  │
-│  │  │ exec     │ builtin/  │          │ gopls        │      │  │
+│  │  │ file ops │ .cody/    │ stdio+   │ pyright      │      │  │
+│  │  │ search   │ ~/.cody/  │ http     │ tsserver     │      │  │
+│  │  │ exec     │ builtin/  │ JSON-RPC │ gopls        │      │  │
 │  │  │ web      │ 11 skills │ github   │              │      │  │
-│  │  │ todo     │           │ db, fs   │ diagnostics  │      │  │
+│  │  │ todo     │           │ feishu   │ diagnostics  │      │  │
 │  │  │ question │           │ etc.     │ definition   │      │  │
 │  │  │ undo/    │           │          │ references   │      │  │
 │  │  │ redo     │           │          │ hover        │      │  │
@@ -222,11 +222,26 @@ Three-tier priority loading:
 
 ### 5. MCP Client (`core/mcp_client.py`)
 
-Manages MCP server subprocesses via stdio JSON-RPC:
+Manages MCP server connections via two transport modes:
+
+**stdio transport** (local subprocess, default):
+
+- Spawns child processes, communicates via stdin/stdout JSON-RPC
+- Process death detection with error recovery
+
+**HTTP transport** (remote endpoint, v1.9.0+):
+
+- Connects to remote MCP servers via `httpx.AsyncClient` JSON-RPC over HTTP POST
+- Custom headers support (e.g. authentication tokens)
+- Suitable for cloud-hosted MCP servers (Feishu/Lark, etc.)
+
+**Shared API** (both transports):
+
 - `start_all()` / `stop_all()` — batch lifecycle management
 - Tool discovery via `tools/list` JSON-RPC
 - `call_tool(server/tool, params)` — proxied tool calls
-- Process death detection with error recovery
+- `list_tools()` / `get_tool()` — unified across stdio and HTTP servers
+- `running_servers` — includes both stdio and HTTP server names
 
 ### 6. LSP Client (`core/lsp_client.py`)
 
@@ -384,4 +399,4 @@ cody/sdk/ ───────→ core/*  (direct import, in-process)
 
 ---
 
-**Last updated:** 2026-03-07
+**Last updated:** 2026-03-11

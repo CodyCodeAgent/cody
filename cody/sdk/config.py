@@ -67,17 +67,64 @@ class SecurityConfig:
 
 
 @dataclass
+class MCPServerConfig:
+    """Single MCP server configuration.
+
+    For stdio transport (default):
+        MCPServerConfig(name="github", command="npx",
+                        args=["-y", "@modelcontextprotocol/server-github"],
+                        env={"GITHUB_TOKEN": "..."})
+
+    For HTTP transport:
+        MCPServerConfig(name="feishu", transport="http",
+                        url="https://mcp.feishu.cn/mcp",
+                        headers={"X-Lark-MCP-UAT": "..."})
+    """
+
+    name: str = ""
+    transport: Literal['stdio', 'http'] = 'stdio'
+    # stdio fields
+    command: str = ""
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+    # http fields
+    url: str = ""
+    headers: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for core config."""
+        d: dict = {"name": self.name, "transport": self.transport}
+        if self.transport == 'stdio':
+            d["command"] = self.command
+            if self.args:
+                d["args"] = self.args
+            if self.env:
+                d["env"] = self.env
+        else:
+            d["url"] = self.url
+            if self.headers:
+                d["headers"] = self.headers
+        return d
+
+
+@dataclass
 class MCPConfig:
     """MCP server configuration."""
-    
-    servers: list[dict] = field(default_factory=list)
+
+    servers: list[MCPServerConfig | dict] = field(default_factory=list)
     enabled: bool = True
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for core config."""
         if not self.enabled:
             return {"servers": []}
-        return {"servers": self.servers}
+        result = []
+        for s in self.servers:
+            if isinstance(s, MCPServerConfig):
+                result.append(s.to_dict())
+            else:
+                result.append(s)
+        return {"servers": result}
 
 
 @dataclass

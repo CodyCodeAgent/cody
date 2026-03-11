@@ -19,10 +19,11 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 7. [技能管理](#技能管理)
 8. [事件系统](#事件系统)
 9. [指标收集](#指标收集)
-10. [便捷方法](#便捷方法)
-11. [错误处理](#错误处理)
-12. [最佳实践](#最佳实践)
-13. [API 参考](#api-参考)
+10. [MCP 集成](#mcp-集成)
+11. [便捷方法](#便捷方法)
+12. [错误处理](#错误处理)
+13. [最佳实践](#最佳实践)
+14. [API 参考](#api-参考)
 
 ---
 
@@ -851,6 +852,123 @@ async with client:
     print(f"Duration: {metrics['total_duration']:.2f}s")
 ```
 
+## MCP 集成
+
+> v1.9.0 新增
+
+SDK 支持通过 MCP（Model Context Protocol）连接外部工具服务器，支持 stdio（子进程）和 HTTP（远程端点）两种传输方式。
+
+### 通过 Builder 配置
+
+```python
+from cody.sdk import Cody
+
+client = (
+    Cody()
+    .workdir("/path/to/project")
+    # stdio 传输（本地子进程）
+    .mcp_stdio_server(
+        "github",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-github"],
+        env={"GITHUB_TOKEN": "ghp_xxx"},
+    )
+    # HTTP 传输（远程端点）
+    .mcp_http_server(
+        "feishu",
+        url="https://mcp.feishu.cn/mcp",
+        headers={"X-Lark-MCP-UAT": "your-token"},
+    )
+    .auto_start_mcp(True)  # 首次 run() 自动启动（默认 False）
+    .build()
+)
+
+async with client:
+    # auto_start_mcp=True 时，MCP 服务器在首次 run() 时自动启动
+    result = await client.run("总结飞书文档")
+    print(result.output)
+```
+
+### 手动启动
+
+```python
+client = (
+    Cody()
+    .mcp_http_server("feishu", url="https://mcp.feishu.cn/mcp", headers={...})
+    .build()  # auto_start_mcp 默认 False
+)
+
+async with client:
+    await client.start_mcp()  # 手动启动，控制启动时机
+    result = await client.run("总结飞书文档")
+```
+
+### 动态添加 MCP 服务器
+
+运行中可随时添加新的 MCP 服务器，添加后立即可用：
+
+```python
+async with client:
+    # 运行中动态添加
+    await client.add_mcp_server(
+        name="github",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-github"],
+        env={"GITHUB_TOKEN": "ghp_xxx"},
+    )
+
+    # HTTP 方式动态添加
+    await client.add_mcp_server(
+        name="feishu",
+        transport="http",
+        url="https://mcp.feishu.cn/mcp",
+        headers={"X-Lark-MCP-UAT": "your-token"},
+    )
+
+    # 立刻就能用
+    result = await client.run("list my GitHub PRs")
+```
+
+### 直接调用 MCP 工具
+
+```python
+# 列出所有 MCP 工具
+tools = await client.mcp_list_tools()
+print(tools)
+
+# 直接调用 MCP 工具
+result = await client.mcp_call("feishu/fetch-doc", {"url": "https://..."})
+print(result)
+```
+
+### 通过 SDKConfig 配置
+
+```python
+from cody.sdk import SDKConfig, MCPConfig, MCPServerConfig, AsyncCodyClient
+
+cfg = SDKConfig(
+    workdir="/path/to/project",
+    mcp=MCPConfig(servers=[
+        MCPServerConfig(
+            name="feishu",
+            transport="http",
+            url="https://mcp.feishu.cn/mcp",
+            headers={"X-Lark-MCP-UAT": "your-token"},
+        ),
+        MCPServerConfig(
+            name="github",
+            transport="stdio",
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-github"],
+        ),
+    ]),
+)
+async with AsyncCodyClient(config=cfg, auto_start_mcp=True) as client:
+    result = await client.run("task")
+```
+
+---
+
 ## 便捷方法
 
 ```python
@@ -983,6 +1101,28 @@ async with client:
 | `Cody()` | Builder 工厂函数，返回 `CodyBuilder` |
 | `config()` | 便捷配置工厂函数，返回 `SDKConfig` |
 
+### Builder 方法（`CodyBuilder`）
+
+| 方法 | 说明 |
+|------|------|
+| `.workdir(path)` | 设置工作目录 |
+| `.model(name)` | 设置模型名 |
+| `.api_key(key)` | 设置 API Key |
+| `.base_url(url)` | 设置自定义 API 地址 |
+| `.thinking(enabled, budget=)` | 启用思考模式 |
+| `.permission(tool, level)` | 设置工具权限 |
+| `.allowed_root(path)` / `.allowed_roots(paths)` | 设置允许的文件访问路径 |
+| `.db_path(path)` | 设置会话数据库路径 |
+| `.enable_metrics()` | 启用指标收集 |
+| `.enable_events()` | 启用事件系统 |
+| `.on(event_type, handler)` | 注册事件处理器（自动启用 events） |
+| `.mcp_server(config)` | 添加 MCP 服务器配置（dict 或 MCPServerConfig） |
+| `.mcp_stdio_server(name, command, args=, env=)` | 添加 stdio MCP 服务器（v1.9.0+） |
+| `.mcp_http_server(name, url, headers=)` | 添加 HTTP MCP 服务器（v1.9.0+） |
+| `.auto_start_mcp(enabled)` | 首次 run() 自动启动 MCP（默认 False，v1.9.0+） |
+| `.lsp_languages(languages)` | 设置 LSP 语言列表 |
+| `.build()` | 构建并返回 `AsyncCodyClient` |
+
 ### 核心方法
 
 | 方法 | 说明 |
@@ -990,8 +1130,16 @@ async with client:
 | `client.run(prompt, session_id=)` | 执行任务，返回 `RunResult` |
 | `client.stream(prompt, session_id=)` | 流式执行，yield `StreamChunk` |
 | `client.run_stream(prompt, session_id=)` | `stream()` 的别名 |
-| `client.start_mcp()` | 启动 MCP 服务器（在首次 `stream()` 前调用） |
-| `client.tool(name, params)` | 直接调用工具，返回 `ToolResult` |
+| `client.tool(name, params)` | 直接调用内置工具，返回 `ToolResult` |
+
+### MCP 方法（v1.9.0+）
+
+| 方法 | 说明 |
+|------|------|
+| `client.start_mcp()` | 手动启动已配置的 MCP 服务器（`auto_start_mcp=True` 时自动调用） |
+| `client.add_mcp_server(name, ...)` | 运行时动态添加并立即启动 MCP 服务器 |
+| `client.mcp_list_tools()` | 列出所有已连接 MCP 服务器的工具 |
+| `client.mcp_call(tool_name, args)` | 直接调用 MCP 工具（格式：`"server/tool"`） |
 
 ### 会话方法
 
@@ -1058,6 +1206,7 @@ async with client:
 | `PermissionConfig` | 工具权限配置 |
 | `SecurityConfig` | 安全配置（`allowed_roots`、`blocked_commands` 等） |
 | `MCPConfig` | MCP 服务器配置 |
+| `MCPServerConfig` | 单个 MCP 服务器配置（v1.9.0+，支持 stdio/http 传输） |
 | `LSPConfig` | LSP 语言配置 |
 
 ### 响应类型
@@ -1096,4 +1245,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-07
+**最后更新:** 2026-03-11

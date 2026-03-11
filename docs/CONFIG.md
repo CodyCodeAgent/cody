@@ -248,23 +248,39 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 **默认:** `[]`  
 **说明:** MCP 服务器列表
 
+**stdio 传输（子进程，默认）：**
+
 ```json
 {
   "mcp": {
     "servers": [
       {
         "name": "github",
+        "transport": "stdio",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-github"],
         "env": {
           "GITHUB_TOKEN": "..."
         }
-      },
+      }
+    ]
+  }
+}
+```
+
+**HTTP 传输（远程端点，v1.9.0+）：**
+
+```json
+{
+  "mcp": {
+    "servers": [
       {
-        "name": "filesystem",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-        "env": {}
+        "name": "feishu",
+        "transport": "http",
+        "url": "https://mcp.feishu.cn/mcp",
+        "headers": {
+          "X-Lark-MCP-UAT": "your-token"
+        }
       }
     ]
   }
@@ -272,12 +288,16 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 ```
 
 **McpServerConfig 字段：**
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | string | 服务器名称 |
-| `command` | string | 启动命令 |
-| `args` | string[] | 命令参数 |
-| `env` | object | 环境变量 |
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `name` | string | — | 服务器名称（必填） |
+| `transport` | `"stdio"` 或 `"http"` | `"stdio"` | 传输方式 |
+| `command` | string | `""` | 启动命令（stdio） |
+| `args` | string[] | `[]` | 命令参数（stdio） |
+| `env` | object | `{}` | 环境变量（stdio） |
+| `url` | string | `""` | HTTP 端点 URL（http） |
+| `headers` | object | `{}` | HTTP 请求头（http） |
 
 ---
 
@@ -684,10 +704,19 @@ cody config set thinking_budget 10000
     "servers": [
       {
         "name": "github",
+        "transport": "stdio",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-github"],
         "env": {
           "GITHUB_TOKEN": "ghp_..."
+        }
+      },
+      {
+        "name": "feishu",
+        "transport": "http",
+        "url": "https://mcp.feishu.cn/mcp",
+        "headers": {
+          "X-Lark-MCP-UAT": "your-token"
         }
       }
     ]

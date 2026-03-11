@@ -141,32 +141,69 @@ cody skills disable <name>        # 禁用 Skill
 
 **支持方式：**
 - 作为 MCP Client 连接外部 MCP Servers
-- 支持本地和远程 Server
-- 配置化管理
+- **双传输模式**：stdio（本地子进程）和 HTTP（远程端点）
+- 配置化管理 + SDK 动态添加
+- AI Agent 自动感知 MCP 工具（动态系统提示注入）
 
-**配置示例：**
+**stdio 传输（本地子进程）：**
 ```json
 {
   "mcp": {
     "servers": [
       {
         "name": "github",
+        "transport": "stdio",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-github"],
-        "env": {
-          "GITHUB_TOKEN": "..."
-        }
+        "env": { "GITHUB_TOKEN": "..." }
       }
     ]
   }
 }
 ```
 
+**HTTP 传输（远程端点，v1.9.0+）：**
+```json
+{
+  "mcp": {
+    "servers": [
+      {
+        "name": "feishu",
+        "transport": "http",
+        "url": "https://mcp.feishu.cn/mcp",
+        "headers": { "X-Lark-MCP-UAT": "your-token" }
+      }
+    ]
+  }
+}
+```
+
+**SDK 集成（v1.9.0+）：**
+```python
+from cody.sdk import Cody
+
+client = (
+    Cody()
+    .mcp_http_server("feishu", url="https://mcp.feishu.cn/mcp", headers={...})
+    .mcp_stdio_server("github", command="npx", args=["-y", "@modelcontextprotocol/server-github"])
+    .auto_start_mcp(True)
+    .build()
+)
+
+async with client:
+    result = await client.run("总结飞书文档")
+
+    # 运行时动态添加
+    await client.add_mcp_server(name="db", command="npx", args=[...])
+```
+
 **常用 MCP Servers：**
-- GitHub Server
-- Database Server
-- Filesystem Server
-- Web Search Server
+
+- GitHub Server（stdio）
+- Database Server（stdio）
+- Filesystem Server（stdio）
+- 飞书/Lark Server（HTTP）
+- Web Search Server（stdio/HTTP）
 
 ### 5. 子 Agent 系统
 
@@ -760,6 +797,27 @@ cody run "使用项目 B 的配置"
 
 **v1.6.0 总计：673+ 个测试（588 core/sdk + 85 web），ruff 零告警**
 
+### v1.9.0 — MCP HTTP 传输 & SDK MCP 增强 ✅ 已完成
+
+> **本阶段目标：MCP 支持 HTTP 传输，SDK 提供完整的 MCP 管理 API。**
+
+**MCP HTTP 传输**
+- [x] `MCPClient` 新增 HTTP transport — `httpx.AsyncClient` JSON-RPC over HTTP POST
+- [x] `MCPServerConfig` 新增 `transport`、`url`、`headers` 字段
+- [x] stdio 和 HTTP 服务器可混合运行，统一 `running_servers` / `list_tools()` / `call_tool()`
+- [x] 飞书/Lark MCP 等远程端点支持
+
+**SDK MCP 增强**
+- [x] Builder API — `.mcp_stdio_server()` / `.mcp_http_server()` 链式配置
+- [x] `auto_start_mcp` 参数 — 设为 `True` 时首次 `run()` 自动启动（默认 `False`）
+- [x] `add_mcp_server()` — 运行时动态添加并立即启动 MCP 服务器
+- [x] `mcp_list_tools()` / `mcp_call()` — SDK 直接调用 MCP 工具
+- [x] 动态系统提示 — `@agent.system_prompt` 延迟注入 MCP 工具描述
+- [x] 修复 SDK MCP 配置丢失问题 — `_get_config()` 正确传递 MCP 服务器到 core
+
+**测试**
+- [x] 7 个新 HTTP transport 测试（test_mcp.py 共 21 个）
+
 ---
 
-**最后更新：** 2026-03-05
+**最后更新：** 2026-03-11

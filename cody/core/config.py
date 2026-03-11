@@ -38,11 +38,23 @@ class SkillConfig(BaseModel):
 
 
 class MCPServerConfig(BaseModel):
-    """MCP Server configuration"""
+    """MCP Server configuration.
+
+    Supports two transport modes:
+    - stdio (default): launches a subprocess, communicates via stdin/stdout JSON-RPC.
+      Requires ``command`` (and optionally ``args``, ``env``).
+    - http: sends JSON-RPC requests over HTTP POST.
+      Requires ``url`` (and optionally ``headers``).
+    """
     name: str
-    command: str
+    transport: Literal['stdio', 'http'] = 'stdio'
+    # stdio transport fields
+    command: str = ''
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
+    # http transport fields
+    url: str = ''
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 class MCPConfig(BaseModel):

@@ -318,6 +318,33 @@ class AgentRunner:
 
         tools.register_tools(agent, include_mcp=bool(self._mcp_client))
 
+        # Dynamic system prompt: MCP tools (evaluated at each run,
+        # so it always reflects currently connected servers & tools)
+        if self._mcp_client:
+            mcp_client = self._mcp_client
+
+            @agent.system_prompt
+            def mcp_tools_prompt() -> str:
+                mcp_tools = mcp_client.list_tools()
+                if not mcp_tools:
+                    return ""
+                lines = [
+                    "## MCP Tools (Model Context Protocol)\n",
+                    "You have access to external tools via MCP servers. "
+                    "Use mcp_call(tool_name, arguments) to invoke them. "
+                    "The tool_name must be in 'server/tool' format.\n",
+                    "Available MCP tools:",
+                ]
+                for t in mcp_tools:
+                    lines.append(f"- **{t.server_name}/{t.name}**: {t.description}")
+                    if t.input_schema and t.input_schema.get("properties"):
+                        params = ", ".join(
+                            f"`{k}` ({v.get('type', '?')})"
+                            for k, v in t.input_schema["properties"].items()
+                        )
+                        lines.append(f"  Parameters: {params}")
+                return "\n".join(lines)
+
         return agent  # type: ignore[return-value]
 
     def _create_deps(self) -> CodyDeps:
@@ -339,7 +366,11 @@ class AgentRunner:
     # ── MCP lifecycle ────────────────────────────────────────────────────────
 
     async def start_mcp(self) -> None:
-        """Start MCP servers if configured."""
+        """Start MCP servers if configured.
+
+        MCP tool descriptions are injected via dynamic system prompt,
+        so they automatically reflect the tools discovered at start time.
+        """
         if self._mcp_client:
             await self._mcp_client.start_all()
 

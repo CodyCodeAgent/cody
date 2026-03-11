@@ -72,6 +72,7 @@ from .config import (
     PermissionConfig,
     SecurityConfig,
     MCPConfig,
+    MCPServerConfig,
     LSPConfig,
     config,
 )
@@ -135,6 +136,7 @@ __all__ = [
     "PermissionConfig",
     "SecurityConfig",
     "MCPConfig",
+    "MCPServerConfig",
     "LSPConfig",
     "config",
     
