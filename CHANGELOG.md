@@ -10,6 +10,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.8.4] - 2026-03-10
+
+### Fixed
+
+- 修复 `prepare_session()` 中 mypy 类型错误：compaction checkpoint 分支的 `history` 变量类型注解与 fallback 赋值 `None` 不兼容
+
+### Changed
+
+- CI workflow 扩大触发范围：`feature/**` 分支 push 也会自动运行 lint + mypy + tests
+
+---
+
+## [1.8.3] - 2026-03-10
+
+### Added
+
+- `cody run` 支持 `--session <id>` 和 `--continue` 参数，可续接历史会话执行单次任务
+- `cody run` 每次执行自动创建 session，完成后打印 session ID，方便后续续接
+
+### Fixed
+
+- 修复 Web 测试用例 TC-WEB-003/004 断言不兼容 API 返回的 dict 包装格式（`{sessions:[...]}` / `{skills:[...]}`）
+- 修复 Web 测试用例 TC-WEB-006 URL 路径缺少 `/api` 前缀（`/directories` → `/api/directories`）
+- 修复 Web 测试用例 TC-WCHAT-001/002 URL 路径缺少 `/api` 前缀（`/projects` → `/api/projects`）
+
+---
+
 ## [1.8.2] - 2026-03-09
 
 ### Fixed
