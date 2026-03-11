@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from cody.core.config import MCPConfig, MCPServerConfig
-from cody.core.mcp_client import MCPClient, MCPTool, _ServerProcess
+from cody.core.mcp_client import MCPClient, MCPTool, _ServerProcess, _HttpConnection
 
 
 # ── MCPTool dataclass ───────────────────────────────────────────────────────
@@ -235,3 +235,180 @@ async def test_start_server_with_mock_process():
     mock_process.wait = AsyncMock()
     mock_process.kill = MagicMock()
     await client.stop_all()
+
+
+# ── HTTP transport ─────────────────────────────────────────────────────────
+
+
+def test_http_connection_next_id():
+    conn = _HttpConnection(
+        config=MCPServerConfig(name="test", transport="http", url="http://example.com"),
+    )
+    assert conn.next_id() == 1
+    assert conn.next_id() == 2
+
+
+def test_mcp_server_config_http():
+    cfg = MCPServerConfig(
+        name="feishu",
+        transport="http",
+        url="https://mcp.feishu.cn/mcp",
+        headers={"X-Lark-MCP-UAT": "token123"},
+    )
+    assert cfg.transport == "http"
+    assert cfg.url == "https://mcp.feishu.cn/mcp"
+    assert cfg.headers["X-Lark-MCP-UAT"] == "token123"
+    assert cfg.command == ""
+
+
+def test_mcp_server_config_stdio_default():
+    cfg = MCPServerConfig(name="test", command="echo")
+    assert cfg.transport == "stdio"
+    assert cfg.url == ""
+    assert cfg.headers == {}
+
+
+@pytest.mark.asyncio
+async def test_start_http_server_missing_url():
+    config = MCPConfig(servers=[
+        MCPServerConfig(name="bad", transport="http"),
+    ])
+    client = MCPClient(config)
+    with pytest.raises(ValueError, match="requires 'url'"):
+        await client.start_server(config.servers[0])
+
+
+@pytest.mark.asyncio
+async def test_http_server_lifecycle():
+    """Test HTTP server connect, list tools, call tool, and disconnect."""
+    config = MCPConfig(servers=[
+        MCPServerConfig(
+            name="remote",
+            transport="http",
+            url="https://mcp.example.com/rpc",
+            headers={"Authorization": "Bearer tok"},
+        ),
+    ])
+    client = MCPClient(config)
+
+    # Mock httpx responses
+    call_count = 0
+
+    async def mock_post(url, json=None, headers=None):
+        nonlocal call_count
+        call_count += 1
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+
+        method = json.get("method") if json else None
+
+        if method == "initialize":
+            resp.json = lambda: {
+                "jsonrpc": "2.0",
+                "id": json["id"],
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {"name": "remote", "version": "1.0"},
+                },
+            }
+        elif method == "tools/list":
+            resp.json = lambda: {
+                "jsonrpc": "2.0",
+                "id": json["id"],
+                "result": {
+                    "tools": [
+                        {"name": "search", "description": "Search docs", "inputSchema": {}},
+                    ]
+                },
+            }
+        elif method == "tools/call":
+            resp.json = lambda: {
+                "jsonrpc": "2.0",
+                "id": json["id"],
+                "result": {
+                    "content": [{"type": "text", "text": "hello from remote"}],
+                },
+            }
+        else:
+            resp.json = lambda: {"jsonrpc": "2.0", "id": json["id"], "result": {}}
+        return resp
+
+    mock_http_client = AsyncMock()
+    mock_http_client.post = mock_post
+    mock_http_client.aclose = AsyncMock()
+
+    with patch("httpx.AsyncClient", return_value=mock_http_client):
+        await client.start_server(config.servers[0])
+
+    assert "remote" in client.running_servers
+    tools = client.list_tools()
+    assert len(tools) == 1
+    assert tools[0].name == "search"
+    assert tools[0].server_name == "remote"
+
+    # Call tool
+    result = await client.call_tool("remote/search", {"query": "test"})
+    assert result == "hello from remote"
+
+    # Stop
+    await client.stop_all()
+    assert "remote" not in client.running_servers
+    mock_http_client.aclose.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_http_server_error_response():
+    """Test that HTTP JSON-RPC errors are properly raised."""
+    config = MCPConfig(servers=[])
+    client = MCPClient(config)
+
+    mock_http_client = AsyncMock()
+
+    async def mock_post(url, json=None, headers=None):
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = lambda: {
+            "jsonrpc": "2.0",
+            "id": json["id"],
+            "error": {"code": -32600, "message": "Invalid request"},
+        }
+        return resp
+
+    mock_http_client.post = mock_post
+    mock_http_client.aclose = AsyncMock()
+
+    conn = _HttpConnection(
+        config=MCPServerConfig(
+            name="err", transport="http", url="https://example.com/mcp",
+        ),
+        client=mock_http_client,
+    )
+    client._http_servers["err"] = conn
+
+    with pytest.raises(RuntimeError, match="Invalid request"):
+        await client._jsonrpc_call_http("err", "tools/list", {})
+
+
+@pytest.mark.asyncio
+async def test_http_mixed_with_stdio():
+    """Test that running_servers includes both stdio and HTTP servers."""
+    config = MCPConfig(servers=[])
+    client = MCPClient(config)
+
+    # Add a mock stdio server
+    sp = _ServerProcess(
+        config=MCPServerConfig(name="local", command="node"),
+    )
+    client._servers["local"] = sp
+
+    # Add a mock HTTP server
+    conn = _HttpConnection(
+        config=MCPServerConfig(name="remote", transport="http", url="https://example.com"),
+        tools=[MCPTool("fetch", "Fetch data", {}, "remote")],
+    )
+    client._http_servers["remote"] = conn
+
+    assert sorted(client.running_servers) == ["local", "remote"]
+    assert len(client.list_tools()) == 1
+    assert client.get_tool("remote/fetch") is not None
+    assert client.get_tool("local/fetch") is None

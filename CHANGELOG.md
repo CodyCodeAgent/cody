@@ -10,6 +10,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.9.0] - 2026-03-11
+
+### Added
+
+- **MCP HTTP 传输**：`MCPClient` 新增 HTTP transport 支持，可连接远程 MCP 服务器（如飞书、Lark 等），与原有 stdio 传输并存
+- **SDK MCP Builder API**：`CodyBuilder` 新增 `.mcp_stdio_server()` 和 `.mcp_http_server()` 便捷方法，链式配置 MCP 服务器
+- **SDK MCP 自动启动**：新增 `auto_start_mcp` 参数（默认 `False`），设为 `True` 时首次 `run()` / `stream()` 自动启动 MCP 服务器
+- **SDK 动态添加 MCP 服务器**：新增 `add_mcp_server()` 方法，运行时动态添加并立即启动 MCP 服务器，无需重建客户端
+- **SDK MCP 直接调用**：新增 `mcp_list_tools()` 和 `mcp_call()` 方法，SDK 用户可直接列出和调用 MCP 工具
+- **动态 MCP 系统提示**：Agent 运行时通过 `@agent.system_prompt` 动态注入 MCP 工具描述，AI 自动感知可用的 MCP 工具
+- **SDK 配置新增 `MCPServerConfig`**：SDK 层独立的 MCP 服务器配置数据类，支持 `to_dict()` 序列化
+- 7 个新 HTTP transport 测试（`test_mcp.py` 共 21 个测试）
+
+### Fixed
+
+- 修复 SDK MCP 配置丢失问题：`_get_config()` 未将 SDK 配置的 MCP 服务器传递给 core Config
+
+---
+
 ## [1.8.4] - 2026-03-10
 
 ### Fixed

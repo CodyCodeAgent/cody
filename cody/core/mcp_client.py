@@ -1,7 +1,9 @@
 """MCP (Model Context Protocol) Client integration.
 
-Manages MCP server processes and exposes their tools to the Cody Agent.
-Each MCP server runs as a subprocess communicating over stdio using JSON-RPC.
+Manages MCP server connections and exposes their tools to the Cody Agent.
+Supports two transport modes:
+- stdio: subprocess communicating over stdin/stdout using JSON-RPC.
+- http: JSON-RPC over HTTP POST (e.g. Feishu MCP, remote MCP servers).
 """
 
 import asyncio
@@ -9,6 +11,8 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+import httpx
 
 from .config import MCPConfig, MCPServerConfig
 from .._version import __version__ as _version
@@ -27,7 +31,7 @@ class MCPTool:
 
 @dataclass
 class _ServerProcess:
-    """Internal: tracks a running MCP server subprocess."""
+    """Internal: tracks a running MCP server subprocess (stdio transport)."""
     config: MCPServerConfig
     process: Optional[asyncio.subprocess.Process] = None
     tools: list[MCPTool] = field(default_factory=list)
@@ -40,8 +44,23 @@ class _ServerProcess:
         return self._request_id
 
 
+@dataclass
+class _HttpConnection:
+    """Internal: tracks an HTTP-based MCP server connection."""
+    config: MCPServerConfig
+    client: Optional[httpx.AsyncClient] = None
+    tools: list[MCPTool] = field(default_factory=list)
+    _request_id: int = 0
+
+    def next_id(self) -> int:
+        self._request_id += 1
+        return self._request_id
+
+
 class MCPClient:
     """Manage MCP server lifecycles and proxy tool calls.
+
+    Supports both stdio (subprocess) and HTTP transport modes.
 
     Usage:
         mcp = MCPClient(config.mcp)
@@ -54,6 +73,7 @@ class MCPClient:
     def __init__(self, config: MCPConfig):
         self.config = config
         self._servers: dict[str, _ServerProcess] = {}
+        self._http_servers: dict[str, _HttpConnection] = {}
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -70,7 +90,14 @@ class MCPClient:
         return failures
 
     async def start_server(self, cfg: MCPServerConfig) -> None:
-        """Start a single MCP server subprocess."""
+        """Start a single MCP server (stdio subprocess or HTTP connection)."""
+        if cfg.transport == 'http':
+            await self._start_http_server(cfg)
+        else:
+            await self._start_stdio_server(cfg)
+
+    async def _start_stdio_server(self, cfg: MCPServerConfig) -> None:
+        """Start a stdio-based MCP server subprocess."""
         env = dict(cfg.env) if cfg.env else None
 
         process = await asyncio.create_subprocess_exec(
@@ -88,13 +115,9 @@ class MCPClient:
         sp._reader_task = asyncio.create_task(self._reader_loop(cfg.name))
 
         try:
-            # Initialize the server
-            await self._send_initialize(cfg.name)
-
-            # Discover tools
-            await self._discover_tools(cfg.name)
+            await self._send_initialize_stdio(cfg.name)
+            await self._discover_tools_stdio(cfg.name)
         except Exception:
-            # Cleanup orphaned process and reader task on init failure
             orphan = self._servers.pop(cfg.name, None)
             if orphan:
                 if orphan._reader_task and not orphan._reader_task.done():
@@ -104,44 +127,76 @@ class MCPClient:
             raise
 
         logger.info(
-            "MCP server '%s' started (pid=%s, tools=%d)",
+            "MCP server '%s' started (stdio, pid=%s, tools=%d)",
             cfg.name, process.pid, len(sp.tools),
+        )
+
+    async def _start_http_server(self, cfg: MCPServerConfig) -> None:
+        """Connect to an HTTP-based MCP server."""
+        if not cfg.url:
+            raise ValueError(f"MCP server '{cfg.name}': HTTP transport requires 'url'")
+
+        client = httpx.AsyncClient(timeout=30.0)
+        conn = _HttpConnection(config=cfg, client=client)
+        self._http_servers[cfg.name] = conn
+
+        try:
+            await self._send_initialize_http(cfg.name)
+            await self._discover_tools_http(cfg.name)
+        except Exception:
+            self._http_servers.pop(cfg.name, None)
+            await client.aclose()
+            raise
+
+        logger.info(
+            "MCP server '%s' connected (http, url=%s, tools=%d)",
+            cfg.name, cfg.url, len(conn.tools),
         )
 
     async def stop_all(self) -> None:
         """Stop all running MCP servers."""
         for name in list(self._servers):
             await self.stop_server(name)
+        for name in list(self._http_servers):
+            await self.stop_server(name)
 
     async def stop_server(self, name: str) -> None:
         """Stop a single MCP server."""
+        # Try stdio first
         sp = self._servers.pop(name, None)
-        if sp is None:
+        if sp is not None:
+            if sp._reader_task and not sp._reader_task.done():
+                sp._reader_task.cancel()
+                try:
+                    await sp._reader_task
+                except asyncio.CancelledError:
+                    pass
+
+            if sp.process and sp.process.returncode is None:
+                sp.process.terminate()
+                try:
+                    await asyncio.wait_for(sp.process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    sp.process.kill()
+                    await sp.process.wait()
+
+            logger.info("MCP server '%s' stopped", name)
             return
 
-        if sp._reader_task and not sp._reader_task.done():
-            sp._reader_task.cancel()
-            try:
-                await sp._reader_task
-            except asyncio.CancelledError:
-                pass
-
-        if sp.process and sp.process.returncode is None:
-            sp.process.terminate()
-            try:
-                await asyncio.wait_for(sp.process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                sp.process.kill()
-                await sp.process.wait()
-
-        logger.info("MCP server '%s' stopped", name)
+        # Try HTTP
+        conn = self._http_servers.pop(name, None)
+        if conn is not None:
+            if conn.client:
+                await conn.client.aclose()
+            logger.info("MCP server '%s' disconnected", name)
 
     async def restart_server(self, name: str) -> None:
         """Restart a server (stop + start)."""
         sp = self._servers.get(name)
-        if sp is None:
+        conn = self._http_servers.get(name)
+        if sp is None and conn is None:
             raise ValueError(f"Unknown MCP server: {name}")
-        cfg = sp.config
+        cfg = sp.config if sp else conn.config  # type: ignore[union-attr]
         await self.stop_server(name)
         await self.start_server(cfg)
 
@@ -152,6 +207,8 @@ class MCPClient:
         result: list[MCPTool] = []
         for sp in self._servers.values():
             result.extend(sp.tools)
+        for conn in self._http_servers.values():
+            result.extend(conn.tools)
         return result
 
     def get_tool(self, qualified_name: str) -> Optional[MCPTool]:
@@ -159,6 +216,10 @@ class MCPClient:
         for sp in self._servers.values():
             for tool in sp.tools:
                 if f"{sp.config.name}/{tool.name}" == qualified_name:
+                    return tool
+        for conn in self._http_servers.values():
+            for tool in conn.tools:
+                if f"{conn.config.name}/{tool.name}" == qualified_name:
                     return tool
         return None
 
@@ -175,8 +236,7 @@ class MCPClient:
             )
         server_name, tool_name = parts
 
-        sp = self._servers.get(server_name)
-        if sp is None:
+        if server_name not in self._servers and server_name not in self._http_servers:
             raise ValueError(f"MCP server not running: {server_name}")
 
         result = await self._jsonrpc_call(
@@ -201,7 +261,7 @@ class MCPClient:
 
         return result
 
-    # ── JSON-RPC transport ───────────────────────────────────────────────────
+    # ── JSON-RPC transport: stdio ────────────────────────────────────────────
 
     async def _jsonrpc_call(
         self,
@@ -209,13 +269,24 @@ class MCPClient:
         method: str,
         params: Optional[dict] = None,
     ) -> Any:
-        """Send JSON-RPC request and wait for response."""
+        """Send JSON-RPC request via the appropriate transport."""
+        if server_name in self._http_servers:
+            return await self._jsonrpc_call_http(server_name, method, params)
+        return await self._jsonrpc_call_stdio(server_name, method, params)
+
+    async def _jsonrpc_call_stdio(
+        self,
+        server_name: str,
+        method: str,
+        params: Optional[dict] = None,
+    ) -> Any:
+        """Send JSON-RPC request over stdio and wait for response."""
         sp = self._servers.get(server_name)
         if sp is None or sp.process is None:
             raise RuntimeError(f"MCP server '{server_name}' is not running")
 
         req_id = sp.next_id()
-        request = {
+        request: dict[str, Any] = {
             "jsonrpc": "2.0",
             "id": req_id,
             "method": method,
@@ -247,6 +318,60 @@ class MCPClient:
             )
 
         return result
+
+    # ── JSON-RPC transport: HTTP ─────────────────────────────────────────────
+
+    async def _jsonrpc_call_http(
+        self,
+        server_name: str,
+        method: str,
+        params: Optional[dict] = None,
+    ) -> Any:
+        """Send JSON-RPC request over HTTP POST."""
+        conn = self._http_servers.get(server_name)
+        if conn is None or conn.client is None:
+            raise RuntimeError(f"MCP server '{server_name}' is not connected")
+
+        req_id = conn.next_id()
+        request: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "method": method,
+        }
+        if params is not None:
+            request["params"] = params
+
+        headers = {"Content-Type": "application/json"}
+        headers.update(conn.config.headers)
+
+        try:
+            resp = await conn.client.post(
+                conn.config.url,
+                json=request,
+                headers=headers,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            raise RuntimeError(
+                f"MCP HTTP request to '{server_name}' failed: {e}"
+            ) from e
+
+        try:
+            data = resp.json()
+        except (json.JSONDecodeError, ValueError) as e:
+            raise RuntimeError(
+                f"MCP server '{server_name}' returned invalid JSON: {e}"
+            ) from e
+
+        if "error" in data:
+            err = data["error"]
+            raise RuntimeError(
+                f"MCP error: {err.get('message', err)}"
+            )
+
+        return data.get("result")
+
+    # ── stdio reader loop ────────────────────────────────────────────────────
 
     async def _reader_loop(self, server_name: str) -> None:
         """Read JSON-RPC responses from stdout."""
@@ -283,9 +408,11 @@ class MCPClient:
         except Exception as e:
             logger.error("MCP reader loop error for '%s': %s", server_name, e)
 
-    async def _send_initialize(self, server_name: str) -> None:
-        """Send MCP initialize handshake."""
-        await self._jsonrpc_call(
+    # ── Initialize & discover: stdio ─────────────────────────────────────────
+
+    async def _send_initialize_stdio(self, server_name: str) -> None:
+        """Send MCP initialize handshake over stdio."""
+        await self._jsonrpc_call_stdio(
             server_name,
             "initialize",
             {
@@ -294,7 +421,6 @@ class MCPClient:
                 "clientInfo": {"name": "cody", "version": _version},
             },
         )
-        # Send initialized notification (no id, no response expected)
         sp = self._servers[server_name]
         if sp.process and sp.process.stdin:
             notification = json.dumps({
@@ -304,9 +430,9 @@ class MCPClient:
             sp.process.stdin.write(notification.encode())
             await sp.process.stdin.drain()
 
-    async def _discover_tools(self, server_name: str) -> None:
-        """Discover tools from an MCP server."""
-        result = await self._jsonrpc_call(server_name, "tools/list", {})
+    async def _discover_tools_stdio(self, server_name: str) -> None:
+        """Discover tools from a stdio MCP server."""
+        result = await self._jsonrpc_call_stdio(server_name, "tools/list", {})
 
         sp = self._servers[server_name]
         sp.tools = []
@@ -314,6 +440,45 @@ class MCPClient:
         if isinstance(result, dict) and "tools" in result:
             for t in result["tools"]:
                 sp.tools.append(MCPTool(
+                    name=t["name"],
+                    description=t.get("description", ""),
+                    input_schema=t.get("inputSchema", {}),
+                    server_name=server_name,
+                ))
+
+    # ── Initialize & discover: HTTP ──────────────────────────────────────────
+
+    async def _send_initialize_http(self, server_name: str) -> None:
+        """Send MCP initialize handshake over HTTP."""
+        await self._jsonrpc_call_http(
+            server_name,
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "cody", "version": _version},
+            },
+        )
+
+    async def _discover_tools_http(self, server_name: str) -> None:
+        """Discover tools from an HTTP MCP server."""
+        result = await self._jsonrpc_call_http(server_name, "tools/list", {})
+
+        conn = self._http_servers[server_name]
+        conn.tools = []
+
+        # Handle both direct and nested response formats
+        tools_list = None
+        if isinstance(result, dict) and "tools" in result:
+            tools_list = result["tools"]
+        elif isinstance(result, dict) and "result" in result:
+            inner = result["result"]
+            if isinstance(inner, dict) and "tools" in inner:
+                tools_list = inner["tools"]
+
+        if tools_list:
+            for t in tools_list:
+                conn.tools.append(MCPTool(
                     name=t["name"],
                     description=t.get("description", ""),
                     input_schema=t.get("inputSchema", {}),
@@ -332,4 +497,4 @@ class MCPClient:
     @property
     def running_servers(self) -> list[str]:
         """Names of currently running servers."""
-        return list(self._servers.keys())
+        return list(self._servers.keys()) + list(self._http_servers.keys())

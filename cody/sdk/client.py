@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Literal, Optional, overload
 
-from .config import SDKConfig, config as make_config
+from .config import MCPServerConfig as SDKMCPServerConfig, SDKConfig, config as make_config
 from .errors import (
     CodyConfigError,
     CodyNotFoundError,
@@ -67,7 +67,8 @@ class CodyBuilder:
     _db_path: Optional[str] = None
     _enable_metrics: bool = False
     _enable_events: bool = False
-    _mcp_servers: list[dict] = field(default_factory=list)
+    _mcp_servers: list[dict | SDKMCPServerConfig] = field(default_factory=list)
+    _auto_start_mcp: bool = False
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
 
@@ -128,9 +129,41 @@ class CodyBuilder:
         self._enable_events = True
         return self
 
-    def mcp_server(self, server: dict) -> "CodyBuilder":
-        """Add MCP server configuration."""
+    def mcp_server(self, server: dict | SDKMCPServerConfig) -> "CodyBuilder":
+        """Add MCP server configuration (dict or MCPServerConfig)."""
         self._mcp_servers.append(server)
+        return self
+
+    def mcp_stdio_server(
+        self,
+        name: str,
+        command: str,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+    ) -> "CodyBuilder":
+        """Add a stdio-based MCP server (subprocess)."""
+        self._mcp_servers.append(SDKMCPServerConfig(
+            name=name, transport='stdio',
+            command=command, args=args or [], env=env or {},
+        ))
+        return self
+
+    def mcp_http_server(
+        self,
+        name: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+    ) -> "CodyBuilder":
+        """Add an HTTP-based MCP server (remote endpoint)."""
+        self._mcp_servers.append(SDKMCPServerConfig(
+            name=name, transport='http',
+            url=url, headers=headers or {},
+        ))
+        return self
+
+    def auto_start_mcp(self, enabled: bool = True) -> "CodyBuilder":
+        """Auto-start MCP servers on first run(). Default is False."""
+        self._auto_start_mcp = enabled
         return self
 
     def lsp_languages(self, languages: list[str]) -> "CodyBuilder":
@@ -166,7 +199,7 @@ class CodyBuilder:
         )
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
-        client = AsyncCodyClient(config=cfg)
+        client = AsyncCodyClient(config=cfg, auto_start_mcp=self._auto_start_mcp)
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
             client.on(event_type_str, handler)
@@ -216,6 +249,7 @@ class AsyncCodyClient:
         db_path: Optional[str] = None,
         enable_metrics: bool = False,
         enable_events: bool = False,
+        auto_start_mcp: bool = False,
     ):
         if config:
             self._config = config
@@ -242,6 +276,10 @@ class AsyncCodyClient:
         self._session_store = None
         self._core_config = None
 
+        # MCP auto-start flag
+        self._auto_start_mcp = auto_start_mcp
+        self._mcp_started = False
+
         # Enhanced features
         self._metrics: Optional[MetricsCollector] = None
         self._events: Optional[EventManager] = None
@@ -262,7 +300,7 @@ class AsyncCodyClient:
     def _get_config(self):
         """Get or create core Config."""
         if self._core_config is None:
-            from ..core.config import Config
+            from ..core.config import Config, MCPServerConfig as CoreMCPServerConfig
             self._core_config = Config.load(workdir=self.workdir)
             if self._model_override:
                 self._core_config.model = self._model_override
@@ -274,6 +312,14 @@ class AsyncCodyClient:
                 self._core_config.model_api_key = self._config.model.api_key
             if self._config.model.base_url:
                 self._core_config.model_base_url = self._config.model.base_url
+            # Apply MCP servers from SDK config
+            if self._config.mcp.enabled and self._config.mcp.servers:
+                for s in self._config.mcp.servers:
+                    if isinstance(s, SDKMCPServerConfig):
+                        d = s.to_dict()
+                    else:
+                        d = s
+                    self._core_config.mcp.servers.append(CoreMCPServerConfig(**d))
         return self._core_config
 
     def set_config(self, config) -> None:
@@ -308,9 +354,56 @@ class AsyncCodyClient:
         return self._session_store
 
     async def start_mcp(self) -> None:
-        """Start MCP servers if configured. Call before stream() if needed."""
+        """Start MCP servers if configured. Called automatically on first run() when auto_start_mcp=True."""
         runner = self.get_runner()
-        await runner.start_mcp()
+        if not self._mcp_started:
+            await runner.start_mcp()
+            self._mcp_started = True
+
+    async def add_mcp_server(
+        self,
+        name: str,
+        *,
+        transport: Literal["stdio", "http"] = "stdio",
+        command: str = "",
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None,
+        url: str = "",
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        """Dynamically add and start an MCP server at runtime.
+
+        Args:
+            name: Server name (used as prefix in tool calls, e.g. "feishu/fetch-doc").
+            transport: "stdio" or "http".
+            command: Command to run (stdio only).
+            args: Command arguments (stdio only).
+            env: Environment variables (stdio only).
+            url: HTTP endpoint URL (http only).
+            headers: HTTP headers (http only).
+        """
+        from ..core.config import MCPServerConfig as CoreMCPServerConfig
+
+        server_config = CoreMCPServerConfig(
+            name=name,
+            transport=transport,
+            command=command,
+            args=args or [],
+            env=env or {},
+            url=url,
+            headers=headers or {},
+        )
+
+        runner = self.get_runner()
+        # Add to core config so it persists
+        runner.config.mcp.servers.append(server_config)
+        # Start this single server immediately
+        if runner._mcp_client:
+            await runner._mcp_client.start_server(server_config)
+        else:
+            # MCP client not yet created, start full MCP
+            await runner.start_mcp()
+            self._mcp_started = True
 
     async def close(self):
         """Clean up resources."""
@@ -355,6 +448,10 @@ class AsyncCodyClient:
         Returns:
             RunResult if stream=False, else AsyncIterator[StreamChunk].
         """
+        # Auto-start MCP servers on first run (if enabled)
+        if self._auto_start_mcp and not self._mcp_started:
+            await self.start_mcp()
+
         # Fire event
         if self._events:
             await self._events.dispatch_async(RunEvent(
@@ -441,6 +538,10 @@ class AsyncCodyClient:
         session_id: Optional[str] = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects."""
+        # Auto-start MCP servers on first stream (if enabled)
+        if self._auto_start_mcp and not self._mcp_started:
+            await self.start_mcp()
+
         runner = self.get_runner()
 
         if session_id:
@@ -790,6 +891,35 @@ class AsyncCodyClient:
         result = await self.tool("search_files", {"query": query})
         return result.result
 
+    # ── MCP Methods ─────────────────────────────────────────────────────
+
+    async def mcp_list_tools(self) -> list[dict]:
+        """List all tools from connected MCP servers."""
+        runner = self.get_runner()
+        if not runner._mcp_client:
+            return []
+        return [
+            {
+                "name": f"{t.server_name}/{t.name}",
+                "description": t.description,
+                "input_schema": t.input_schema,
+                "server": t.server_name,
+            }
+            for t in runner._mcp_client.list_tools()
+        ]
+
+    async def mcp_call(
+        self,
+        tool_name: str,
+        arguments: dict | None = None,
+    ) -> str:
+        """Call an MCP tool by 'server_name/tool_name'."""
+        runner = self.get_runner()
+        if not runner._mcp_client:
+            raise CodyConfigError("No MCP servers configured or started")
+        result = await runner._mcp_client.call_tool(tool_name, arguments)
+        return result
+
     # ── LSP Methods ──────────────────────────────────────────────────────
 
     async def lsp_diagnostics(self, file_path: str) -> str:
@@ -957,6 +1087,12 @@ class CodyClient:
     @staticmethod
     def messages_to_history(messages) -> list:
         return AsyncCodyClient.messages_to_history(messages)
+
+    def mcp_list_tools(self) -> list[dict]:
+        return _run_async(self._async.mcp_list_tools())
+
+    def mcp_call(self, tool_name: str, arguments: dict | None = None) -> str:
+        return _run_async(self._async.mcp_call(tool_name, arguments))
 
     def read_file(self, path: str) -> str:
         return _run_async(self._async.read_file(path))
