@@ -32,6 +32,8 @@ pyinstaller \
     --collect-submodules=cody \
     --collect-submodules=pydantic_ai \
     --exclude-module=logfire \
+    --exclude-module=textual \
+    --exclude-module=cody.tui \
     --recursive-copy-metadata=pydantic_ai \
     --recursive-copy-metadata=fastapi \
     --recursive-copy-metadata=uvicorn \
