@@ -14,7 +14,7 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
         path: Path to the file to read (relative or absolute)
     """
     full_path = _resolve_and_check(
-        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+        ctx.deps.workdir, path, allow_read_outside=not ctx.deps.strict_read_boundary, allowed_roots=ctx.deps.allowed_roots
     )
 
     if not full_path.exists():
@@ -93,7 +93,7 @@ async def list_directory(ctx: RunContext['CodyDeps'], path: str = ".") -> str:
         path: Directory path (relative or absolute)
     """
     full_path = _resolve_and_check(
-        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+        ctx.deps.workdir, path, allow_read_outside=not ctx.deps.strict_read_boundary, allowed_roots=ctx.deps.allowed_roots
     )
 
     if not full_path.exists():

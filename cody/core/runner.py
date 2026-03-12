@@ -354,6 +354,7 @@ class AgentRunner:
             workdir=self.workdir,
             skill_manager=self.skill_manager,
             allowed_roots=self.allowed_roots,
+            strict_read_boundary=self.config.security.strict_read_boundary,
             mcp_client=self._mcp_client,
             sub_agent_manager=self._sub_agent_manager,
             lsp_client=self._lsp_client,

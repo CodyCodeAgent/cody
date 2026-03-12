@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git tag v1.9.2)",
+      "Bash(git tag -d v1.9.2)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//opt/homebrew/Cellar/uv/0.6.17/bin/**)",
+      "Bash(pip3 --version)",
+      "Bash(/opt/homebrew/bin/uv run pytest tests/ -x -q)",
+      "Bash(/opt/homebrew/bin/uv run pytest tests/test_tools.py -x -q)",
+      "Bash(/opt/homebrew/bin/uv run ruff check cody/ tests/)"
+    ]
+  }
+}

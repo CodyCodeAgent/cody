@@ -27,6 +27,7 @@ class CodyDeps:
     workdir: Path
     skill_manager: SkillManager
     allowed_roots: list[Path] = field(default_factory=list)
+    strict_read_boundary: bool = False
     mcp_client: Optional[MCPClient] = None
     sub_agent_manager: Optional[SubAgentManager] = None
     lsp_client: Optional[LSPClient] = None

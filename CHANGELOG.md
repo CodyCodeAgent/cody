@@ -10,6 +10,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.10.0] - 2026-03-13
+
+### Added
+
+- **严格读边界**：新增 `security.strict_read_boundary` 配置项，开启后读操作（`read_file`、`grep`、`glob`、`list_directory`、`search_files`）也受 `workdir` + `allowed_roots` 边界限制
+- **SDK Builder**：`CodyBuilder` 新增 `.strict_read_boundary()` 方法，SDK `config()` 函数新增 `strict_read_boundary` 参数
+
+### Improved
+
+- **工具错误信息**：优化路径越界提示，AI 收到的拒绝信息现在包含可访问目录列表，便于模型自动调整路径重试
+
+---
+
 ## [1.9.2] - 2026-03-13
 
 ### Added

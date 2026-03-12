@@ -53,6 +53,7 @@ class SecurityConfig:
     
     allowed_roots: list[str] = field(default_factory=list)
     blocked_commands: list[str] = field(default_factory=list)
+    strict_read_boundary: bool = False
     enable_audit: bool = True
     audit_path: Optional[str] = None
 
@@ -61,6 +62,7 @@ class SecurityConfig:
         return {
             "allowed_roots": self.allowed_roots,
             "blocked_commands": self.blocked_commands,
+            "strict_read_boundary": self.strict_read_boundary,
             "enable_audit": self.enable_audit,
             "audit_path": self.audit_path,
         }
@@ -268,6 +270,7 @@ def config(
     thinking_budget: Optional[int] = None,
     permissions: Optional[dict] = None,
     allowed_roots: Optional[list[str]] = None,
+    strict_read_boundary: bool = False,
     **kwargs,
 ) -> SDKConfig:
     """Create SDKConfig with common options.
@@ -299,6 +302,8 @@ def config(
         cfg.permissions.overrides = permissions
     if allowed_roots:
         cfg.security.allowed_roots = allowed_roots
+    if strict_read_boundary:
+        cfg.security.strict_read_boundary = strict_read_boundary
     
     # Apply any additional kwargs
     for key, value in kwargs.items():

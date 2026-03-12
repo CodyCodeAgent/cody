@@ -18,7 +18,7 @@ from cody.core.errors import ToolPathDenied, ToolInvalidParams
 
 class MockContext:
     """Mock RunContext for testing"""
-    def __init__(self, workdir, allowed_roots=None):
+    def __init__(self, workdir, allowed_roots=None, strict_read_boundary=False):
         workdir = Path(workdir)
         config = Config()
         self.deps = CodyDeps(
@@ -26,6 +26,7 @@ class MockContext:
             workdir=workdir,
             skill_manager=SkillManager(config, workdir=workdir),
             allowed_roots=allowed_roots or [],
+            strict_read_boundary=strict_read_boundary,
         )
 
 
@@ -90,6 +91,48 @@ async def test_read_file_outside_workdir_allowed(tmp_path):
     # Reading outside workdir is allowed but file may not exist
     with pytest.raises(ToolInvalidParams):
         await read_file(ctx, "../../../nonexistent_file.txt")
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_blocks_read_outside(tmp_path):
+    """When strict_read_boundary=True, read_file blocks access outside workdir"""
+    ctx = MockContext(tmp_path, strict_read_boundary=True)
+
+    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+        await read_file(ctx, "../../../etc/passwd")
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_allows_read_inside(tmp_path):
+    """When strict_read_boundary=True, read_file still works inside workdir"""
+    ctx = MockContext(tmp_path, strict_read_boundary=True)
+    (tmp_path / "hello.txt").write_text("hi")
+
+    result = await read_file(ctx, "hello.txt")
+    assert result == "hi"
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_allows_allowed_roots(tmp_path):
+    """When strict_read_boundary=True, read_file works in allowed_roots"""
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    (extra / "data.txt").write_text("extra data")
+
+    ctx = MockContext(workdir, allowed_roots=[extra], strict_read_boundary=True)
+    result = await read_file(ctx, str(extra / "data.txt"))
+    assert result == "extra data"
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_grep_blocks_outside(tmp_path):
+    """When strict_read_boundary=True, grep blocks access outside workdir"""
+    ctx = MockContext(tmp_path, strict_read_boundary=True)
+
+    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+        await grep(ctx, "pattern", path="../../../etc")
 
 
 @pytest.mark.asyncio

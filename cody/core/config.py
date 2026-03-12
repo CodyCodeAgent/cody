@@ -81,6 +81,7 @@ class SecurityConfig(BaseModel):
     blocked_commands: list[str] = Field(default_factory=list)
     restricted_paths: list[str] = Field(default_factory=list)
     allowed_roots: list[str] = Field(default_factory=list)
+    strict_read_boundary: bool = False
     require_confirmation: bool = True
     allow_private_urls: bool = False
     command_timeout: int = 30

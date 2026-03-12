@@ -59,6 +59,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "allowed_commands": null,
     "restricted_paths": [],
     "allowed_roots": [],
+    "strict_read_boundary": false,
     "require_confirmation": true
   },
   "rate_limit": {
@@ -417,6 +418,32 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 - AI 需要读写特定数据目录但不应访问整个系统
 
 也可通过 CLI 的 `--allow-root` 或 Server 请求的 `allowed_roots` 字段在运行时追加（不覆盖此配置）。
+
+---
+
+#### `security.strict_read_boundary`
+
+**类型:** `boolean`
+**默认:** `false`
+**说明:** 是否限制读操作的访问边界。
+
+默认情况下，读操作（`read_file`、`grep`、`glob`、`list_directory`、`search_files`）可以访问 `workdir` 和 `allowed_roots` 之外的路径。设为 `true` 后，读操作也受 `workdir` + `allowed_roots` 边界限制，越界会被拒绝。
+
+写操作始终受限，不受此配置影响。
+
+```json
+{
+  "security": {
+    "strict_read_boundary": true,
+    "allowed_roots": ["/data/shared"]
+  }
+}
+```
+
+**典型用例：**
+
+- 多租户部署：防止 Agent 读取其他用户的文件
+- 安全敏感环境：严格控制 Agent 的可见范围
 
 ---
 

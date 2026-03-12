@@ -55,11 +55,11 @@ def _resolve_and_check(
 
     if allow_read_outside:
         return full_path
+    roots_str = ', '.join(str(r) for r in roots)
     raise ToolPathDenied(
-        f"Access denied: {path} is outside all permitted directories "
-        f"({', '.join(str(r) for r in roots)}). "
-        f"Tip: add paths to security.allowed_roots in .cody/config.json, "
-        f"or use --allow-root at the command line."
+        f"Access denied: {path} is outside all permitted directories. "
+        f"You can only access files within: {roots_str}. "
+        f"Please use paths inside these directories."
     )
 
 

@@ -35,7 +35,7 @@ async def grep(
         include: Optional glob to filter filenames (e.g. "*.py")
     """
     full_path = _resolve_and_check(
-        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+        ctx.deps.workdir, path, allow_read_outside=not ctx.deps.strict_read_boundary, allowed_roots=ctx.deps.allowed_roots
     )
 
     if not full_path.exists():
@@ -133,7 +133,7 @@ async def glob(
         )
 
     full_path = _resolve_and_check(
-        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+        ctx.deps.workdir, path, allow_read_outside=not ctx.deps.strict_read_boundary, allowed_roots=ctx.deps.allowed_roots
     )
 
     if not full_path.exists():
@@ -311,7 +311,7 @@ async def search_files(
         path: Directory to search in (relative or absolute)
     """
     full_path = _resolve_and_check(
-        ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
+        ctx.deps.workdir, path, allow_read_outside=not ctx.deps.strict_read_boundary, allowed_roots=ctx.deps.allowed_roots
     )
 
     if not full_path.exists():

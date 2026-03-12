@@ -690,6 +690,30 @@ client = (
 )
 ```
 
+### 严格读边界（v1.9.2+）
+
+默认情况下，读操作（`read_file`、`grep`、`glob` 等）可以访问 `workdir` 和 `allowed_roots` 之外的路径，仅写操作受限。开启 `strict_read_boundary` 后，读操作也被限制在边界内：
+
+```python
+# Builder 方式
+client = (
+    Cody()
+    .workdir("/workspace/project")
+    .allowed_root("/workspace/shared")
+    .strict_read_boundary()
+    .build()
+)
+
+# Config 方式
+cfg = config(
+    workdir="/workspace/project",
+    allowed_roots=["/workspace/shared"],
+    strict_read_boundary=True,
+)
+```
+
+当 Agent 尝试读取边界外的文件时，会收到明确的拒绝信息（包含可访问的目录列表），模型会自动调整路径重试。
+
 ---
 
 ## 技能管理
@@ -1112,6 +1136,7 @@ async with client:
 | `.thinking(enabled, budget=)` | 启用思考模式 |
 | `.permission(tool, level)` | 设置工具权限 |
 | `.allowed_root(path)` / `.allowed_roots(paths)` | 设置允许的文件访问路径 |
+| `.strict_read_boundary(enabled=True)` | 限制读操作也遵守访问边界（v1.9.2+） |
 | `.db_path(path)` | 设置会话数据库路径 |
 | `.enable_metrics()` | 启用指标收集 |
 | `.enable_events()` | 启用事件系统 |
@@ -1204,7 +1229,7 @@ async with client:
 | `SDKConfig` | 完整 SDK 配置 |
 | `ModelConfig` | 模型配置（模型名、API Key、思考模式等） |
 | `PermissionConfig` | 工具权限配置 |
-| `SecurityConfig` | 安全配置（`allowed_roots`、`blocked_commands` 等） |
+| `SecurityConfig` | 安全配置（`allowed_roots`、`blocked_commands`、`strict_read_boundary` 等） |
 | `MCPConfig` | MCP 服务器配置 |
 | `MCPServerConfig` | 单个 MCP 服务器配置（v1.9.0+，支持 stdio/http 传输） |
 | `LSPConfig` | LSP 语言配置 |

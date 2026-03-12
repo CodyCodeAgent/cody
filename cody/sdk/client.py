@@ -64,6 +64,7 @@ class CodyBuilder:
     _thinking_budget: Optional[int] = None
     _permissions: dict = field(default_factory=dict)
     _allowed_roots: list[str] = field(default_factory=list)
+    _strict_read_boundary: bool = False
     _db_path: Optional[str] = None
     _enable_metrics: bool = False
     _enable_events: bool = False
@@ -112,6 +113,11 @@ class CodyBuilder:
     def allowed_roots(self, paths: list[str]) -> "CodyBuilder":
         """Set multiple allowed root paths."""
         self._allowed_roots = paths
+        return self
+
+    def strict_read_boundary(self, enabled: bool = True) -> "CodyBuilder":
+        """When True, read operations are also restricted to workdir + allowed_roots."""
+        self._strict_read_boundary = enabled
         return self
 
     def db_path(self, path: str) -> "CodyBuilder":
@@ -193,6 +199,7 @@ class CodyBuilder:
             thinking_budget=self._thinking_budget,
             permissions=self._permissions,
             allowed_roots=self._allowed_roots,
+            strict_read_boundary=self._strict_read_boundary,
             db_path=self._db_path,
             enable_metrics=self._enable_metrics,
             enable_events=self._enable_events,
@@ -623,6 +630,7 @@ class AsyncCodyClient:
             workdir=effective_workdir,
             skill_manager=sm,
             allowed_roots=[effective_workdir],
+            strict_read_boundary=cfg.security.strict_read_boundary,
         )
 
         start_time = time.time()
