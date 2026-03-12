@@ -29,7 +29,9 @@ pyinstaller \
     --hidden-import=uvicorn.protocols.websockets.auto \
     --hidden-import=uvicorn.lifespan.on \
     --collect-submodules=web \
-    --collect-submodules=cody \
+    --collect-submodules=cody.core \
+    --collect-submodules=cody.sdk \
+    --collect-submodules=cody.cli \
     --collect-submodules=pydantic_ai \
     --exclude-module=logfire \
     --exclude-module=textual \
