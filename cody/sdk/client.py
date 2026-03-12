@@ -630,7 +630,7 @@ class AsyncCodyClient:
             ))
 
         effective_workdir = Path(workdir) if workdir else self.workdir
-        cfg = Config.load(workdir=effective_workdir)
+        cfg = self._get_config()
         sm = SkillManager(config=cfg, workdir=effective_workdir)
         deps = CodyDeps(
             config=cfg,
