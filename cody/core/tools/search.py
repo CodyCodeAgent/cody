@@ -2,6 +2,7 @@
 
 import fnmatch
 import re
+from pathlib import Path
 
 from pydantic_ai import RunContext
 
@@ -120,9 +121,17 @@ async def glob(
     """Find files by glob pattern
 
     Args:
-        pattern: Glob pattern (e.g. "**/*.py", "*.txt", "src/**/*.ts")
+        pattern: Relative glob pattern (e.g. "**/*.py", "*.txt", "src/**/*.ts").
+            Must be a relative pattern — absolute paths are NOT allowed.
+            Use the 'path' parameter to specify the search directory instead.
         path: Base directory to search from (relative or absolute)
     """
+    if Path(pattern).is_absolute():
+        raise ToolInvalidParams(
+            f"Glob pattern must be relative, not absolute: {pattern}. "
+            f"Use the 'path' parameter to specify the search directory."
+        )
+
     full_path = _resolve_and_check(
         ctx.deps.workdir, path, allow_read_outside=True, allowed_roots=ctx.deps.allowed_roots
     )

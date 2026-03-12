@@ -10,6 +10,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.9.1] - 2026-03-12
+
+### Fixed
+
+- **Python 3.14 兼容性**：`glob` 工具新增绝对路径 pattern 防御性校验，避免 Python 3.14 `pathlib.glob()` 拒绝非相对模式导致报错
+- 增强 `glob` 工具 docstring，明确 pattern 必须为相对路径，减少 AI agent 误用
+
+---
+
 ## [1.9.0] - 2026-03-11
 
 ### Added
