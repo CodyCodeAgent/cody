@@ -611,7 +611,6 @@ class AsyncCodyClient:
     ) -> ToolResult:
         """Call a tool directly."""
         from ..core import tools
-        from ..core.config import Config
         from ..core.deps import CodyDeps, ToolContext
         from ..core.skill_manager import SkillManager
 
