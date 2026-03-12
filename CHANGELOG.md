@@ -10,6 +10,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.9.2] - 2026-03-13
+
+### Added
+
+- **PyInstaller 打包流水线**：新增 `scripts/build-binary.sh` 和 `scripts/cody_web_entry.py`，支持将 cody-web 打包为独立可执行文件
+- **GitHub Actions 自动发布**：新增 `release-binary.yml`，tag push 时自动构建 Linux/macOS/Windows 多平台二进制包并发布到 GitHub Releases
+
+### Fixed
+
+- **测试环境隔离**：`test_config.py` 新增 autouse fixture 清理 `CODY_*` 环境变量，避免宿主环境干扰测试
+
+---
+
 ## [1.9.1] - 2026-03-12
 
 ### Fixed
