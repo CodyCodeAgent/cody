@@ -10,6 +10,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.10.1] - 2026-03-13
+
+### Fixed
+
+- **exec_command 边界检查**：`strict_read_boundary` 开启时，`exec_command` 现在会检测命令中的绝对路径并拦截越界访问
+- **SDK tool() 配置丢失**：`client.tool()` 直接调用工具时从磁盘重新加载 Config，导致 SDK Builder 设置的 `strict_read_boundary` 等配置丢失
+- **SDK _get_config() 安全配置同步**：SDK 的 security 配置（`strict_read_boundary`、`allowed_roots`、`blocked_commands`）现在正确同步到 core Config
+- **Web Backend create_full_deps()**：补传 `strict_read_boundary` 到 `CodyDeps`
+
+---
+
 ## [1.10.0] - 2026-03-13
 
 ### Added
