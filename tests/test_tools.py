@@ -9,7 +9,7 @@ from cody.core.tools import (
     grep, glob, patch, search_files,
 )
 from cody.core.tools._file_filter import _is_binary, _parse_gitignore, _is_gitignored, _iter_files
-from cody.core.tools.command import _BLOCKED_COMMAND_PATTERNS
+from cody.core.tools.command import _BLOCKED_COMMAND_PATTERNS, exec_command
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
 from cody.core.deps import CodyDeps
@@ -98,7 +98,7 @@ async def test_strict_read_boundary_blocks_read_outside(tmp_path):
     """When strict_read_boundary=True, read_file blocks access outside workdir"""
     ctx = MockContext(tmp_path, strict_read_boundary=True)
 
-    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
         await read_file(ctx, "../../../etc/passwd")
 
 
@@ -131,15 +131,42 @@ async def test_strict_read_boundary_grep_blocks_outside(tmp_path):
     """When strict_read_boundary=True, grep blocks access outside workdir"""
     ctx = MockContext(tmp_path, strict_read_boundary=True)
 
-    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
         await grep(ctx, "pattern", path="../../../etc")
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_exec_command_blocks_outside(tmp_path):
+    """When strict_read_boundary=True, exec_command blocks commands with outside paths"""
+    ctx = MockContext(tmp_path, strict_read_boundary=True)
+
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
+        await exec_command(ctx, "ls -la /etc")
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_exec_command_allows_inside(tmp_path):
+    """When strict_read_boundary=True, exec_command allows paths inside workdir"""
+    ctx = MockContext(tmp_path, strict_read_boundary=True)
+
+    result = await exec_command(ctx, f"ls {tmp_path}")
+    assert "[ERROR]" not in result
+
+
+@pytest.mark.asyncio
+async def test_strict_read_boundary_exec_command_no_abs_path_ok(tmp_path):
+    """When strict_read_boundary=True, commands without absolute paths are fine"""
+    ctx = MockContext(tmp_path, strict_read_boundary=True)
+
+    result = await exec_command(ctx, "echo hello")
+    assert "hello" in result
 
 
 @pytest.mark.asyncio
 async def test_security_check_write_outside(tmp_path):
     ctx = MockContext(tmp_path)
 
-    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
         await write_file(ctx, "../../evil.txt", "bad content")
 
 
@@ -152,7 +179,7 @@ async def test_security_check_symlink_write_escape(tmp_path):
     link = tmp_path / "escape"
     link.symlink_to("/tmp")
 
-    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
         await write_file(ctx, "escape/evil.txt", "bad content")
 
 
@@ -726,7 +753,7 @@ async def test_write_file_outside_all_roots_denied(tmp_path):
     other.mkdir()
 
     ctx = MockContext(workdir, allowed_roots=[shared])
-    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
         await write_file(ctx, str(other / "bad.txt"), "evil")
 
 
@@ -748,7 +775,7 @@ async def test_read_file_from_allowed_root(tmp_path):
 async def test_empty_allowed_roots_same_as_before(tmp_path):
     """Empty allowed_roots = old behavior (workdir only)."""
     ctx = MockContext(tmp_path, allowed_roots=[])
-    with pytest.raises(ToolPathDenied, match="outside all permitted directories"):
+    with pytest.raises(ToolPathDenied, match="outside.*permitted directories"):
         await write_file(ctx, "../../outside.txt", "bad")
 
 

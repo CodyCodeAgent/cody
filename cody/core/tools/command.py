@@ -2,11 +2,12 @@
 
 import re
 import subprocess
+from pathlib import Path
 
 from pydantic_ai import RunContext
 
 from ..deps import CodyDeps
-from ..errors import ToolPermissionDenied
+from ..errors import ToolPathDenied, ToolPermissionDenied
 from ._base import _audit_tool_call, _check_permission
 
 # Regex-based blocked command patterns — handles whitespace variations and
@@ -66,6 +67,27 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int =
             base_cmd = part.strip().split()[0] if part.strip() else ''
             if base_cmd and base_cmd not in ctx.deps.config.security.allowed_commands:
                 raise ToolPermissionDenied(f"Command not allowed: {base_cmd}")
+
+    # Strict read boundary: block commands referencing paths outside allowed roots
+    if ctx.deps.strict_read_boundary:
+        roots = [ctx.deps.workdir.resolve()]
+        roots.extend(r.resolve() for r in ctx.deps.allowed_roots)
+
+        # Extract absolute paths from the command (tokens starting with /)
+        tokens = re.split(r'\s+', normalized)
+        for token in tokens:
+            # Strip quotes and trailing punctuation
+            cleaned = token.strip("'\"`;,")
+            if cleaned.startswith('/'):
+                target = Path(cleaned).resolve()
+                if not any(target.is_relative_to(root) for root in roots):
+                    roots_str = ', '.join(str(r) for r in roots)
+                    raise ToolPathDenied(
+                        f"Access denied: command references path '{cleaned}' "
+                        f"outside permitted directories. "
+                        f"You can only access files within: {roots_str}. "
+                        f"Please use paths inside these directories."
+                    )
 
     effective_timeout = timeout or ctx.deps.config.security.command_timeout
 
