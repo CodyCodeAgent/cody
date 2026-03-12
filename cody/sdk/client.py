@@ -319,6 +319,13 @@ class AsyncCodyClient:
                 self._core_config.model_api_key = self._config.model.api_key
             if self._config.model.base_url:
                 self._core_config.model_base_url = self._config.model.base_url
+            # Apply security config from SDK
+            if self._config.security.allowed_roots:
+                self._core_config.security.allowed_roots = self._config.security.allowed_roots
+            if self._config.security.strict_read_boundary:
+                self._core_config.security.strict_read_boundary = True
+            if self._config.security.blocked_commands:
+                self._core_config.security.blocked_commands = self._config.security.blocked_commands
             # Apply MCP servers from SDK config
             if self._config.mcp.enabled and self._config.mcp.servers:
                 for s in self._config.mcp.servers:
