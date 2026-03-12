@@ -1,4 +1,8 @@
-# CLAUDE.md — Cody 项目指南
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+# Cody 项目指南
 
 ## 项目概述
 
@@ -43,58 +47,14 @@ web/backend/            →  core/runner.py  →  core/tools/
 - Web Backend 路由使用 FastAPI `Depends()` 注入 `SessionStore`、`AuditLogger` 等依赖
 - 详细架构图见 `docs/ARCHITECTURE.md`
 
-## 关键文件
+## 关键入口文件
 
-| 文件 | 作用 |
-|------|------|
-| `core/prompt.py` | 多模态 Prompt 类型 — ImageData, MultimodalPrompt, Prompt |
-| `core/runner.py` | 框架中枢 — Agent 创建、工具注册、run/stream 执行 |
-| `core/tools/` | 工具包（14 个子模块，28 个工具函数）— file_ops、search、command、skills、agents、mcp、web、lsp、history、todo、user + registry 注册表 + _base/_file_filter 共享工具 |
-| `core/errors.py` | 错误码 + ToolError 异常层级（Web Backend 按类型映射 HTTP 状态码） |
-| `core/log.py` | 统一日志 — setup_logging()，RotatingFileHandler → ~/.cody/logs/ |
-| `core/config.py` | Pydantic 配置模型，支持全局/项目级 JSON，is_ready() 检查 |
-| `core/setup.py` | 交互式配置向导数据层 — SetupAnswers + build_config_from_answers |
-| `core/deps.py` | CodyDeps 数据类 + ToolContext，工具的依赖注入容器 |
-| `shared.py` | CLI/TUI 共享工具函数 — spinner、格式化、config 路径解析 |
-| `core/project_instructions.py` | CODY.md 加载逻辑 — 全局 + 项目级合并，注入系统提示 |
-| `core/sub_agent.py` | 子 Agent 编排，`_execute()` 有延迟导入（打破循环依赖） |
-| `core/skill_manager.py` | Agent Skills 开放标准，三层优先级加载 |
-| `sdk/client.py` | SDK 客户端 — Builder/事件/指标，直接包装 core |
-| `sdk/types.py` | SDK 响应类型 — RunResult, Usage, StreamChunk 等 |
-| `sdk/errors.py` | SDK 错误层级 — 10 种细粒度错误类型 |
-| `sdk/config.py` | SDK 配置 — SDKConfig, ModelConfig, config() 工厂 |
-| `client.py` | 向后兼容 shim — re-export `sdk/` 的公开符号 |
-| `web/backend/app.py` | FastAPI 应用 — Web + API 路由、中间件、静态文件 |
-| `web/backend/state.py` | 单例状态管理 — Config 缓存、SessionStore、AuditLogger 等 |
-| `web/backend/routes/` | 所有 HTTP/WS 路由 — run、tool、sessions、skills、agents、ws、projects、chat |
-
-## CLI 命令速查
-
-```bash
-# 单次执行
-cody run "create hello.py"
-cody run --thinking "complex analysis"     # 启用思考模式
-cody run -v "debug this"                   # 显示工具调用结果
-cody run --workdir /path/to/project "fix"  # 指定工作目录
-
-# 交互对话
-cody chat                                  # 多轮 REPL
-cody chat --continue                       # 续上次会话
-cody chat --session <id>                   # 恢复指定会话
-
-# TUI
-cody tui                                   # 全屏终端
-
-# 会话管理
-cody sessions list / show <id> / delete <id>
-
-# Skills 管理
-cody skills list / show <name> / enable <name> / disable <name>
-
-# 配置
-cody config setup / show / set <key> <value>
-cody init                                  # 初始化 .cody/ 目录
-```
+- `core/runner.py` — 框架中枢：Agent 创建、工具注册、run/stream 执行
+- `core/tools/registry.py` — 声明式工具注册表（`*_TOOLS` 列表）
+- `core/deps.py` — CodyDeps 数据类 + ToolContext，工具的依赖注入容器
+- `sdk/client.py` — SDK 客户端：Builder/事件/指标，直接包装 core
+- `web/backend/app.py` — FastAPI 应用入口
+- `cody/client.py` — 向后兼容 shim，新代码应直接用 `cody.sdk`
 
 ## 开发命令
 
@@ -105,6 +65,12 @@ pip install -e ".[dev]"
 # 核心 + SDK 测试（588 个）
 uv run pytest tests/ -v
 
+# 运行单个测试文件
+uv run pytest tests/test_tools.py -v
+
+# 运行匹配名称的测试
+uv run pytest tests/ -k "grep" -v
+
 # Web 后端测试（85 个）
 PYTHONPATH=. uv run pytest web/tests/ -v
 
@@ -113,6 +79,9 @@ cd web && npx vitest run
 
 # Lint（必须零告警）
 uv run ruff check cody/ tests/ web/
+
+# 自动修复 lint 问题
+uv run ruff check cody/ tests/ web/ --fix
 
 # 启动 Web（后端 + 前端）
 cody-web --dev              # 开发模式
@@ -161,18 +130,6 @@ Python 版本号**单一来源**：`cody/_version.py` → `__version__ = "x.y.z"
 2. **状态缓存** — `web/backend/state.py` 管理所有单例：Config 按 workdir 缓存（deep copy 返回），SessionStore 全局单例，SkillManager 每次请求新建
 3. **可选依赖** — `pip install cody-ai` 仅安装核心 SDK（4 个依赖），CLI/TUI/Web 需通过 extras 安装
 
-## 文档结构
+## 文档
 
-| 文档 | 内容 |
-|------|------|
-| `docs/ARCHITECTURE.md` | 框架架构、组件说明、数据流 |
-| `docs/API.md` | Web API 接口文档 |
-| `docs/FEATURES.md` | 功能清单 + 路线图 |
-| `docs/SDK.md` | Python SDK 使用文档 |
-| `docs/CLI.md` | CLI 使用指南 |
-| `docs/TUI.md` | TUI 使用指南 |
-| `docs/SKILLS.md` | 技能开发指南 |
-| `docs/CONFIG.md` | 配置文件详解 |
-| `docs/QUICKSTART.md` | 快速入门教程 |
-| `CONTRIBUTING.md` | 开发规范 + 快速上手 |
-| `CHANGELOG.md` | 版本历史 |
+详细文档在 `docs/` 目录下（架构、API、SDK、CLI、TUI、Skills、配置等）。开发规范见 `CONTRIBUTING.md`。

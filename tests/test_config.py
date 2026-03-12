@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from cody.core.config import (
     AuthConfig,
     Config,
@@ -11,6 +13,23 @@ from cody.core.config import (
     SecurityConfig,
     SkillConfig,
 )
+
+# Env vars that Config._apply_env_overrides reads.
+_CODY_ENV_VARS = [
+    "CODY_MODEL",
+    "CODY_MODEL_BASE_URL",
+    "CODY_MODEL_API_KEY",
+    "CODY_CODING_PLAN_KEY",
+    "CODY_ENABLE_THINKING",
+    "CODY_THINKING_BUDGET",
+]
+
+
+@pytest.fixture(autouse=True)
+def _clean_cody_env(monkeypatch):
+    """Ensure CODY_* env vars don't leak into config tests."""
+    for var in _CODY_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 # ── Default config ───────────────────────────────────────────────────────────
