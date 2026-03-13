@@ -266,7 +266,7 @@ class SDKConfig:
 
         # Add custom skill directories
         if self.skill_dirs:
-            config_dict.setdefault("skills", {})["custom_dirs"] = self.skill_dirs
+            config_dict["skills"] = {"custom_dirs": self.skill_dirs}
 
         return config_dict
     
