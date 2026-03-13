@@ -92,7 +92,7 @@ class Skill:
     """Skill following Agent Skills open standard (agentskills.io)"""
     name: str
     description: str
-    source: Literal['project', 'global', 'builtin']
+    source: Literal['project', 'global', 'builtin', 'custom']
     path: Path
     enabled: bool = True
     license: Optional[str] = None
@@ -147,12 +147,15 @@ class SkillManager:
         Only parses YAML frontmatter (name + description) at startup.
         Full SKILL.md body is loaded on demand (progressive disclosure).
         """
-        # Priority: project > global > builtin
-        search_paths = [
+        # Priority: custom > project > global > builtin
+        search_paths: list[tuple[Path, str]] = []
+        for custom_dir in self.config.skills.custom_dirs:
+            search_paths.append((Path(custom_dir), "custom"))
+        search_paths.extend([
             (self.workdir / ".cody" / "skills", "project"),
             (Path.home() / ".cody" / "skills", "global"),
             (Path(__file__).parent.parent / "skills", "builtin"),
-        ]
+        ])
 
         for base_path, source in search_paths:
             if not base_path.exists():

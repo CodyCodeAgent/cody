@@ -676,6 +676,7 @@ Initialized Cody in current directory
 | `CODY_MODEL_API_KEY` | 自定义 API Key |
 | `CODY_ENABLE_THINKING` | 启用思考模式 (`true`/`false`) |
 | `CODY_THINKING_BUDGET` | 思考 token 预算 |
+| `CODY_SKILL_DIRS` | 自定义 Skill 搜索目录（冒号分隔） |
 
 ---
 

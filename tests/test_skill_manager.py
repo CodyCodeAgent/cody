@@ -439,3 +439,92 @@ def test_documentation_cached(tmp_path):
     )
     result2 = skill.documentation
     assert result2 == result1  # Still cached
+
+
+# ── Custom skill directories ─────────────────────────────────────────────────
+
+
+def test_custom_skill_dirs_loaded(tmp_path):
+    """Skills in custom_dirs are loaded with source='custom'."""
+    custom_dir = tmp_path / "my-skills"
+    skill_dir = custom_dir / "hello"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: hello\ndescription: A custom hello skill\n---\n\nHello!"
+    )
+
+    config = Config(skills={"custom_dirs": [str(custom_dir)]})
+    manager = SkillManager(config, workdir=tmp_path)
+    skill = manager.get_skill("hello")
+    assert skill is not None
+    assert skill.source == "custom"
+    assert skill.description == "A custom hello skill"
+
+
+def test_custom_dirs_highest_priority(tmp_path):
+    """Custom dir skills override project-level skills with the same name."""
+    # Create a project-level skill
+    project_skills = tmp_path / ".cody" / "skills" / "myskill"
+    project_skills.mkdir(parents=True)
+    (project_skills / "SKILL.md").write_text(
+        "---\nname: myskill\ndescription: Project version\n---\n\nProject."
+    )
+
+    # Create a custom dir skill with the same name
+    custom_dir = tmp_path / "custom-skills"
+    custom_skill = custom_dir / "myskill"
+    custom_skill.mkdir(parents=True)
+    (custom_skill / "SKILL.md").write_text(
+        "---\nname: myskill\ndescription: Custom version\n---\n\nCustom."
+    )
+
+    config = Config(skills={"custom_dirs": [str(custom_dir)]})
+    manager = SkillManager(config, workdir=tmp_path)
+    skill = manager.get_skill("myskill")
+    assert skill is not None
+    assert skill.source == "custom"
+    assert skill.description == "Custom version"
+
+
+def test_custom_dirs_supplement_defaults(tmp_path):
+    """Custom dirs supplement (not replace) the default search paths."""
+    custom_dir = tmp_path / "my-skills"
+    skill_dir = custom_dir / "hello"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: hello\ndescription: A custom skill\n---\n\nHello!"
+    )
+
+    config = Config(skills={"custom_dirs": [str(custom_dir)]})
+    manager = SkillManager(config, workdir=tmp_path)
+
+    # Custom skill loaded
+    assert manager.get_skill("hello") is not None
+    # Builtin skills still available
+    assert manager.get_skill("git") is not None
+
+
+def test_custom_dirs_from_env(tmp_path, monkeypatch):
+    """CODY_SKILL_DIRS env var populates skills.custom_dirs."""
+    custom_dir = tmp_path / "env-skills"
+    skill_dir = custom_dir / "envskill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: envskill\ndescription: From env\n---\n\nEnv skill."
+    )
+
+    monkeypatch.setenv("CODY_SKILL_DIRS", str(custom_dir))
+    config = Config.load(workdir=tmp_path)
+    assert str(custom_dir) in config.skills.custom_dirs
+
+    manager = SkillManager(config, workdir=tmp_path)
+    skill = manager.get_skill("envskill")
+    assert skill is not None
+    assert skill.source == "custom"
+
+
+def test_apply_overrides_skill_dirs():
+    """apply_overrides(skill_dirs=...) appends to custom_dirs with dedup."""
+    config = Config(skills={"custom_dirs": ["/existing"]})
+    config.apply_overrides(skill_dirs=["/new", "/existing", "/another"])
+    assert config.skills.custom_dirs == ["/existing", "/new", "/another"]

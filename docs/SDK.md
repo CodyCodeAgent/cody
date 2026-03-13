@@ -718,7 +718,7 @@ cfg = config(
 
 ## 技能管理
 
-Cody 支持 Agent Skills 开放标准（agentskills.io），技能以 `SKILL.md` 文件形式定义，按三层优先级加载：项目级（`.cody/skills/`） > 全局（`~/.cody/skills/`） > 内置。
+Cody 支持 Agent Skills 开放标准（agentskills.io），技能以 `SKILL.md` 文件形式定义，按四层优先级加载：自定义（`custom_dirs`） > 项目级（`.cody/skills/`） > 全局（`~/.cody/skills/`） > 内置。
 
 SDK 提供 `list_skills()` 和 `get_skill()` 方法查询技能，也可以通过 `SkillManager` 进行启用/禁用操作。
 
@@ -821,6 +821,48 @@ if problems:
 else:
     print("验证通过")
 ```
+
+### 自定义 Skill 目录
+
+SDK 支持配置自定义 Skill 搜索目录，自定义目录优先级最高（在项目级之前）：
+
+```python
+# Builder 方式
+client = (
+    Cody()
+    .workdir("/my/project")
+    .model("claude-sonnet-4-0")
+    .skill_dir("/shared/team-skills")
+    .skill_dir("/home/user/my-skills")
+    .build()
+)
+
+# config() 便捷函数
+cfg = config(
+    model="claude-sonnet-4-0",
+    workdir="/my/project",
+    skill_dirs=["/shared/team-skills", "/home/user/my-skills"],
+)
+client = AsyncCodyClient(config=cfg)
+```
+
+也可以通过 JSON 配置文件或环境变量设置：
+
+```json
+// .cody/config.json
+{
+  "skills": {
+    "custom_dirs": ["/shared/team-skills"]
+  }
+}
+```
+
+```bash
+# 环境变量（冒号分隔）
+export CODY_SKILL_DIRS=/shared/team-skills:/home/user/my-skills
+```
+
+**优先级顺序：** custom > project（`.cody/skills/`） > global（`~/.cody/skills/`） > builtin
 
 ---
 
@@ -1137,6 +1179,7 @@ async with client:
 | `.permission(tool, level)` | 设置工具权限 |
 | `.allowed_root(path)` / `.allowed_roots(paths)` | 设置允许的文件访问路径 |
 | `.strict_read_boundary(enabled=True)` | 限制读操作也遵守访问边界（v1.9.2+） |
+| `.skill_dir(path)` / `.skill_dirs(paths)` | 添加自定义 Skill 搜索目录 |
 | `.db_path(path)` | 设置会话数据库路径 |
 | `.enable_metrics()` | 启用指标收集 |
 | `.enable_events()` | 启用事件系统 |
