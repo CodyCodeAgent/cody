@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.10.2] - 2026-03-13
+
 ### Added
 
 - **自定义 Skill 目录**：`SkillConfig` 新增 `custom_dirs` 字段，支持通过配置文件、环境变量 `CODY_SKILL_DIRS`、SDK Builder `.skill_dir()` / `.skill_dirs()` 添加额外的 Skill 搜索目录，优先级高于项目级
