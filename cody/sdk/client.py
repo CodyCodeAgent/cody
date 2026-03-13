@@ -70,6 +70,7 @@ class CodyBuilder:
     _enable_events: bool = False
     _mcp_servers: list[dict | SDKMCPServerConfig] = field(default_factory=list)
     _auto_start_mcp: bool = False
+    _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
 
@@ -118,6 +119,16 @@ class CodyBuilder:
     def strict_read_boundary(self, enabled: bool = True) -> "CodyBuilder":
         """When True, read operations are also restricted to workdir + allowed_roots."""
         self._strict_read_boundary = enabled
+        return self
+
+    def skill_dir(self, path: str) -> "CodyBuilder":
+        """Add a custom skill directory."""
+        self._skill_dirs.append(path)
+        return self
+
+    def skill_dirs(self, paths: list[str]) -> "CodyBuilder":
+        """Set custom skill directories."""
+        self._skill_dirs = list(paths)
         return self
 
     def db_path(self, path: str) -> "CodyBuilder":
@@ -204,6 +215,7 @@ class CodyBuilder:
             enable_metrics=self._enable_metrics,
             enable_events=self._enable_events,
         )
+        cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
         client = AsyncCodyClient(config=cfg, auto_start_mcp=self._auto_start_mcp)
@@ -326,6 +338,13 @@ class AsyncCodyClient:
                 self._core_config.security.strict_read_boundary = True
             if self._config.security.blocked_commands:
                 self._core_config.security.blocked_commands = self._config.security.blocked_commands
+            # Apply custom skill directories from SDK config
+            if self._config.skill_dirs:
+                existing = set(self._core_config.skills.custom_dirs)
+                for d in self._config.skill_dirs:
+                    if d not in existing:
+                        self._core_config.skills.custom_dirs.append(d)
+                        existing.add(d)
             # Apply MCP servers from SDK config
             if self._config.mcp.enabled and self._config.mcp.servers:
                 for s in self._config.mcp.servers:

@@ -181,6 +181,9 @@ class SDKConfig:
     # LSP
     lsp: LSPConfig = field(default_factory=LSPConfig)
     
+    # Custom skill directories
+    skill_dirs: list[str] = field(default_factory=list)
+
     # Metrics & monitoring
     enable_metrics: bool = False
     enable_events: bool = False
@@ -222,11 +225,14 @@ class SDKConfig:
             if isinstance(lsp_data, dict):
                 config.lsp = LSPConfig(**lsp_data)
         
+        if "skill_dirs" in data:
+            config.skill_dirs = data["skill_dirs"]
+
         if "enable_metrics" in data:
             config.enable_metrics = data["enable_metrics"]
         if "enable_events" in data:
             config.enable_events = data["enable_events"]
-        
+
         return config
     
     def to_core_config(self) -> dict:
@@ -257,7 +263,11 @@ class SDKConfig:
             config_dict["enable_thinking"] = True
             if self.model.thinking_budget:
                 config_dict["thinking_budget"] = self.model.thinking_budget
-        
+
+        # Add custom skill directories
+        if self.skill_dirs:
+            config_dict["skills"] = {"custom_dirs": self.skill_dirs}
+
         return config_dict
     
 # Convenience function for quick config
@@ -271,6 +281,7 @@ def config(
     permissions: Optional[dict] = None,
     allowed_roots: Optional[list[str]] = None,
     strict_read_boundary: bool = False,
+    skill_dirs: Optional[list[str]] = None,
     **kwargs,
 ) -> SDKConfig:
     """Create SDKConfig with common options.
@@ -304,7 +315,9 @@ def config(
         cfg.security.allowed_roots = allowed_roots
     if strict_read_boundary:
         cfg.security.strict_read_boundary = strict_read_boundary
-    
+    if skill_dirs:
+        cfg.skill_dirs = skill_dirs
+
     # Apply any additional kwargs
     for key, value in kwargs.items():
         if hasattr(cfg, key):

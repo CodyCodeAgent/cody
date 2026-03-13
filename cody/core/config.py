@@ -35,6 +35,7 @@ class SkillConfig(BaseModel):
     """Skill configuration"""
     enabled: list[str] = Field(default_factory=list)
     disabled: list[str] = Field(default_factory=list)
+    custom_dirs: list[str] = Field(default_factory=list)
 
 
 class MCPServerConfig(BaseModel):
@@ -218,6 +219,11 @@ class Config(BaseModel):
         env_compaction_model = os.environ.get("CODY_COMPACTION_MODEL")
         if env_compaction_model:
             config.compaction.model = env_compaction_model
+        env_skill_dirs = os.environ.get("CODY_SKILL_DIRS")
+        if env_skill_dirs:
+            config.skills.custom_dirs = [
+                d.strip() for d in env_skill_dirs.split(":") if d.strip()
+            ]
         return config
 
     def apply_overrides(
@@ -228,12 +234,15 @@ class Config(BaseModel):
         enable_thinking: Optional[bool] = None,
         thinking_budget: Optional[int] = None,
         skills: Optional[list[str]] = None,
+        skill_dirs: Optional[list[str]] = None,
         extra_roots: Optional[list[str]] = None,
     ) -> "Config":
         """Apply runtime overrides from CLI flags or request parameters.
 
         Only non-None values are applied. Returns self for chaining.
         *extra_roots* is additive — entries not already in security.allowed_roots
+        are appended; duplicates are silently ignored.
+        *skill_dirs* is additive — entries not already in skills.custom_dirs
         are appended; duplicates are silently ignored.
         """
         if model is not None:
@@ -248,6 +257,12 @@ class Config(BaseModel):
             self.thinking_budget = thinking_budget
         if skills is not None:
             self.skills.enabled = skills
+        if skill_dirs:
+            existing = set(self.skills.custom_dirs)
+            for d in skill_dirs:
+                if d not in existing:
+                    self.skills.custom_dirs.append(d)
+                    existing.add(d)
         if extra_roots:
             existing = set(self.security.allowed_roots)
             for r in extra_roots:

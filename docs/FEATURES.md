@@ -137,6 +137,11 @@ cody skills enable <name>         # 启用 Skill
 cody skills disable <name>        # 禁用 Skill
 ```
 
+**自定义 Skill 目录：**
+- 通过 `config.json` 的 `skills.custom_dirs` 或环境变量 `CODY_SKILL_DIRS` 配置额外搜索目录
+- SDK Builder 支持 `.skill_dir(path)` / `.skill_dirs(paths)` 方法
+- 优先级：custom > project > global > builtin
+
 ### 4. MCP 集成
 
 **支持方式：**
