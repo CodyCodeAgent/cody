@@ -52,6 +52,9 @@ web/tsconfig.tsbuildinfo
 # Lock files (uv)
 uv.lock
 
+# Claude Code
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
