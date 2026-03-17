@@ -157,7 +157,7 @@ def test_ws_run_missing_prompt():
 
 def test_ws_run_stream():
     """Run via WebSocket with streaming"""
-    async def fake_stream(prompt, message_history=None):
+    async def fake_stream(prompt, message_history=None, cancel_event=None):
         yield TextDeltaEvent(content="Hello")
         yield TextDeltaEvent(content=" WS")
         yield DoneEvent(result=CodyResult(output="Hello WS"))
@@ -192,7 +192,7 @@ def test_ws_run_stream():
 
 def test_ws_run_stream_with_thinking_and_tools():
     """Full event mix: thinking, tool_call, tool_result, text_delta, done."""
-    async def rich_stream(prompt, message_history=None):
+    async def rich_stream(prompt, message_history=None, cancel_event=None):
         yield ThinkingEvent(content="Let me check...")
         yield ToolCallEvent(tool_name="grep", args={"q": "foo"}, tool_call_id="tc_1")
         yield ToolResultEvent(tool_name="grep", tool_call_id="tc_1", result="found it")
@@ -243,7 +243,7 @@ def test_ws_run_stream_with_thinking_and_tools():
 
 def test_ws_run_with_session_id():
     """Run with session_id uses run_stream_with_session path."""
-    async def fake_session_stream(prompt, store, session_id):
+    async def fake_session_stream(prompt, store, session_id, cancel_event=None):
         yield TextDeltaEvent(content="hi"), "sess-42"
         yield DoneEvent(result=CodyResult(output="hi")), "sess-42"
 
@@ -279,7 +279,7 @@ def test_ws_run_with_session_id():
 
 def test_ws_run_error():
     """Run via WebSocket handles errors"""
-    async def failing_stream(prompt, message_history=None):
+    async def failing_stream(prompt, message_history=None, cancel_event=None):
         raise RuntimeError("ws error")
         yield
 
@@ -306,7 +306,7 @@ def test_ws_run_error():
 
 def test_ws_run_error_mid_stream():
     """Error raised mid-stream after some events have been sent."""
-    async def mid_error_stream(prompt, message_history=None):
+    async def mid_error_stream(prompt, message_history=None, cancel_event=None):
         yield TextDeltaEvent(content="partial")
         raise RuntimeError("mid-stream boom")
         yield  # noqa: F841
@@ -358,7 +358,7 @@ def test_ws_multiple_pings():
 
 def test_ws_run_then_ping():
     """Connection stays usable after a run completes."""
-    async def quick_stream(prompt, message_history=None):
+    async def quick_stream(prompt, message_history=None, cancel_event=None):
         yield TextDeltaEvent(content="ok")
         yield DoneEvent(result=CodyResult(output="ok"))
 

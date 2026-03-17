@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..core.runner import (
+    CancelledEvent,
     CodyResult,
     CompactEvent,
     DoneEvent,
@@ -117,6 +118,8 @@ def _event_to_chunk(
             usage=_usage_from_result(event.result),
             message_history=event.result.all_messages(),
         )
+    elif isinstance(event, CancelledEvent):
+        return StreamChunk(type="cancelled", session_id=session_id)
     return StreamChunk(type="unknown", session_id=session_id)
 
 

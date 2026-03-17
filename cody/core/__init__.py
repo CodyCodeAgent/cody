@@ -15,6 +15,7 @@ _LAZY_IMPORTS = {
     "ToolCallEvent": (".runner", "ToolCallEvent"),
     "ToolResultEvent": (".runner", "ToolResultEvent"),
     "DoneEvent": (".runner", "DoneEvent"),
+    "CancelledEvent": (".runner", "CancelledEvent"),
     # session
     "SessionStore": (".session", "SessionStore"),
     # skill_manager

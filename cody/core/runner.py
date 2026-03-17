@@ -13,6 +13,7 @@ Dependency direction: server.py / cli.py / tui.py → runner.py → tools.py
 Core never imports from shells.
 """
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -185,9 +186,16 @@ class DoneEvent:
     event_type: Literal["done"] = "done"
 
 
+@dataclass
+class CancelledEvent:
+    """Run was cancelled by the caller."""
+    event_type: Literal["cancelled"] = "cancelled"
+
+
 StreamEvent = Union[
     CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
+    CancelledEvent,
 ]
 
 
@@ -648,6 +656,7 @@ class AgentRunner:
         self,
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """Run agent with streaming, yielding structured StreamEvent objects.
 
@@ -658,6 +667,7 @@ class AgentRunner:
           - ToolCallEvent: tool call initiated
           - ToolResultEvent: tool call result
           - DoneEvent: stream complete with full CodyResult
+          - CancelledEvent: run was cancelled via cancel_event
         """
         from pydantic_ai.messages import (
             PartStartEvent,
@@ -685,6 +695,10 @@ class AgentRunner:
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         ):
+            if cancel_event and cancel_event.is_set():
+                yield CancelledEvent()
+                return
+
             if isinstance(event, PartStartEvent):
                 part = event.part
                 if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
@@ -807,6 +821,7 @@ class AgentRunner:
         prompt: Prompt,
         store: SessionStore,
         session_id: Optional[str] = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator[tuple[StreamEvent, str], None]:
         """Stream agent with automatic session persistence.
 
@@ -830,7 +845,9 @@ class AgentRunner:
 
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
-        async for event in self.run_stream(prompt, message_history=history):
+        async for event in self.run_stream(prompt, message_history=history, cancel_event=cancel_event):
             if isinstance(event, DoneEvent):
                 store.add_message(sid, "assistant", event.result.output)
+            elif isinstance(event, CancelledEvent):
+                store.add_message(sid, "assistant", "(cancelled)")
             yield event, sid

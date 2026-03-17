@@ -20,6 +20,9 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
     if not full_path.exists():
         raise ToolInvalidParams(f"File not found: {path}")
 
+    if full_path.is_dir():
+        raise ToolInvalidParams(f"Path is a directory, not a file: {path}")
+
     return full_path.read_text(encoding="utf-8", errors="replace")
 
 

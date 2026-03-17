@@ -109,18 +109,15 @@ class _WSConnection:
             if session_id is not None:
                 store = get_session_store()
                 async for event, sid in runner.run_stream_with_session(
-                    prompt, store, session_id
+                    prompt, store, session_id,
+                    cancel_event=self._cancel_event,
                 ):
-                    if self._cancel_event.is_set():
-                        await self.send_event("cancelled")
-                        return
                     payload = serialize_stream_event(event, session_id=sid)
                     await self.send_event(payload.pop("type"), payload)
             else:
-                async for event in runner.run_stream(prompt):
-                    if self._cancel_event.is_set():
-                        await self.send_event("cancelled")
-                        return
+                async for event in runner.run_stream(
+                    prompt, cancel_event=self._cancel_event,
+                ):
                     payload = serialize_stream_event(event)
                     await self.send_event(payload.pop("type"), payload)
 

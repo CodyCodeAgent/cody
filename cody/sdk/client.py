@@ -569,6 +569,7 @@ class AsyncCodyClient:
         prompt,
         *,
         session_id: Optional[str] = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects."""
         # Auto-start MCP servers on first stream (if enabled)
@@ -580,11 +581,11 @@ class AsyncCodyClient:
         if session_id:
             store = self.get_session_store()
             async for event, sid in runner.run_stream_with_session(
-                prompt, store, session_id
+                prompt, store, session_id, cancel_event=cancel_event,
             ):
                 yield _event_to_chunk(event, sid)
         else:
-            async for event in runner.run_stream(prompt):
+            async for event in runner.run_stream(prompt, cancel_event=cancel_event):
                 yield _event_to_chunk(event)
 
     # Alias for stream() — matches the name used in demos/docs

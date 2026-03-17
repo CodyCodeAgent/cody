@@ -10,6 +10,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.10.3] - 2026-03-17
+
+### Added
+
+- **流式取消支持**：`run_stream()` / `run_stream_with_session()` 新增 `cancel_event` 参数（`asyncio.Event`），SDK `stream()` 同步支持。取消时 yield `CancelledEvent`，session 中保存 `"(cancelled)"` 占位消息保持一致性
+- **CancelledEvent 事件类型**：新增 `CancelledEvent`，统一 core/SDK/TUI/Web 的取消事件通知
+
+### Fixed
+
+- **read_file 目录崩溃**：`read_file` 传入目录路径时不再抛 `IsADirectoryError` 崩溃 session，改为返回 `ToolInvalidParams` 让 AI 自行修正
+
+---
+
 ## [1.10.2] - 2026-03-13
 
 ### Added

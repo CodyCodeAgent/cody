@@ -94,6 +94,17 @@ async def test_read_file_outside_workdir_allowed(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_read_file_directory_raises(tmp_path):
+    """read_file raises ToolInvalidParams when path is a directory"""
+    ctx = MockContext(tmp_path)
+    subdir = tmp_path / "some_dir"
+    subdir.mkdir()
+
+    with pytest.raises(ToolInvalidParams, match="directory"):
+        await read_file(ctx, "some_dir")
+
+
+@pytest.mark.asyncio
 async def test_strict_read_boundary_blocks_read_outside(tmp_path):
     """When strict_read_boundary=True, read_file blocks access outside workdir"""
     ctx = MockContext(tmp_path, strict_read_boundary=True)

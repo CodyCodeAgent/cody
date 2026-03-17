@@ -104,8 +104,9 @@ TextDeltaEvent   — incremental text output (delta)
 ToolCallEvent    — tool call initiated (tool_name, args, tool_call_id)
 ToolResultEvent  — tool call result (tool_name, result)
 DoneEvent        — stream complete, contains full CodyResult
+CancelledEvent   — run cancelled via cancel_event (v1.10.3+)
 ```
-Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
+`run_stream()` accepts an optional `cancel_event: asyncio.Event` parameter. When set, the stream yields a `CancelledEvent` and stops. Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
 
 **CodyResult:** Rich result model returned by `run()` / `run_sync()` and via `DoneEvent`:
 ```

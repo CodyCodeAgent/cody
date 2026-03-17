@@ -213,6 +213,13 @@ class RunResult:
 
 `stream()` 和 `run_stream()` 完全等价（`run_stream` 是 `stream` 的别名）。
 
+**参数：**
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `prompt` | `str` / `MultimodalPrompt` | 是 | 任务描述 |
+| `session_id` | str | 否 | 会话 ID（多轮对话）|
+| `cancel_event` | `asyncio.Event` | 否 | 取消信号（v1.10.3+），设置后终止流并 yield `cancelled` 事件 |
+
 ```python
 # 异步
 async for chunk in client.stream("解释这段代码"):
@@ -256,6 +263,7 @@ class StreamChunk:
 | `tool_call` | 工具调用 | `tool_name`, `args`, `tool_call_id` |
 | `tool_result` | 工具结果 | `content`（结果文本）, `tool_name`, `tool_call_id` |
 | `done` | 任务完成 | `usage`（Token 用量） |
+| `cancelled` | 任务被取消（v1.10.3+） | — |
 | `compact` | 上下文压缩 | — |
 
 **完整示例：**
@@ -271,6 +279,28 @@ async with AsyncCodyClient() as client:
         elif chunk.type == "done":
             print(f"\n完成 (tokens: {chunk.usage.total_tokens})")
 ```
+
+**取消流式执行（v1.10.3+）：**
+
+通过 `cancel_event` 参数传入 `asyncio.Event`，在任意时刻调用 `event.set()` 即可取消正在进行的流：
+
+```python
+import asyncio
+
+cancel = asyncio.Event()
+
+async for chunk in client.stream("写一篇长文章", cancel_event=cancel):
+    if chunk.type == "text_delta":
+        print(chunk.content, end="")
+        # 收到足够内容后取消
+        if some_condition:
+            cancel.set()
+    elif chunk.type == "cancelled":
+        print("\n[已取消]")
+        break
+```
+
+取消后 core 层会 yield `CancelledEvent`，SDK 转为 `StreamChunk(type="cancelled")`。如果使用了 `session_id`，session 中会保存 `"(cancelled)"` 占位消息，保持会话一致性。
 
 ---
 
@@ -1196,8 +1226,8 @@ async with client:
 | 方法 | 说明 |
 |------|------|
 | `client.run(prompt, session_id=)` | 执行任务，返回 `RunResult` |
-| `client.stream(prompt, session_id=)` | 流式执行，yield `StreamChunk` |
-| `client.run_stream(prompt, session_id=)` | `stream()` 的别名 |
+| `client.stream(prompt, session_id=, cancel_event=)` | 流式执行，yield `StreamChunk`（`cancel_event` v1.10.3+） |
+| `client.run_stream(prompt, session_id=, cancel_event=)` | `stream()` 的别名 |
 | `client.tool(name, params)` | 直接调用内置工具，返回 `ToolResult` |
 
 ### MCP 方法（v1.9.0+）
@@ -1313,4 +1343,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-11
+**最后更新:** 2026-03-17

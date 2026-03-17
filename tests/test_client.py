@@ -3,8 +3,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import asyncio
+
 from cody.core.runner import (
-    CodyResult, TextDeltaEvent, DoneEvent,
+    CancelledEvent, CodyResult, TextDeltaEvent, DoneEvent,
     ToolCallEvent, ToolResultEvent, CompactEvent, ThinkingEvent,
 )
 
@@ -133,7 +135,7 @@ async def test_async_stream_with_tool_events():
     """Verify stream() yields StreamChunks with tool_call_id for tool events."""
     client = AsyncCodyClient()
 
-    async def fake_stream(prompt, message_history=None):
+    async def fake_stream(prompt, message_history=None, cancel_event=None):
         yield ToolCallEvent(tool_name="grep", args={"pattern": "foo"}, tool_call_id="tc_1")
         yield ToolResultEvent(tool_name="grep", tool_call_id="tc_1", result="match found")
         yield DoneEvent(result=CodyResult(output="done"))
@@ -156,6 +158,37 @@ async def test_async_stream_with_tool_events():
     assert tool_result.tool_name == "grep"
     assert tool_result.tool_call_id == "tc_1"
     assert tool_result.content == "match found"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_async_stream_cancel():
+    """Verify cancel_event stops the stream and yields a 'cancelled' chunk."""
+    client = AsyncCodyClient()
+
+    async def fake_stream(prompt, message_history=None, cancel_event=None):
+        yield TextDeltaEvent(content="Hello")
+        # Simulate cancel being set mid-stream
+        if cancel_event:
+            cancel_event.set()
+        yield CancelledEvent()
+
+    with patch.object(client, "get_runner") as mock_get_runner:
+        mock_runner = MagicMock()
+        mock_runner.run_stream = fake_stream
+        mock_get_runner.return_value = mock_runner
+
+        cancel = asyncio.Event()
+        chunks = []
+        async for chunk in client.stream("test", cancel_event=cancel):
+            chunks.append(chunk)
+
+    types = [c.type for c in chunks]
+    assert "text_delta" in types
+    assert "cancelled" in types
+    # No "done" event should appear after cancel
+    assert "done" not in types
 
     await client.close()
 
@@ -220,7 +253,7 @@ async def test_async_run_with_session():
 async def test_async_stream():
     client = AsyncCodyClient()
 
-    async def fake_stream(prompt, message_history=None):
+    async def fake_stream(prompt, message_history=None, cancel_event=None):
         yield TextDeltaEvent(content="Hello")
         yield TextDeltaEvent(content=" async")
         yield DoneEvent(result=CodyResult(output="Hello async"))

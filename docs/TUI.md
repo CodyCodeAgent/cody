@@ -452,7 +452,7 @@ App (CodyTUI)
 ```
 用户输入 → on_input_submitted() → _run_agent() → AgentRunner.run_stream()
                                             ↓
-StreamEvent → ThinkingEvent/TextDeltaEvent/ToolCallEvent/ToolResultEvent/DoneEvent
+StreamEvent → ThinkingEvent/TextDeltaEvent/ToolCallEvent/ToolResultEvent/DoneEvent/CancelledEvent
                                             ↓
 StreamBubble.append() → 标记 dirty → 30fps 定时器批量刷新 UI + scroll_end
 ```

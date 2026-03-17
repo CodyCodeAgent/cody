@@ -308,9 +308,10 @@ class CodyTUI(App):
         try:
             assert self._client is not None
             async for chunk in self._client.stream(
-                prompt, session_id=self._session_id
+                prompt, session_id=self._session_id,
+                cancel_event=self._cancel_event,
             ):
-                if self._cancel_event.is_set():
+                if chunk.type == "cancelled":
                     bubble.append("\n\n[dim italic](cancelled)[/dim italic]")
                     break
 
