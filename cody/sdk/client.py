@@ -978,6 +978,84 @@ class AsyncCodyClient:
         })
         return result.result
 
+    # ── Interaction Methods ──────────────────────────────────────────────
+
+    async def submit_interaction(self, request_id: str, action: str = "answer", content: str = "") -> None:
+        """Submit a human response to a pending interaction request.
+
+        Args:
+            request_id: The ID of the InteractionRequest to respond to.
+            action: One of "approve", "reject", "revise", "answer".
+            content: Response content (e.g., the user's answer or revision).
+        """
+        from ..core.interaction import InteractionResponse
+        runner = self.get_runner()
+        response = InteractionResponse(
+            request_id=request_id, action=action, content=content,
+        )
+        await runner.submit_interaction(response)
+
+    # ── Memory Methods ────────────────────────────────────────────────────
+
+    async def add_memory(
+        self,
+        category: str,
+        content: str,
+        *,
+        source_task_id: str = "",
+        source_task_title: str = "",
+        confidence: float = 1.0,
+        tags: list[str] | None = None,
+    ) -> None:
+        """Add a memory entry to the project memory store.
+
+        Args:
+            category: One of "conventions", "patterns", "issues", "decisions".
+            content: The memory content.
+            source_task_id: Optional task ID that produced this memory.
+            source_task_title: Optional task title.
+            confidence: Confidence score (0.0-1.0).
+            tags: Optional tags for filtering.
+        """
+        from ..core.memory import MemoryEntry
+        runner = self.get_runner()
+        if not runner._memory_store:
+            return
+        entry = MemoryEntry(
+            content=content,
+            source_task_id=source_task_id,
+            source_task_title=source_task_title,
+            confidence=confidence,
+            tags=tags or [],
+        )
+        await runner._memory_store.add_entries(category, [entry])
+
+    async def get_memory(self) -> dict[str, list[dict]]:
+        """Get all project memory entries grouped by category."""
+        runner = self.get_runner()
+        if not runner._memory_store:
+            return {}
+        all_entries = runner._memory_store.get_all_entries()
+        return {
+            cat: [
+                {
+                    "id": e.id,
+                    "content": e.content,
+                    "confidence": e.confidence,
+                    "tags": e.tags,
+                    "created_at": e.created_at,
+                }
+                for e in entries
+            ]
+            for cat, entries in all_entries.items()
+        }
+
+    async def clear_memory(self) -> None:
+        """Clear all project memory."""
+        runner = self.get_runner()
+        if runner._memory_store:
+            runner._memory_store.clear()
+
     # ── Event Methods ────────────────────────────────────────────────────
 
     def on(self, event_type, handler):
@@ -1132,3 +1210,15 @@ class CodyClient:
 
     def get_metrics(self) -> Optional[dict]:
         return self._async.get_metrics()
+
+    def submit_interaction(self, request_id: str, action: str = "answer", content: str = "") -> None:
+        _run_async(self._async.submit_interaction(request_id, action, content))
+
+    def add_memory(self, category: str, content: str, **kwargs) -> None:
+        _run_async(self._async.add_memory(category, content, **kwargs))
+
+    def get_memory(self) -> dict:
+        return _run_async(self._async.get_memory())
+
+    def clear_memory(self) -> None:
+        _run_async(self._async.clear_memory())

@@ -10,9 +10,11 @@ from typing import Optional
 
 from ..core.runner import (
     CancelledEvent,
+    CircuitBreakerEvent,
     CodyResult,
     CompactEvent,
     DoneEvent,
+    InteractionRequestEvent,
     SessionStartEvent,
     StreamEvent as CoreStreamEvent,
     TextDeltaEvent,
@@ -42,7 +44,8 @@ class RunResult:
 
 @dataclass
 class StreamChunk:
-    type: str  # "session_start", "text_delta", "thinking", "tool_call", "tool_result", "done", "compact", "cancelled"
+    type: str  # "session_start", "text_delta", "thinking", "tool_call", "tool_result", "done",
+    #            "compact", "cancelled", "circuit_breaker", "interaction_request"
     content: str = ""
     session_id: Optional[str] = None
     # Tool call details (populated when type="tool_call")
@@ -59,6 +62,10 @@ class StreamChunk:
     used_llm: bool = False
     # Message history (populated when type="done") for multi-turn state
     message_history: Optional[list] = None
+    # Interaction request details (populated when type="interaction_request")
+    request_id: Optional[str] = None
+    interaction_kind: Optional[str] = None
+    options: Optional[list[str]] = None
 
 
 @dataclass
@@ -123,6 +130,21 @@ def _event_to_chunk(
         return StreamChunk(type="cancelled", session_id=session_id)
     elif isinstance(event, SessionStartEvent):
         return StreamChunk(type="session_start", session_id=session_id)
+    elif isinstance(event, CircuitBreakerEvent):
+        return StreamChunk(
+            type="circuit_breaker",
+            content=f"Circuit breaker: {event.reason} (tokens={event.tokens_used}, cost=${event.cost_usd:.4f})",
+            session_id=session_id,
+        )
+    elif isinstance(event, InteractionRequestEvent):
+        return StreamChunk(
+            type="interaction_request",
+            content=event.request.prompt,
+            session_id=session_id,
+            request_id=event.request.id,
+            interaction_kind=event.request.kind,
+            options=event.request.options or None,
+        )
     return StreamChunk(type="unknown", session_id=session_id)
 
 

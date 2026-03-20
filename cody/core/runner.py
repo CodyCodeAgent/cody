@@ -346,7 +346,9 @@ class AgentRunner:
         self._cb_estimated_cost: float = 0.0
         self._cb_recent_results: list[str] = []
 
-        # Pending interaction requests (id → Future)
+        # Pending interaction requests (id → Future).
+        # Futures are created by consumers (CLI/TUI/Web) when they emit
+        # InteractionRequestEvent; submit_interaction() resolves them.
         self._pending_interactions: dict[str, asyncio.Future] = {}
 
         # Project memory
@@ -376,7 +378,8 @@ class AgentRunner:
         System prompt order:
           1. Base persona
           2. CODY.md project instructions (global ~/.cody/CODY.md + project CODY.md)
-          3. Available skills XML (Agent Skills standard)
+          3. Project memory (cross-session learnings)
+          4. Available skills XML (Agent Skills standard)
         """
         # 1. Base persona
         system_parts = [
@@ -930,6 +933,7 @@ class AgentRunner:
         Note: LLM compaction is not available in sync mode. Falls back to
         truncation-based compaction regardless of config.compaction.use_llm.
         """
+        self._reset_circuit_breaker()
         deps = self._create_deps()
         if self.config.compaction.use_llm:
             logger.debug(
@@ -941,7 +945,10 @@ class AgentRunner:
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )
-        return CodyResult.from_raw(result)
+        cody_result = CodyResult.from_raw(result)
+        self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
+        self._check_circuit_breaker()
+        return cody_result
 
     # ── Session-aware run methods ────────────────────────────────────────────
 
@@ -1026,4 +1033,9 @@ class AgentRunner:
                 store.add_message(sid, "assistant", event.result.output)
             elif isinstance(event, CancelledEvent):
                 store.add_message(sid, "assistant", "(cancelled)")
+            elif isinstance(event, CircuitBreakerEvent):
+                store.add_message(
+                    sid, "assistant",
+                    f"(circuit breaker: {event.reason})",
+                )
             yield event, sid

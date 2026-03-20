@@ -17,6 +17,19 @@ _LAZY_IMPORTS = {
     "DoneEvent": (".runner", "DoneEvent"),
     "CancelledEvent": (".runner", "CancelledEvent"),
     "SessionStartEvent": (".runner", "SessionStartEvent"),
+    "CircuitBreakerEvent": (".runner", "CircuitBreakerEvent"),
+    "InteractionRequestEvent": (".runner", "InteractionRequestEvent"),
+    "TaskMetadata": (".runner", "TaskMetadata"),
+    # interaction
+    "InteractionRequest": (".interaction", "InteractionRequest"),
+    "InteractionResponse": (".interaction", "InteractionResponse"),
+    # memory
+    "ProjectMemoryStore": (".memory", "ProjectMemoryStore"),
+    "MemoryEntry": (".memory", "MemoryEntry"),
+    # circuit_breaker error
+    "CircuitBreakerError": (".errors", "CircuitBreakerError"),
+    # config
+    "CircuitBreakerConfig": (".config", "CircuitBreakerConfig"),
     # session
     "SessionStore": (".session", "SessionStore"),
     # skill_manager

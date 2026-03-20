@@ -34,8 +34,9 @@ def raise_structured(
 def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
     """Convert a StreamEvent to a JSON-serializable dict for SSE/WebSocket."""
     from cody.core.runner import (
-        CompactEvent, ThinkingEvent, TextDeltaEvent, ToolCallEvent,
-        ToolResultEvent, DoneEvent,
+        CancelledEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
+        ToolCallEvent, ToolResultEvent, DoneEvent, CircuitBreakerEvent,
+        InteractionRequestEvent,
     )
 
     base: dict[str, Any] = {"type": event.event_type}
@@ -76,6 +77,22 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
             base["usage"] = {
                 "total_tokens": usage.total_tokens,
             }
+        if event.result.metadata:
+            base["metadata"] = {
+                "summary": event.result.metadata.summary,
+                "confidence": event.result.metadata.confidence,
+            }
+    elif isinstance(event, CancelledEvent):
+        pass  # base already has {"type": "cancelled"}
+    elif isinstance(event, CircuitBreakerEvent):
+        base["reason"] = event.reason
+        base["tokens_used"] = event.tokens_used
+        base["cost_usd"] = event.cost_usd
+    elif isinstance(event, InteractionRequestEvent):
+        base["request_id"] = event.request.id
+        base["kind"] = event.request.kind
+        base["prompt"] = event.request.prompt
+        base["options"] = event.request.options
 
     return base
 
