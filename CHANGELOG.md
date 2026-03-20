@@ -16,6 +16,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 - **SessionStartEvent**：新增 `session_start` 流式事件，作为 stream 的第一个事件 yield，确保调用方在 AI 调用前就能拿到 `session_id`（即使后续 AI 报错也不影响）
 
+### Added
+
+- **CircuitBreaker 止损熔断**：新增 `CircuitBreakerConfig` 配置块，支持 token 上限（`max_tokens`）、成本上限（`max_cost_usd`）、死循环检测（`loop_detect_turns` + `loop_similarity_threshold`）。超限时 `run()` 抛出 `CircuitBreakerError`，`run_stream()` 产出 `CircuitBreakerEvent` 后停止
+- **StructuredOutput 结构化输出**：`CodyResult` 新增 `metadata: TaskMetadata` 字段，包含 `summary`（一句话摘要）、`confidence`（AI 自评置信度，解析 `<confidence>` 标记）、`issues`、`next_steps`。不破坏现有 `result.output` 接口
+- **HumanInteraction 统一交互层**：新建 `core/interaction.py`，定义 `InteractionRequest`（kind=question/confirm/feedback）和 `InteractionResponse`（action=approve/reject/revise/answer），通过 `request_id` 匹配。`AgentRunner` 新增 `submit_interaction()` 方法，`StreamEvent` 新增 `InteractionRequestEvent`
+- **ProjectMemory 跨任务记忆**：新建 `core/memory.py`，`ProjectMemoryStore` 按 workdir 哈希存储跨会话记忆（conventions/patterns/issues/decisions 四类 JSON 文件），AgentRunner 初始化时自动加载并注入 system prompt
+
 ---
 
 ## [1.10.3] - 2026-03-17

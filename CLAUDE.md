@@ -49,9 +49,12 @@ web/backend/            →  core/runner.py  →  core/tools/
 
 ## 关键入口文件
 
-- `core/runner.py` — 框架中枢：Agent 创建、工具注册、run/stream 执行
+- `core/runner.py` — 框架中枢：Agent 创建、工具注册、run/stream 执行、熔断检查、记忆加载
 - `core/tools/registry.py` — 声明式工具注册表（`*_TOOLS` 列表）
 - `core/deps.py` — CodyDeps 数据类 + ToolContext，工具的依赖注入容器
+- `core/config.py` — 配置管理，含 `CircuitBreakerConfig` 熔断配置
+- `core/interaction.py` — 统一人工交互层（InteractionRequest/Response）
+- `core/memory.py` — 跨任务项目记忆（ProjectMemoryStore）
 - `sdk/client.py` — SDK 客户端：Builder/事件/指标，直接包装 core
 - `web/backend/app.py` — FastAPI 应用入口
 - `cody/client.py` — 向后兼容 shim，新代码应直接用 `cody.sdk`

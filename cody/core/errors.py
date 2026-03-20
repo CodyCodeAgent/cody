@@ -110,3 +110,13 @@ class ToolInvalidParams(ToolError):
 
     def __init__(self, message: str):
         super().__init__(ErrorCode.INVALID_PARAMS, message)
+
+
+class CircuitBreakerError(Exception):
+    """Raised when the circuit breaker trips (token/cost limit or loop detected)."""
+
+    def __init__(self, reason: str, tokens_used: int, cost_usd: float = 0.0):
+        self.reason = reason
+        self.tokens_used = tokens_used
+        self.cost_usd = cost_usd
+        super().__init__(f"Circuit breaker tripped: {reason} (tokens={tokens_used}, cost=${cost_usd:.4f})")

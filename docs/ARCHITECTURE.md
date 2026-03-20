@@ -63,7 +63,8 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 │  │  │ spawn     │ SQLite    │ compact  │ Audit Log   │      │  │
 │  │  │ kill      │ sessions  │ chunk    │ Rate Limit  │      │  │
 │  │  │ wait      │ messages  │ select   │ FileHistory │      │  │
-│  │  │ 4 types   │ history   │ tokens   │             │      │  │
+│  │  │ 4 types   │ history   │ tokens   │ CircuitBkr  │      │  │
+│  │  │           │           │          │ ProjMemory  │      │  │
 │  │  └───────────┴───────────┴──────────┴─────────────┘      │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
@@ -99,13 +100,15 @@ The central orchestrator. Responsibilities:
 
 **StreamEvent system:** `run_stream()` yields structured `StreamEvent` objects (not raw text):
 ```
-SessionStartEvent — session ID (always first event in run_stream_with_session, v1.10.4+)
-ThinkingEvent     — incremental thinking content (delta)
-TextDeltaEvent    — incremental text output (delta)
-ToolCallEvent     — tool call initiated (tool_name, args, tool_call_id)
-ToolResultEvent   — tool call result (tool_name, result)
-DoneEvent         — stream complete, contains full CodyResult
-CancelledEvent    — run cancelled via cancel_event (v1.10.3+)
+SessionStartEvent       — session ID (always first event in run_stream_with_session, v1.10.4+)
+ThinkingEvent           — incremental thinking content (delta)
+TextDeltaEvent          — incremental text output (delta)
+ToolCallEvent           — tool call initiated (tool_name, args, tool_call_id)
+ToolResultEvent         — tool call result (tool_name, result)
+DoneEvent               — stream complete, contains full CodyResult
+CancelledEvent          — run cancelled via cancel_event (v1.10.3+)
+CircuitBreakerEvent     — run terminated by circuit breaker (reason, tokens, cost)
+InteractionRequestEvent — human input needed (question/confirm/feedback)
 ```
 `run_stream()` accepts an optional `cancel_event: asyncio.Event` parameter. When set, the stream yields a `CancelledEvent` and stops. Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
 
@@ -115,6 +118,7 @@ CodyResult
 ├── output: str            # final text output
 ├── thinking: str | None   # concatenated thinking content
 ├── tool_traces: list      # all tool calls with args and results
+├── metadata: TaskMetadata | None  # structured output (summary, confidence, issues, next_steps)
 └── _raw_result            # pydantic-ai AgentRunResult (for all_messages, usage)
 ```
 
