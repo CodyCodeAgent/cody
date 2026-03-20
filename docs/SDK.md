@@ -20,10 +20,14 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 8. [事件系统](#事件系统)
 9. [指标收集](#指标收集)
 10. [MCP 集成](#mcp-集成)
-11. [便捷方法](#便捷方法)
-12. [错误处理](#错误处理)
-13. [最佳实践](#最佳实践)
-14. [API 参考](#api-参考)
+11. [熔断器（Circuit Breaker）](#熔断器circuit-breaker)
+12. [结构化输出（Structured Output）](#结构化输出structured-output)
+13. [人工交互（Human Interaction）](#人工交互human-interaction)
+14. [项目记忆（Project Memory）](#项目记忆project-memory)
+15. [便捷方法](#便捷方法)
+16. [错误处理](#错误处理)
+17. [最佳实践](#最佳实践)
+18. [API 参考](#api-参考)
 
 ---
 
@@ -252,6 +256,10 @@ class StreamChunk:
     estimated_tokens_saved: int       # 估计节省的 token 数（type="compact" 时）
     # v1.7.4+ done 事件消息历史
     message_history: Optional[list]   # 完整对话历史（type="done" 时）
+    # 人工交互事件详情（type="interaction_request" 时）
+    request_id: Optional[str]         # 交互请求 ID，用于 submit_interaction() 匹配
+    interaction_kind: Optional[str]   # 交互类型："question" / "confirm" / "feedback"
+    options: Optional[list[str]]      # 可选项列表
 ```
 
 **流式事件类型：**
@@ -266,6 +274,8 @@ class StreamChunk:
 | `done` | 任务完成 | `usage`（Token 用量） |
 | `cancelled` | 任务被取消（v1.10.3+） | — |
 | `compact` | 上下文压缩 | — |
+| `circuit_breaker` | 熔断器触发，任务终止 | `content`（原因描述） |
+| `interaction_request` | 需要人工输入 | `request_id`, `interaction_kind`, `options`, `content`（提示文本） |
 
 **完整示例：**
 ```python
@@ -1068,6 +1078,193 @@ async with AsyncCodyClient(config=cfg, auto_start_mcp=True) as client:
 
 ---
 
+## 熔断器（Circuit Breaker）
+
+AgentRunner 内置熔断保护，防止 Agent 失控消耗过多资源。熔断器在每次 `run()` / `run_stream()` / `run_sync()` 执行前自动重置，执行后检查。
+
+### 触发条件
+
+| 条件 | 默认阈值 | 配置项 |
+|------|---------|--------|
+| Token 超限 | 200,000 | `circuit_breaker.max_tokens` |
+| 成本超限 | $5.00 | `circuit_breaker.max_cost_usd` |
+| 死循环检测 | 连续 6 次相似结果 | `circuit_breaker.loop_detect_turns` + `loop_similarity_threshold` |
+
+### 行为
+
+- `run()` / `run_sync()`：抛出 `CircuitBreakerError`
+- `run_stream()`：yield `CircuitBreakerEvent`（SDK 转为 `StreamChunk(type="circuit_breaker")`）
+- 带 session 时：自动写入 `"(circuit breaker: {reason})"` 消息保持会话一致
+
+### 配置
+
+```python
+# 通过配置文件 .cody/config.json
+{
+    "circuit_breaker": {
+        "enabled": true,
+        "max_tokens": 200000,
+        "max_cost_usd": 5.0,
+        "loop_detect_turns": 6,
+        "loop_similarity_threshold": 0.9
+    }
+}
+```
+
+### 捕获熔断
+
+```python
+from cody.core.errors import CircuitBreakerError
+
+try:
+    result = await client.run("一个可能很耗资源的任务")
+except CircuitBreakerError as e:
+    print(f"熔断: {e.reason}, tokens={e.tokens_used}, cost=${e.cost_usd:.4f}")
+
+# 流式场景
+async for chunk in client.stream("任务"):
+    if chunk.type == "circuit_breaker":
+        print(f"熔断: {chunk.content}")
+        break
+    elif chunk.type == "text_delta":
+        print(chunk.content, end="")
+```
+
+---
+
+## 结构化输出（Structured Output）
+
+`CodyResult`（core 层）现在包含 `metadata: TaskMetadata` 字段，自动从模型输出中提取结构化信息。
+
+### TaskMetadata
+
+```python
+@dataclass
+class TaskMetadata:
+    summary: str                    # 首行摘要（最多 200 字符）
+    confidence: Optional[float]     # AI 自评置信度（0.0-1.0），解析 <confidence> 标记
+    issues: list[str]               # 已知问题
+    next_steps: list[str]           # 建议的后续步骤
+```
+
+### 使用
+
+```python
+# 通过 core 层直接使用
+runner = client.get_runner()
+result = await runner.run("修复登录 bug")
+if result.metadata:
+    print(f"摘要: {result.metadata.summary}")
+    if result.metadata.confidence is not None:
+        print(f"置信度: {result.metadata.confidence:.0%}")
+```
+
+### 置信度标记
+
+模型输出中包含 `<confidence>0.85</confidence>` 标记时，会自动解析为 `metadata.confidence`。值必须在 0.0-1.0 范围内，否则忽略。
+
+---
+
+## 人工交互（Human Interaction）
+
+统一的人工交互层，支持三种场景：
+- **question**：AI 向用户提问
+- **confirm**：工具执行前的确认
+- **feedback**：请求结构化反馈（批准/拒绝/修订）
+
+### 流式监听
+
+```python
+async for chunk in client.stream("重构这个模块"):
+    if chunk.type == "interaction_request":
+        print(f"[{chunk.interaction_kind}] {chunk.content}")
+        print(f"选项: {chunk.options}")
+        # 提交响应
+        await client.submit_interaction(
+            request_id=chunk.request_id,
+            action="approve",       # "approve" / "reject" / "revise" / "answer"
+            content="",             # 修订内容或回答
+        )
+    elif chunk.type == "text_delta":
+        print(chunk.content, end="")
+```
+
+### InteractionRequest / InteractionResponse
+
+```python
+from cody.core.interaction import InteractionRequest, InteractionResponse
+
+# 请求（由 runner 创建）
+req = InteractionRequest(
+    kind="confirm",
+    prompt="是否删除 old_module.py？",
+    options=["确认删除", "保留"],
+)
+
+# 响应（由消费者提交）
+resp = InteractionResponse(
+    request_id=req.id,
+    action="approve",
+)
+await client.submit_interaction(req.id, action="approve")
+```
+
+---
+
+## 项目记忆（Project Memory）
+
+跨会话的项目记忆系统，自动积累 AI 在项目上的经验。每个项目（按 workdir 标识）独立存储，分四个类别：
+
+| 类别 | 说明 | 示例 |
+|------|------|------|
+| `conventions` | 代码风格、命名规范 | "使用 ruff 格式化，行宽 100" |
+| `patterns` | 设计模式、常用工具 | "使用 Factory 模式创建 handler" |
+| `issues` | 已知 bug、陷阱 | "SQLite 在并发写入时需要 WAL 模式" |
+| `decisions` | 架构选择、技术决策 | "选择 FastAPI 而非 Flask" |
+
+### 写入记忆
+
+```python
+await client.add_memory(
+    category="conventions",
+    content="项目使用 ruff 管理 lint，行宽 100",
+    confidence=0.9,
+    tags=["lint", "style"],
+)
+
+await client.add_memory(
+    category="decisions",
+    content="选择 pydantic-ai 作为 Agent 框架",
+    source_task_id="task_001",
+    source_task_title="评估 Agent 框架",
+)
+```
+
+### 读取记忆
+
+```python
+memory = await client.get_memory()
+for category, entries in memory.items():
+    print(f"\n=== {category} ===")
+    for entry in entries:
+        print(f"  [{entry['confidence']:.0%}] {entry['content']}")
+```
+
+### 清除记忆
+
+```python
+await client.clear_memory()
+```
+
+### 工作原理
+
+- 记忆存储在 `~/.cody/memory/<project_hash>/` 目录下，每个类别一个 JSON 文件
+- `AgentRunner` 初始化时自动加载记忆，注入到 system prompt 的 "Project Memory" 段
+- 每个类别最多 50 条，超出时自动淘汰最旧的条目
+- 低置信度条目（< 0.3）不会注入 system prompt
+
+---
+
 ## 便捷方法
 
 ```python
@@ -1233,6 +1430,15 @@ async with client:
 | `client.run_stream(prompt, session_id=, cancel_event=)` | `stream()` 的别名 |
 | `client.tool(name, params)` | 直接调用内置工具，返回 `ToolResult` |
 
+### 熔断 / 交互 / 记忆方法
+
+| 方法 | 说明 |
+|------|------|
+| `client.submit_interaction(request_id, action=, content=)` | 提交人工交互响应 |
+| `client.add_memory(category, content, ...)` | 添加项目记忆条目 |
+| `client.get_memory()` | 获取所有项目记忆（按类别分组） |
+| `client.clear_memory()` | 清除项目所有记忆 |
+
 ### MCP 方法（v1.9.0+）
 
 | 方法 | 说明 |
@@ -1315,7 +1521,7 @@ async with client:
 | 类 | 说明 |
 |------|------|
 | `RunResult` | 执行结果（output, session_id, usage, thinking） |
-| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, tool_call_id, usage） |
+| `StreamChunk` | 流式块（type, content, session_id, tool_name, args, tool_call_id, usage, request_id, interaction_kind, options） |
 | `ToolResult` | 工具结果（result） |
 | `SessionInfo` | 会话摘要 |
 | `SessionDetail` | 会话详情（含消息列表） |
@@ -1328,6 +1534,18 @@ async with client:
 | `Prompt` | `Union[str, MultimodalPrompt]`，统一 Prompt 类型 |
 | `MultimodalPrompt` | 多模态 Prompt（text + images） |
 | `ImageData` | 图片数据（base64 编码 + media_type） |
+
+### Core 类型（通过 `cody.core` 访问）
+
+| 类 | 说明 |
+|------|------|
+| `TaskMetadata` | 结构化输出元数据（summary, confidence, issues, next_steps） |
+| `CircuitBreakerConfig` | 熔断器配置（max_tokens, max_cost_usd, loop_detect_turns 等） |
+| `CircuitBreakerError` | 熔断异常（reason, tokens_used, cost_usd） |
+| `InteractionRequest` | 人工交互请求（id, kind, prompt, options, context） |
+| `InteractionResponse` | 人工交互响应（request_id, action, content） |
+| `ProjectMemoryStore` | 项目记忆存储（from_workdir, add_entries, get_all_entries 等） |
+| `MemoryEntry` | 记忆条目（content, confidence, tags, source_task_id 等） |
 
 ### 错误类型
 
@@ -1346,4 +1564,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-17
+**最后更新:** 2026-03-20
