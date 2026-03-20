@@ -985,9 +985,38 @@ class AgentRunner:
                             node.user_prompt = combined  # type: ignore[union-attr]
                             yield UserInputReceivedEvent(content=combined)
 
-                        # Stream tool calls and results
-                        async with node.stream(agent_run.ctx) as tool_stream:
-                            async for event in tool_stream:
+                        # Stream tool calls and results, merging interaction
+                        # events that may arrive while tools are executing.
+                        # We use a merged queue so that interaction_request events
+                        # are yielded to the caller even when a tool (e.g. question)
+                        # is blocked awaiting a response via its Future.
+                        _merged_q: asyncio.Queue = asyncio.Queue()
+                        _TOOL_STREAM_DONE = object()
+
+                        async def _consume_tool_stream():
+                            async with node.stream(agent_run.ctx) as tool_stream:
+                                async for ev in tool_stream:
+                                    await _merged_q.put(("tool", ev))
+                            await _merged_q.put(("done", _TOOL_STREAM_DONE))
+
+                        async def _forward_interactions():
+                            while True:
+                                ia_event = await interaction_q.get()
+                                await _merged_q.put(("interaction", ia_event))
+
+                        _tool_task = asyncio.create_task(_consume_tool_stream())
+                        _ia_task = asyncio.create_task(_forward_interactions())
+
+                        try:
+                            while True:
+                                kind, item = await _merged_q.get()
+                                if kind == "done":
+                                    break
+                                if kind == "interaction":
+                                    yield item
+                                    continue
+                                # kind == "tool"
+                                event = item
                                 if isinstance(event, FunctionToolCallEvent):
                                     part = event.part
                                     args = part.args if isinstance(part.args, dict) else {}
@@ -1013,8 +1042,16 @@ class AgentRunner:
                                             result=content,
                                         )
                                         self._update_circuit_breaker(content, None)
+                        finally:
+                            _ia_task.cancel()
+                            try:
+                                await _ia_task
+                            except asyncio.CancelledError:
+                                pass
+                            if not _tool_task.done():
+                                await _tool_task
 
-                        # Drain any interaction events emitted during tool execution
+                        # Drain any remaining interaction events after tool execution
                         for interaction_event in _drain_interaction_q():
                             yield interaction_event
 
