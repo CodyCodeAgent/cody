@@ -8,12 +8,14 @@ from cody.core.config import CompactionConfig, Config
 from cody.core.context import (
     CompactResult,
     FileChunk,
+    PruneResult,
     _format_messages_for_summary,
     _resolve_compaction_model,
     chunk_file,
     compact_messages,
     compact_messages_llm,
     estimate_tokens,
+    prune_tool_outputs,
     select_relevant_context,
 )
 
@@ -425,3 +427,176 @@ def test_resolve_compaction_model_missing_base_url():
     config = Config(model="test")
     with pytest.raises(ValueError, match="model_base_url is required"):
         _resolve_compaction_model(config)
+
+
+# ── prune_tool_outputs ──────────────────────────────────────────────────────
+
+
+def test_prune_no_pruning_under_threshold():
+    """Under max_tokens — no pruning needed."""
+    msgs = [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
+    result_msgs, prune_result = prune_tool_outputs(msgs, max_tokens=100_000)
+    assert result_msgs == msgs
+    assert prune_result is None
+
+
+def test_prune_replaces_old_large_outputs():
+    """Old large assistant outputs are replaced with markers."""
+    msgs = [
+        {"role": "user", "content": "read file"},
+        {"role": "assistant", "content": "x" * 5000},  # large old output
+        {"role": "user", "content": "another question"},
+        {"role": "assistant", "content": "y" * 5000},  # large old output
+        {"role": "user", "content": "recent question"},
+        {"role": "assistant", "content": "recent answer"},
+    ]
+    result_msgs, prune_result = prune_tool_outputs(
+        msgs,
+        max_tokens=500,
+        protect_recent_tokens=100,
+        min_saving_tokens=500,
+        min_content_tokens=100,
+    )
+    assert prune_result is not None
+    assert prune_result.messages_pruned >= 1
+    assert prune_result.estimated_tokens_saved > 0
+    # Recent messages should be intact
+    assert result_msgs[-1]["content"] == "recent answer"
+    assert result_msgs[-2]["content"] == "recent question"
+    # Old large outputs should be pruned
+    assert "[output pruned at" in result_msgs[1]["content"]
+
+
+def test_prune_preserves_user_messages():
+    """User messages are never pruned (only tool/assistant roles)."""
+    msgs = [
+        {"role": "user", "content": "x" * 5000},  # large user message
+        {"role": "assistant", "content": "y" * 5000},  # large assistant
+        {"role": "user", "content": "recent"},
+        {"role": "assistant", "content": "recent"},
+    ]
+    result_msgs, prune_result = prune_tool_outputs(
+        msgs,
+        max_tokens=500,
+        protect_recent_tokens=100,
+        min_saving_tokens=500,
+        min_content_tokens=100,
+    )
+    assert prune_result is not None
+    # User message content should be preserved
+    assert result_msgs[0]["content"] == "x" * 5000
+    # Assistant message should be pruned
+    assert "[output pruned at" in result_msgs[1]["content"]
+
+
+def test_prune_protects_recent_messages():
+    """Messages within protect_recent_tokens window are never pruned."""
+    msgs = [
+        {"role": "assistant", "content": "old " * 500},
+        {"role": "assistant", "content": "recent " * 500},
+    ]
+    # Set protect_recent_tokens high enough to protect both messages
+    result_msgs, prune_result = prune_tool_outputs(
+        msgs,
+        max_tokens=10,
+        protect_recent_tokens=999_999,
+        min_saving_tokens=100,
+    )
+    # Nothing prunable — all protected
+    assert prune_result is None
+
+
+def test_prune_skips_small_messages():
+    """Messages under min_content_tokens are not pruned."""
+    msgs = [
+        {"role": "assistant", "content": "short"},  # too small
+        {"role": "user", "content": "recent"},
+        {"role": "assistant", "content": "recent"},
+    ]
+    result_msgs, prune_result = prune_tool_outputs(
+        msgs,
+        max_tokens=1,
+        protect_recent_tokens=50,
+        min_saving_tokens=1,
+        min_content_tokens=9999,  # very high threshold
+    )
+    assert prune_result is None
+
+
+def test_prune_stops_when_under_threshold():
+    """Pruning stops as soon as total tokens drop below max_tokens."""
+    msgs = [
+        {"role": "assistant", "content": "a" * 4000},  # ~1000 tokens
+        {"role": "assistant", "content": "b" * 4000},  # ~1000 tokens
+        {"role": "assistant", "content": "c" * 4000},  # ~1000 tokens
+        {"role": "user", "content": "recent"},
+        {"role": "assistant", "content": "recent"},
+    ]
+    # Total ~3000+ tokens; max_tokens=2100 means we need to prune ~1000
+    result_msgs, prune_result = prune_tool_outputs(
+        msgs,
+        max_tokens=2100,
+        protect_recent_tokens=50,
+        min_saving_tokens=100,
+        min_content_tokens=50,
+    )
+    assert prune_result is not None
+    # Should prune only as many as needed (oldest first)
+    assert prune_result.messages_pruned >= 1
+
+
+def test_prune_insufficient_savings():
+    """No pruning when potential savings < min_saving_tokens."""
+    msgs = [
+        {"role": "assistant", "content": "x" * 1000},
+        {"role": "user", "content": "recent"},
+        {"role": "assistant", "content": "recent"},
+    ]
+    result_msgs, prune_result = prune_tool_outputs(
+        msgs,
+        max_tokens=10,
+        protect_recent_tokens=50,
+        min_saving_tokens=999_999,  # impossibly high
+        min_content_tokens=50,
+    )
+    assert prune_result is None
+
+
+def test_prune_result_fields():
+    """PruneResult dataclass fields."""
+    r = PruneResult(messages_pruned=3, estimated_tokens_saved=1500)
+    assert r.messages_pruned == 3
+    assert r.estimated_tokens_saved == 1500
+
+
+def test_prune_does_not_mutate_original():
+    """Original messages list is not modified."""
+    original_content = "x" * 5000
+    msgs = [
+        {"role": "assistant", "content": original_content},
+        {"role": "user", "content": "recent"},
+        {"role": "assistant", "content": "recent"},
+    ]
+    original_msgs = [dict(m) for m in msgs]
+    prune_tool_outputs(
+        msgs,
+        max_tokens=100,
+        protect_recent_tokens=50,
+        min_saving_tokens=100,
+        min_content_tokens=50,
+    )
+    assert msgs == original_msgs
+
+
+# ── CompactionConfig prune defaults ────────────────────────────────────────
+
+
+def test_compaction_config_prune_defaults():
+    cc = CompactionConfig()
+    assert cc.enable_pruning is True
+    assert cc.prune_protect_tokens == 40_000
+    assert cc.prune_min_saving_tokens == 20_000
+    assert cc.prune_min_content_tokens == 200

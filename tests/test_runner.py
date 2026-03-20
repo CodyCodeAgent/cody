@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from cody.core.config import Config
+from cody.core.config import CompactionConfig, Config
 from cody.core.prompt import ImageData, MultimodalPrompt
 from cody.core.runner import AgentRunner, _build_allowed_roots
 from cody.core.session import Message, SessionStore
@@ -237,8 +237,10 @@ async def test_run_with_session_continue(tmp_path):
 
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
-        runner.config = MagicMock()
-        runner.config.model = "test-model"
+        mock_config = MagicMock()
+        mock_config.model = "test-model"
+        mock_config.compaction = CompactionConfig()
+        runner.config = mock_config
         runner.workdir = tmp_path
         runner.skill_manager = MagicMock()
         runner.run = AsyncMock(return_value=mock_result)

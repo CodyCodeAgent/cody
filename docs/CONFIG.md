@@ -73,7 +73,11 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "model_base_url": null,
     "max_tokens": 100000,
     "keep_recent": 4,
-    "max_summary_tokens": 500
+    "max_summary_tokens": 500,
+    "enable_pruning": true,
+    "prune_protect_tokens": 40000,
+    "prune_min_saving_tokens": 20000,
+    "prune_min_content_tokens": 200
   }
 }
 ```
@@ -577,7 +581,39 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ---
 
-**完整示例：** 使用低成本模型做上下文压缩
+#### `compaction.enable_pruning`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 启用选择性修剪（Selective Pruning）。在执行全量压缩前，先尝试将旧的大型工具输出替换为轻量标记。灵感来自 OpenCode 的两阶段策略，能在不丢失对话结构的情况下释放 token 空间
+
+---
+
+#### `compaction.prune_protect_tokens`
+
+**类型:** `integer`
+**默认:** `40000`
+**说明:** 最近消息的保护窗口（token 数）。在此窗口内的消息永远不会被修剪
+
+---
+
+#### `compaction.prune_min_saving_tokens`
+
+**类型:** `integer`
+**默认:** `20000`
+**说明:** 执行修剪的最低节省阈值。只有当可释放的 token 数超过此值时才执行修剪
+
+---
+
+#### `compaction.prune_min_content_tokens`
+
+**类型:** `integer`
+**默认:** `200`
+**说明:** 单条消息的最小修剪阈值。低于此 token 数的消息不会被修剪（避免修剪小输出）
+
+---
+
+**完整示例：** 使用低成本模型做上下文压缩 + 选择性修剪
 
 ```json
 {
@@ -587,12 +623,17 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "model_base_url": "https://api.openai.com/v1",
     "max_tokens": 80000,
     "keep_recent": 6,
-    "max_summary_tokens": 600
+    "max_summary_tokens": 600,
+    "enable_pruning": true,
+    "prune_protect_tokens": 40000,
+    "prune_min_saving_tokens": 20000,
+    "prune_min_content_tokens": 200
   }
 }
 ```
 
 > **注意：** `run_sync()` 同步模式下 LLM 压缩不可用，会自动降级为截断式压缩。
+> 修剪（Pruning）在同步和异步模式下均可用。
 
 ---
 

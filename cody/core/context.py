@@ -37,6 +37,128 @@ def estimate_tokens(text) -> int:
     return max(1, non_cjk_len // _CHARS_PER_TOKEN + int(cjk_count * 1.5))
 
 
+# ── Selective pruning ────────────────────────────────────────────────────────
+#
+# Inspired by OpenCode's two-phase approach: before doing expensive full
+# compaction (truncation or LLM summarization), first try *selectively pruning*
+# old tool outputs.  Large tool results (file reads, grep output, etc.) from
+# early in the conversation are replaced with lightweight "[pruned]" markers
+# while keeping the conversation structure intact.  This often frees enough
+# tokens to avoid a full compaction pass entirely.
+
+
+_PRUNE_MARKER = "[output pruned at {ts}]"
+
+# Tool-call outputs whose role matches these are candidates for pruning.
+_PRUNABLE_ROLES = {"tool", "assistant"}
+
+
+@dataclass
+class PruneResult:
+    """Result of selective output pruning."""
+    messages_pruned: int
+    estimated_tokens_saved: int
+
+
+def prune_tool_outputs(
+    messages: list[dict],
+    *,
+    max_tokens: int = 100_000,
+    protect_recent_tokens: int = 40_000,
+    min_saving_tokens: int = 20_000,
+    min_content_tokens: int = 200,
+) -> tuple[list[dict], PruneResult | None]:
+    """Selectively prune old tool outputs to reduce context size.
+
+    Scans backward through *messages*, identifies large tool/assistant outputs
+    outside the protected-recent window, and replaces their content with a
+    short marker.  The conversation structure (roles, ordering) is preserved.
+
+    Args:
+        messages: Conversation messages as dicts with ``role`` and ``content``.
+        max_tokens: Token threshold — pruning only runs when total exceeds this.
+        protect_recent_tokens: Token budget for the most recent messages that
+            are **never** pruned (similar to OpenCode's PRUNE_PROTECT = 40 000).
+        min_saving_tokens: Minimum tokens that *can* be freed before pruning
+            is attempted (similar to OpenCode's PRUNE_MINIMUM = 20 000).
+        min_content_tokens: Only prune individual messages whose content
+            exceeds this many tokens (avoids pruning tiny outputs).
+
+    Returns:
+        ``(messages, PruneResult | None)`` — *messages* is a **new** list with
+        pruned entries replaced.  Returns ``None`` result when no pruning was
+        performed.
+    """
+    total_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
+
+    if total_tokens <= max_tokens:
+        return messages, None
+
+    # ── Identify the protected tail ──────────────────────────────────────
+    # Walk backward to find where the protected window starts.
+    protected_start = len(messages)  # index: messages[protected_start:] are safe
+    tail_tokens = 0
+    for idx in range(len(messages) - 1, -1, -1):
+        tail_tokens += estimate_tokens(messages[idx].get("content", ""))
+        if tail_tokens >= protect_recent_tokens:
+            protected_start = idx + 1
+            break
+    else:
+        # All messages fit inside the protected window — nothing to prune
+        protected_start = 0
+
+    if protected_start == 0:
+        return messages, None
+
+    # ── Collect pruning candidates (old, large outputs) ──────────────────
+    # Candidates are (index, token_count) tuples, scanned backward so we
+    # prune the *oldest* large outputs first.
+    candidates: list[tuple[int, int]] = []
+    potential_savings = 0
+    for idx in range(protected_start):
+        msg = messages[idx]
+        if msg.get("role") not in _PRUNABLE_ROLES:
+            continue
+        content = msg.get("content", "")
+        tok = estimate_tokens(content)
+        if tok >= min_content_tokens:
+            marker_tokens = estimate_tokens(_PRUNE_MARKER.format(ts="x" * 19))
+            saving = tok - marker_tokens
+            if saving > 0:
+                candidates.append((idx, saving))
+                potential_savings += saving
+
+    if potential_savings < min_saving_tokens:
+        return messages, None
+
+    # ── Apply pruning ────────────────────────────────────────────────────
+    from datetime import datetime, timezone
+
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    marker = _PRUNE_MARKER.format(ts=now_str)
+
+    pruned = list(messages)  # shallow copy
+    tokens_saved = 0
+    messages_pruned = 0
+
+    for idx, saving in candidates:
+        pruned[idx] = {**pruned[idx], "content": marker}
+        tokens_saved += saving
+        messages_pruned += 1
+
+        # Stop once we're back under threshold
+        if total_tokens - tokens_saved <= max_tokens:
+            break
+
+    if messages_pruned == 0:
+        return messages, None
+
+    return pruned, PruneResult(
+        messages_pruned=messages_pruned,
+        estimated_tokens_saved=tokens_saved,
+    )
+
+
 # ── Auto-compact ─────────────────────────────────────────────────────────────
 
 

@@ -299,11 +299,16 @@ Manages language server processes with Content-Length framed JSON-RPC:
 
 ### 7. Context Management (`core/context.py`)
 
-- `compact_messages(msgs, max_tokens)` — summarize old messages when approaching token limits
+Two-phase context reduction strategy (inspired by OpenCode):
+
+1. **Selective Pruning** (`prune_tool_outputs`) — replaces old large tool/assistant outputs with lightweight `[output pruned at <ts>]` markers while preserving conversation structure. Configurable protection window for recent messages and minimum-saving thresholds.
+2. **Full Compaction** (`compact_messages` / `compact_messages_llm`) — summarizes old messages when pruning alone is insufficient. Supports truncation-based (fast) and LLM-based (semantic) modes.
+
+Additional utilities:
 - `chunk_file(path, chunk_size, overlap)` — split large files into overlapping chunks
 - `select_relevant_context(query, files, max_tokens)` — keyword scoring with token budget
 
-Auto-compaction is wired into `AgentRunner.run()` and `run_stream()`.
+Both phases are wired into `AgentRunner.run()` and `run_stream()` — pruning runs first, full compaction only if still over threshold.
 
 ### 8. Prompt Types (`core/prompt.py`)
 

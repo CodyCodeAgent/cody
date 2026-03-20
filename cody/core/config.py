@@ -97,6 +97,12 @@ class CompactionConfig(BaseModel):
     max_tokens: int = 100_000
     keep_recent: int = 4
     max_summary_tokens: int = 500
+    # Selective pruning — try to free tokens by replacing old tool outputs
+    # with lightweight markers before resorting to full compaction.
+    enable_pruning: bool = True
+    prune_protect_tokens: int = 40_000
+    prune_min_saving_tokens: int = 20_000
+    prune_min_content_tokens: int = 200
 
 
 class InteractionConfig(BaseModel):

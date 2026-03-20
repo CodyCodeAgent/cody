@@ -9,6 +9,7 @@ _LAZY_IMPORTS = {
     "CodyResult": (".runner", "CodyResult"),
     "ToolTrace": (".runner", "ToolTrace"),
     "StreamEvent": (".runner", "StreamEvent"),
+    "PruneEvent": (".runner", "PruneEvent"),
     "CompactEvent": (".runner", "CompactEvent"),
     "ThinkingEvent": (".runner", "ThinkingEvent"),
     "TextDeltaEvent": (".runner", "TextDeltaEvent"),
@@ -47,6 +48,8 @@ _LAZY_IMPORTS = {
     "SubAgentManager": (".sub_agent", "SubAgentManager"),
     # context
     "CompactResult": (".context", "CompactResult"),
+    "PruneResult": (".context", "PruneResult"),
+    "prune_tool_outputs": (".context", "prune_tool_outputs"),
     "FileChunk": (".context", "FileChunk"),
     "chunk_file": (".context", "chunk_file"),
     "compact_messages": (".context", "compact_messages"),
