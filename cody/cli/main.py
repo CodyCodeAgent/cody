@@ -125,12 +125,17 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
             budget = f" (budget: {cfg.thinking_budget})" if cfg.thinking_budget else ""
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
 
+    # Enable interaction so the AI can ask questions via the question tool
+    runner = client.get_runner()
+    runner.config.interaction.enabled = True
+
     async def _run_stream():
         await client.start_mcp()
         try:
             done_chunk = await _render_stream(
                 client.stream(prompt, session_id=resolved_session_id),
                 verbose=verbose,
+                client=client,
             )
             if verbose and done_chunk and done_chunk.usage:
                 console.print(f"[dim]Tokens: {done_chunk.usage.total_tokens}[/dim]")
@@ -185,6 +190,10 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         base_url=cfg.model_base_url,
     )
     client.set_config(cfg)
+
+    # Enable interaction so the AI can ask questions via the question tool
+    runner = client.get_runner()
+    runner.config.interaction.enabled = True
 
     # Resolve session via SDK
     session = None
@@ -254,6 +263,7 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
                 try:
                     await _render_stream(
                         client.stream(user_input, session_id=session.id),
+                        client=client,
                     )
                 except Exception as e:
                     console.print(f"\n[red]Error: {rich_escape(str(e))}[/red]\n")

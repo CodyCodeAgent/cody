@@ -4,6 +4,7 @@ Similar to chat.py but operates on a Task (which has its own session and
 uses the project's code_paths as allowed_roots). Router registered in app.py.
 """
 
+import asyncio
 import json
 import logging
 import subprocess
@@ -14,6 +15,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from cody.core import SessionStore
 from cody.core.auth import AuthError
+from cody.core.interaction import InteractionResponse
 
 from ..db import ProjectStore
 from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
@@ -90,6 +92,54 @@ async def task_chat_websocket(
         task_id, project.name, task.branch_name, task.session_id,
     )
 
+    active_runner = None
+    stream_task = None
+    send_lock = asyncio.Lock()
+
+    async def _safe_send(payload: dict):
+        async with send_lock:
+            await ws.send_json(payload)
+
+    async def _run_stream(runner, prompt, sid):
+        nonlocal active_runner
+        active_runner = runner
+        try:
+            t0 = time.monotonic()
+            event_count = 0
+
+            if sid:
+                async for event, s in runner.run_stream_with_session(
+                    prompt, session_store, sid
+                ):
+                    payload = serialize_stream_event(event, session_id=s)
+                    await _safe_send(payload)
+                    event_count += 1
+            else:
+                async for event in runner.run_stream(prompt):
+                    payload = serialize_stream_event(event)
+                    await _safe_send(payload)
+                    event_count += 1
+
+            elapsed = time.monotonic() - t0
+            logger.info(
+                "Task chat stream done: task=%s events=%d elapsed=%.1fs",
+                task_id, event_count, elapsed,
+            )
+        except Exception as e:
+            logger.error(
+                "Task chat error: task=%s error=%s",
+                task_id, e, exc_info=True,
+            )
+            err_msg = str(e)
+            err_lower = err_msg.lower()
+            if "401" in err_msg or "unauthorized" in err_lower:
+                err_msg = "API authentication failed — please check your API key."
+            elif "429" in err_msg or "rate" in err_lower:
+                err_msg = "API rate limit hit — please wait and try again."
+            await _safe_send({"type": "error", "message": err_msg})
+        finally:
+            active_runner = None
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -98,7 +148,28 @@ async def task_chat_websocket(
             logger.debug("Task chat WS recv: task=%s type=%s", task_id, msg_type)
 
             if msg_type == "ping":
-                await ws.send_json({"type": "pong"})
+                await _safe_send({"type": "pong"})
+
+            elif msg_type == "submit_interaction":
+                request_id = data.get("request_id", "")
+                action = data.get("action", "answer")
+                content = data.get("content", "")
+                if active_runner and request_id:
+                    response = InteractionResponse(
+                        request_id=request_id,
+                        action=action,
+                        content=content,
+                    )
+                    await active_runner.submit_interaction(response)
+                    logger.info(
+                        "Task chat WS interaction submitted: task=%s id=%s",
+                        task_id, request_id,
+                    )
+                else:
+                    await _safe_send({
+                        "type": "error",
+                        "message": "No active run or missing request_id",
+                    })
 
             elif msg_type == "message":
                 prompt_text = data.get("content", "")
@@ -117,45 +188,22 @@ async def task_chat_websocket(
                             workdir, data, project.code_paths,
                         )
                     except ValueError:
-                        await ws.send_json({
+                        await _safe_send({
                             "type": "error",
                             "message": "No API key configured — please set your API key in Settings.",
                         })
                         continue
 
-                    t0 = time.monotonic()
-                    event_count = 0
-
-                    if task.session_id:
-                        async for event, sid in runner.run_stream_with_session(
-                            prompt, session_store, task.session_id
-                        ):
-                            payload = serialize_stream_event(event, session_id=sid)
-                            await ws.send_json(payload)
-                            event_count += 1
-                    else:
-                        async for event in runner.run_stream(prompt):
-                            payload = serialize_stream_event(event)
-                            await ws.send_json(payload)
-                            event_count += 1
-
-                    elapsed = time.monotonic() - t0
-                    logger.info(
-                        "Task chat stream done: task=%s events=%d elapsed=%.1fs",
-                        task_id, event_count, elapsed,
+                    stream_task = asyncio.create_task(
+                        _run_stream(runner, prompt, task.session_id)
                     )
+
                 except Exception as e:
                     logger.error(
-                        "Task chat error: task=%s error=%s",
+                        "Task chat setup error: task=%s error=%s",
                         task_id, e, exc_info=True,
                     )
-                    err_msg = str(e)
-                    err_lower = err_msg.lower()
-                    if "401" in err_msg or "unauthorized" in err_lower:
-                        err_msg = "API authentication failed — please check your API key."
-                    elif "429" in err_msg or "rate" in err_lower:
-                        err_msg = "API rate limit hit — please wait and try again."
-                    await ws.send_json({"type": "error", "message": err_msg})
+                    await _safe_send({"type": "error", "message": str(e)})
 
     except WebSocketDisconnect:
         logger.info("Task chat WS disconnected: task=%s", task_id)
@@ -164,3 +212,10 @@ async def task_chat_websocket(
             "Task chat WS unexpected error: task=%s error=%s",
             task_id, e, exc_info=True,
         )
+    finally:
+        if stream_task and not stream_task.done():
+            stream_task.cancel()
+            try:
+                await stream_task
+            except asyncio.CancelledError:
+                pass

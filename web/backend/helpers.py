@@ -157,6 +157,9 @@ def resolve_chat_runner(
     else:
         runner = get_runner(workdir)
 
+    # Enable interaction so the AI can ask questions via WebSocket
+    config.interaction.enabled = True
+
     return config, runner
 
 

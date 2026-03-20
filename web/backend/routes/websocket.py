@@ -13,6 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from cody.core import AgentRunner
 from cody.core.auth import AuthError
 from cody.core.errors import ErrorCode
+from cody.core.interaction import InteractionResponse
 
 from ..helpers import build_prompt, serialize_stream_event
 from ..middleware import validate_credential
@@ -58,6 +59,28 @@ class _WSConnection:
                     if self._cancel_event:
                         self._cancel_event.set()
                     await self.send_event("cancelled")
+                elif msg_type == "submit_interaction":
+                    request_id = raw.get("request_id", "")
+                    action = raw.get("action", "answer")
+                    content = raw.get("content", "")
+                    if self._runner and request_id:
+                        response = InteractionResponse(
+                            request_id=request_id,
+                            action=action,
+                            content=content,
+                        )
+                        await self._runner.submit_interaction(response)
+                        logger.info(
+                            "RPC WS interaction submitted: id=%s action=%s",
+                            request_id, action,
+                        )
+                    else:
+                        await self.send_event("error", {
+                            "error": {
+                                "code": ErrorCode.INVALID_PARAMS.value,
+                                "message": "No active run or missing request_id",
+                            }
+                        })
                 elif msg_type == "user_input":
                     content = raw.get("content", "")
                     if self._runner and content:
@@ -133,6 +156,8 @@ class _WSConnection:
                 extra_roots=data.get("allowed_roots"),
             )
             extra_roots = [Path(r) for r in (data.get("allowed_roots") or [])]
+            # Enable interaction so the AI can ask questions via WebSocket
+            config.interaction.enabled = True
             runner = AgentRunner(
                 config=config, workdir=workdir, extra_roots=extra_roots
             )

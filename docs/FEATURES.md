@@ -540,9 +540,17 @@ async for chunk in client.stream("分析代码"):
 await client.inject_user_input("停下来，先处理这个 bug")
 ```
 
+**CLI / TUI / Web 全面支持：**
+- **CLI** — `interaction_request` 事件自动提示用户输入，支持选项选择
+- **TUI** — 交互请求显示在对话气泡中，用户在输入框回答
+- **Web** — 黄色交互卡片显示问题，支持选项按钮快捷回答或文本输入
+
 **WebSocket：**
 ```json
+// 用户主动输入
 {"type": "user_input", "content": "先处理这个紧急 bug"}
+// AI 提问后回答
+{"type": "submit_interaction", "request_id": "abc123", "action": "answer", "content": "Python"}
 ```
 
 ### 11. 跨任务记忆（Project Memory）

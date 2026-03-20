@@ -33,6 +33,13 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
   const [streamThinking, setStreamThinking] = useState("");
   const [streamToolCalls, setStreamToolCalls] = useState<ToolCallInfo[]>([]);
 
+  // Interaction request state (AI asking the user a question)
+  const [interactionRequest, setInteractionRequest] = useState<{
+    requestId: string;
+    prompt: string;
+    options?: string[];
+  } | null>(null);
+
   // Image upload state
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,6 +191,16 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           ]);
           break;
 
+        case "interaction_request": {
+          // AI is asking the user a question — show input prompt
+          const reqId = event.request_id ?? "";
+          const prompt = event.prompt ?? event.content ?? "The AI has a question";
+          const options = event.options as string[] | undefined;
+          setInteractionRequest({ requestId: reqId, prompt, options });
+          scheduleFlush();
+          break;
+        }
+
         case "done": {
           // Cancel any pending RAF — we flush the final state directly
           if (rafRef.current) {
@@ -218,6 +235,7 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           setStreamThinking("");
           setStreamToolCalls([]);
           setStreaming(false);
+          setInteractionRequest(null);
           break;
         }
 
@@ -241,6 +259,7 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           }
           resetBuffer();
           setStreaming(false);
+          setInteractionRequest(null);
           break;
       }
     };
@@ -290,6 +309,20 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
 
   const handleSend = useCallback(() => {
     const text = input.trim();
+
+    // If there's a pending interaction request, submit the response
+    if (interactionRequest && text) {
+      socketRef.current?.send({
+        type: "submit_interaction",
+        request_id: interactionRequest.requestId,
+        action: "answer",
+        content: text,
+      });
+      setInput("");
+      setInteractionRequest(null);
+      return;
+    }
+
     if ((!text && pendingImages.length === 0) || streaming) return;
 
     const userMsg: Message = {
@@ -311,7 +344,7 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
     if (pendingImages.length > 0) payload.images = pendingImages;
 
     socketRef.current?.send(payload);
-  }, [input, streaming, pendingImages, resetBuffer]);
+  }, [input, streaming, pendingImages, resetBuffer, interactionRequest]);
 
   const hasStreamActivity = streaming && (streamThinking || streamToolCalls.length > 0 || streamContent);
 
@@ -425,8 +458,39 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           </div>
         )}
 
+        {/* Interaction request prompt */}
+        {interactionRequest && (
+          <div className="interaction-request">
+            <div className="interaction-request-icon">?</div>
+            <div className="interaction-request-body">
+              <div className="interaction-request-prompt">{interactionRequest.prompt}</div>
+              {interactionRequest.options && interactionRequest.options.length > 0 && (
+                <div className="interaction-request-options">
+                  {interactionRequest.options.map((opt, i) => (
+                    <button
+                      key={i}
+                      className="btn btn-sm interaction-option"
+                      onClick={() => {
+                        socketRef.current?.send({
+                          type: "submit_interaction",
+                          request_id: interactionRequest.requestId,
+                          action: "answer",
+                          content: opt,
+                        });
+                        setInteractionRequest(null);
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Streaming status bar */}
-        {streaming && (
+        {streaming && !interactionRequest && (
           <div className="stream-status">
             <span className="stream-status-dot" />
             <span className="stream-status-text">
@@ -493,10 +557,18 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={configReady === false ? "Configure model in Settings first..." : "Ask Cody..."}
-          disabled={streaming || configReady === false}
+          placeholder={
+            configReady === false
+              ? "Configure model in Settings first..."
+              : interactionRequest
+                ? "Type your answer..."
+                : "Ask Cody..."
+          }
+          disabled={(streaming && !interactionRequest) || configReady === false}
         />
-        <button type="submit" disabled={streaming || configReady === false || (!input.trim() && pendingImages.length === 0)}>
+        <button type="submit" disabled={
+          (streaming && !interactionRequest) || configReady === false || (!input.trim() && pendingImages.length === 0 && !interactionRequest)
+        }>
           Send
         </button>
       </form>

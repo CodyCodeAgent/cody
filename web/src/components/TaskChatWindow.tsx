@@ -40,6 +40,12 @@ export default function TaskChatWindow({
   const [streamThinking, setStreamThinking] = useState("");
   const [streamToolCalls, setStreamToolCalls] = useState<ToolCallInfo[]>([]);
 
+  const [interactionRequest, setInteractionRequest] = useState<{
+    requestId: string;
+    prompt: string;
+    options?: string[];
+  } | null>(null);
+
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -181,6 +187,14 @@ export default function TaskChatWindow({
             },
           ]);
           break;
+        case "interaction_request": {
+          const reqId = event.request_id ?? "";
+          const prompt = event.prompt ?? event.content ?? "The AI has a question";
+          const options = event.options as string[] | undefined;
+          setInteractionRequest({ requestId: reqId, prompt, options });
+          scheduleFlush();
+          break;
+        }
         case "done": {
           if (rafRef.current) {
             cancelAnimationFrame(rafRef.current);
@@ -217,6 +231,7 @@ export default function TaskChatWindow({
           setStreamThinking("");
           setStreamToolCalls([]);
           setStreaming(false);
+          setInteractionRequest(null);
           break;
         }
         case "config_required":
@@ -241,6 +256,7 @@ export default function TaskChatWindow({
           }
           resetBuffer();
           setStreaming(false);
+          setInteractionRequest(null);
           break;
       }
     };
@@ -293,6 +309,20 @@ export default function TaskChatWindow({
 
   const handleSend = useCallback(() => {
     const text = input.trim();
+
+    // If there's a pending interaction request, submit the response
+    if (interactionRequest && text) {
+      socketRef.current?.send({
+        type: "submit_interaction",
+        request_id: interactionRequest.requestId,
+        action: "answer",
+        content: text,
+      });
+      setInput("");
+      setInteractionRequest(null);
+      return;
+    }
+
     if ((!text && pendingImages.length === 0) || streaming) return;
 
     const userMsg: Message = {
@@ -313,7 +343,7 @@ export default function TaskChatWindow({
     };
     if (pendingImages.length > 0) payload.images = pendingImages;
     socketRef.current?.send(payload);
-  }, [input, streaming, pendingImages, resetBuffer]);
+  }, [input, streaming, pendingImages, resetBuffer, interactionRequest]);
 
   const hasStreamActivity =
     streaming &&
@@ -438,7 +468,37 @@ export default function TaskChatWindow({
           </div>
         )}
 
-        {streaming && (
+        {interactionRequest && (
+          <div className="interaction-request">
+            <div className="interaction-request-icon">?</div>
+            <div className="interaction-request-body">
+              <div className="interaction-request-prompt">{interactionRequest.prompt}</div>
+              {interactionRequest.options && interactionRequest.options.length > 0 && (
+                <div className="interaction-request-options">
+                  {interactionRequest.options.map((opt, i) => (
+                    <button
+                      key={i}
+                      className="btn btn-sm interaction-option"
+                      onClick={() => {
+                        socketRef.current?.send({
+                          type: "submit_interaction",
+                          request_id: interactionRequest.requestId,
+                          action: "answer",
+                          content: opt,
+                        });
+                        setInteractionRequest(null);
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {streaming && !interactionRequest && (
           <div className="stream-status">
             <span className="stream-status-dot" />
             <span className="stream-status-text">
@@ -511,16 +571,18 @@ export default function TaskChatWindow({
           placeholder={
             configReady === false
               ? "Configure model in Settings first..."
-              : "Describe what to code..."
+              : interactionRequest
+                ? "Type your answer..."
+                : "Describe what to code..."
           }
-          disabled={streaming || configReady === false}
+          disabled={(streaming && !interactionRequest) || configReady === false}
         />
         <button
           type="submit"
           disabled={
-            streaming ||
+            (streaming && !interactionRequest) ||
             configReady === false ||
-            (!input.trim() && pendingImages.length === 0)
+            (!input.trim() && pendingImages.length === 0 && !interactionRequest)
           }
         >
           Send
