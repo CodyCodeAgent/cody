@@ -117,6 +117,13 @@ class CodyTUI(App):
         )
         self._client.set_config(self._config)
 
+        # Enable interaction so the AI can ask questions
+        runner = self._client.get_runner()
+        runner.config.interaction.enabled = True
+
+        # Pending interaction request (set when AI asks a question)
+        self._pending_interaction_request_id: Optional[str] = None
+
         store = self._client.get_session_store()
 
         # Resolve or create session
@@ -245,6 +252,28 @@ class CodyTUI(App):
 
         event.input.clear()
 
+        # If there's a pending interaction request, submit the response
+        if self._pending_interaction_request_id and self._client:
+            request_id = self._pending_interaction_request_id
+            self._pending_interaction_request_id = None
+            # Restore placeholder and disable input (agent is running)
+            inp = self.query_one("#prompt-input", Input)
+            inp.placeholder = "Type a message... (Enter to send)"
+            self._set_input_enabled(False)
+            self._set_processing_state("Processing...")
+            # Show the answer in the active stream bubble
+            try:
+                stream = self.query_one("#active-stream", StreamBubble)
+                stream.append(f"[dim]→ {text}[/dim]\n")
+            except NoMatches:
+                pass
+            await self._client.submit_interaction(
+                request_id=request_id,
+                action="answer",
+                content=text,
+            )
+            return
+
         # Handle slash commands
         if text.startswith("/"):
             self._handle_command(text)
@@ -338,6 +367,23 @@ class CodyTUI(App):
                     bubble.append(
                         f"[dim]✓ {tool_name} done ({result_len} chars)[/dim]\n"
                     )
+                elif chunk.type == "interaction_request":
+                    self._set_processing_state("Waiting for your answer...")
+                    # Display the question in the stream bubble
+                    prompt_text = chunk.content or "AI is asking a question"
+                    bubble.append(f"\n[bold yellow]? {prompt_text}[/bold yellow]\n")
+                    if chunk.options:
+                        for i, opt in enumerate(chunk.options, 1):
+                            bubble.append(f"  [cyan]{i})[/cyan] {opt}\n")
+                    # Enable input and store the request ID so on_input_submitted
+                    # can respond to this interaction
+                    self._pending_interaction_request_id = chunk.request_id
+                    self._set_input_enabled(True)
+                    inp = self.query_one("#prompt-input", Input)
+                    inp.placeholder = "Type your answer and press Enter..."
+                    inp.focus()
+                    # Pause streaming — the stream will resume automatically
+                    # when submit_interaction resolves the Future
                 elif chunk.type == "text_delta":
                     self._set_processing_state("Generating...")
                     bubble.append(chunk.content)

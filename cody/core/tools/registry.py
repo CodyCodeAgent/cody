@@ -20,6 +20,7 @@ from .mcp import mcp_list_tools, mcp_call
 from .web import webfetch, websearch
 from .lsp import lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
 from .history import undo_file, redo_file, list_file_changes
+from .memory import save_memory
 from .todo import todo_write, todo_read
 from .user import question
 
@@ -33,13 +34,14 @@ WEB_TOOLS = [webfetch, websearch]
 LSP_TOOLS = [lsp_diagnostics, lsp_definition, lsp_references, lsp_hover]
 FILE_HISTORY_TOOLS = [undo_file, redo_file, list_file_changes]
 TODO_TOOLS = [todo_write, todo_read]
+MEMORY_TOOLS = [save_memory]
 USER_TOOLS = [question]
 
 # All tools for the main agent (MCP excluded — conditional on config)
 CORE_TOOLS = (
     FILE_TOOLS + SEARCH_TOOLS + COMMAND_TOOLS + SKILL_TOOLS
     + SUB_AGENT_TOOLS + WEB_TOOLS + LSP_TOOLS
-    + FILE_HISTORY_TOOLS + TODO_TOOLS + USER_TOOLS
+    + FILE_HISTORY_TOOLS + TODO_TOOLS + MEMORY_TOOLS + USER_TOOLS
 )
 
 # Subsets for sub-agent types.

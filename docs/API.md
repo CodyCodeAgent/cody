@@ -130,12 +130,15 @@ data: {"type": "done", "output": "这是文件内容", "thinking": "...", "tool_
 **事件类型：**
 | 事件 | 说明 |
 |------|------|
-| session_start | 会话开始，始终是第一个事件（v1.10.4+），包含 `session_id` |
+| session_start | 会话开始，始终是第一个事件（v1.11.0+），包含 `session_id` |
 | thinking | 模型思考过程（增量），`content` 字段 |
 | tool_call | 工具调用发起，包含 `tool_name`、`args`、`tool_call_id` |
 | tool_result | 工具返回结果，包含 `tool_name`、`tool_call_id`、`result` |
 | text_delta | 流式文本片段（增量），`content` 字段 |
-| done | 任务完成，包含 `output`、`thinking`、`tool_traces`、`usage` |
+| done | 任务完成，包含 `output`、`thinking`、`tool_traces`、`usage`、`metadata` |
+| circuit_breaker | 熔断器触发，包含 `reason`、`tokens_used`、`cost_usd` |
+| interaction_request | AI 请求人工输入，包含 `request_id`、`kind`、`prompt`、`options` |
+| user_input_received | 用户主动输入已接收，包含 `content` |
 | error | 错误发生，包含结构化错误信息 |
 
 **SSE 错误示例：**
@@ -195,6 +198,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 | `todo_write` | 创建/更新任务清单（JSON） |
 | `todo_read` | 读取当前任务清单 |
 | `question` | 向用户提结构化选择题 |
+| `save_memory` | 保存跨任务记忆（category + content）|
 
 **HTTP 状态码：**
 - `200` - 成功
@@ -564,6 +568,7 @@ Authorization: Bearer your_auth_token
 |------|------|
 | `run` | 执行 Agent 任务 |
 | `cancel` | 取消当前运行 |
+| `user_input` | 用户主动发送消息（无需 AI 先提问），包含 `content` 字段 |
 | `ping` | 心跳检测 |
 
 **Run 消息：**
@@ -587,6 +592,11 @@ Authorization: Bearer your_auth_token
 {"type": "cancel"}
 ```
 
+**User Input 消息（用户随时输入，v1.11.0+）：**
+```json
+{"type": "user_input", "content": "先处理这个紧急 bug"}
+```
+
 **Ping 消息：**
 ```json
 {"type": "ping"}
@@ -601,7 +611,10 @@ Authorization: Bearer your_auth_token
 | `tool_call` | 工具调用发起 |
 | `tool_result` | 工具返回结果 |
 | `text_delta` | 流式文本片段（增量） |
-| `done` | 任务完成，包含完整输出、thinking、tool_traces、usage |
+| `done` | 任务完成，包含完整输出、thinking、tool_traces、usage、metadata |
+| `circuit_breaker` | 熔断器触发（reason、tokens_used、cost_usd）|
+| `interaction_request` | AI 请求人工输入（request_id、kind、prompt、options）|
+| `user_input_received` | 用户主动输入已注入（content）|
 | `error` | 错误，包含结构化错误信息 |
 | `cancelled` | 任务已取消 |
 | `pong` | 心跳响应 |
@@ -713,4 +726,4 @@ curl http://localhost:8000/health
 
 ---
 
-**最后更新：** 2026-03-07
+**最后更新：** 2026-03-20

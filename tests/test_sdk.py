@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from cody.sdk.config import SDKConfig, ModelConfig, PermissionConfig, SecurityConfig, MCPConfig, LSPConfig, config
+from cody.sdk.config import SDKConfig, ModelConfig, PermissionConfig, SecurityConfig, CircuitBreakerConfig, MCPConfig, LSPConfig, config
 from cody.sdk.errors import (
     CodyError,
     CodyModelError,
@@ -540,6 +540,296 @@ def test_builder_mcp_server():
 def test_builder_lsp_languages():
     builder = Cody().lsp_languages(["rust", "java"])
     assert builder._lsp_languages == ["rust", "java"]
+
+
+def test_builder_circuit_breaker_kwargs():
+    builder = Cody().circuit_breaker(max_cost_usd=10.0, max_tokens=500_000)
+    assert builder._circuit_breaker is not None
+    assert builder._circuit_breaker.max_cost_usd == 10.0
+    assert builder._circuit_breaker.max_tokens == 500_000
+    assert builder._circuit_breaker.enabled is True
+
+
+def test_builder_circuit_breaker_config_object():
+    cb = CircuitBreakerConfig(max_cost_usd=20.0, enabled=False)
+    builder = Cody().circuit_breaker(cb)
+    assert builder._circuit_breaker.max_cost_usd == 20.0
+    assert builder._circuit_breaker.enabled is False
+
+
+def test_builder_circuit_breaker_model_prices():
+    builder = Cody().circuit_breaker(
+        max_cost_usd=8.0,
+        model_prices={"claude-sonnet-4-0": 0.000009},
+    )
+    assert builder._circuit_breaker.model_prices == {"claude-sonnet-4-0": 0.000009}
+
+
+def test_builder_circuit_breaker_build():
+    client = (
+        Cody()
+        .workdir("/tmp")
+        .model("test:model")
+        .circuit_breaker(max_cost_usd=15.0, max_tokens=300_000)
+        .build()
+    )
+    assert isinstance(client, AsyncCodyClient)
+    assert client._config.circuit_breaker.max_cost_usd == 15.0
+    assert client._config.circuit_breaker.max_tokens == 300_000
+
+
+def test_sdk_config_circuit_breaker_defaults():
+    cfg = SDKConfig()
+    assert cfg.circuit_breaker.enabled is True
+    assert cfg.circuit_breaker.max_cost_usd == 5.0
+    assert cfg.circuit_breaker.max_tokens == 200_000
+
+
+def test_sdk_config_from_dict_circuit_breaker():
+    data = {
+        "circuit_breaker": {
+            "max_cost_usd": 12.0,
+            "max_tokens": 400_000,
+            "enabled": False,
+        }
+    }
+    cfg = SDKConfig.from_dict(data)
+    assert cfg.circuit_breaker.max_cost_usd == 12.0
+    assert cfg.circuit_breaker.max_tokens == 400_000
+    assert cfg.circuit_breaker.enabled is False
+
+
+def test_builder_interaction_defaults():
+    builder = Cody().interaction()
+    assert builder._interaction is not None
+    assert builder._interaction.enabled is True
+    assert builder._interaction.timeout == 30.0
+
+
+def test_builder_interaction_custom():
+    builder = Cody().interaction(enabled=True, timeout=60.0)
+    assert builder._interaction.enabled is True
+    assert builder._interaction.timeout == 60.0
+
+
+def test_builder_interaction_build():
+    client = (
+        Cody()
+        .workdir("/tmp")
+        .model("test:model")
+        .interaction(enabled=True, timeout=45.0)
+        .build()
+    )
+    assert isinstance(client, AsyncCodyClient)
+    assert client._config.interaction.enabled is True
+    assert client._config.interaction.timeout == 45.0
+
+
+def test_sdk_config_interaction_defaults():
+    cfg = SDKConfig()
+    assert cfg.interaction.enabled is False
+    assert cfg.interaction.timeout == 30.0
+
+
+def test_sdk_config_from_dict_interaction():
+    data = {
+        "interaction": {
+            "enabled": True,
+            "timeout": 20.0,
+        }
+    }
+    cfg = SDKConfig.from_dict(data)
+    assert cfg.interaction.enabled is True
+    assert cfg.interaction.timeout == 20.0
+
+
+def test_interaction_timeout_error():
+    from cody.core.errors import InteractionTimeoutError
+    err = InteractionTimeoutError("abc123", 30.0)
+    assert err.request_id == "abc123"
+    assert err.timeout == 30.0
+    assert "abc123" in str(err)
+    assert "30.0s" in str(err)
+
+
+async def test_auto_approve_handler():
+    from cody.core.interaction import InteractionRequest
+    from cody.core.runner import AgentRunner
+    request = InteractionRequest(kind="question", prompt="Pick one?")
+    response = await AgentRunner._auto_approve_handler(request)
+    assert response.request_id == request.id
+    assert response.action == "approve"
+
+
+async def test_question_tool_auto_approve():
+    """When interaction_handler is auto-approve, question tool returns immediately."""
+    from cody.core.runner import AgentRunner
+    from cody.core.tools.user import question
+
+    class MockDeps:
+        def __init__(self):
+            self.interaction_handler = AgentRunner._auto_approve_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    result = await question(MockCtx(), "Do you agree?", "Yes,No")
+    assert result == "[User approve]"
+
+
+async def test_question_tool_with_answer():
+    """When handler answers, question tool returns the content."""
+    from cody.core.interaction import InteractionResponse
+    from cody.core.tools.user import question
+
+    async def _answer_handler(request):
+        return InteractionResponse(request_id=request.id, action="answer", content="Yes")
+
+    class MockDeps:
+        def __init__(self):
+            self.interaction_handler = _answer_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    result = await question(MockCtx(), "Do you agree?", "Yes,No")
+    assert result == "Yes"
+
+
+async def test_stream_interaction_handler_timeout():
+    """Interaction handler raises InteractionTimeoutError on timeout."""
+    import asyncio
+    from cody.core.config import Config, InteractionConfig as CoreIAConfig
+    from cody.core.errors import InteractionTimeoutError
+    from cody.core.interaction import InteractionRequest
+    from cody.core.runner import AgentRunner
+
+    config = Config(
+        model="test",
+        model_base_url="http://localhost",
+        interaction=CoreIAConfig(enabled=True, timeout=0.1),
+    )
+    runner = AgentRunner.__new__(AgentRunner)
+    runner.config = config
+    runner._pending_interactions = {}
+
+    out_q: asyncio.Queue = asyncio.Queue()
+    handler = runner._build_stream_interaction_handler(out_q)
+
+    request = InteractionRequest(kind="confirm", prompt="Delete file?")
+
+    with pytest.raises(InteractionTimeoutError) as exc_info:
+        await handler(request)
+
+    assert exc_info.value.request_id == request.id
+    assert exc_info.value.timeout == 0.1
+    # Should have emitted InteractionRequestEvent to the queue
+    event = out_q.get_nowait()
+    assert event.event_type == "interaction_request"
+    assert event.request.id == request.id
+
+
+async def test_stream_interaction_handler_responds():
+    """Interaction handler resolves when submit_interaction is called."""
+    import asyncio
+    from cody.core.config import Config, InteractionConfig as CoreIAConfig
+    from cody.core.interaction import InteractionRequest, InteractionResponse
+    from cody.core.runner import AgentRunner
+
+    config = Config(
+        model="test",
+        model_base_url="http://localhost",
+        interaction=CoreIAConfig(enabled=True, timeout=5.0),
+    )
+    runner = AgentRunner.__new__(AgentRunner)
+    runner.config = config
+    runner._pending_interactions = {}
+
+    out_q: asyncio.Queue = asyncio.Queue()
+    handler = runner._build_stream_interaction_handler(out_q)
+
+    request = InteractionRequest(kind="question", prompt="Pick color?")
+
+    async def _submit_after_delay():
+        await asyncio.sleep(0.05)
+        await runner.submit_interaction(
+            InteractionResponse(request_id=request.id, action="answer", content="blue")
+        )
+
+    task = asyncio.create_task(_submit_after_delay())
+    response = await handler(request)
+    await task
+
+    assert response.action == "answer"
+    assert response.content == "blue"
+
+
+async def test_check_permission_confirm_auto_approve():
+    """CONFIRM level auto-approves when interaction handler is auto-approve."""
+    from cody.core.permissions import PermissionManager
+    from cody.core.runner import AgentRunner
+    from cody.core.tools._base import _check_permission
+
+    class MockDeps:
+        def __init__(self):
+            self.permission_manager = PermissionManager()
+            self.interaction_handler = AgentRunner._auto_approve_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    # exec_command is CONFIRM — should not raise
+    await _check_permission(MockCtx(), "exec_command")
+
+
+async def test_check_permission_confirm_reject():
+    """CONFIRM level raises PermissionDeniedError when human rejects."""
+    from cody.core.interaction import InteractionResponse
+    from cody.core.permissions import PermissionDeniedError, PermissionManager
+    from cody.core.tools._base import _check_permission
+
+    async def _reject_handler(request):
+        return InteractionResponse(request_id=request.id, action="reject")
+
+    class MockDeps:
+        def __init__(self):
+            self.permission_manager = PermissionManager()
+            self.interaction_handler = _reject_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    with pytest.raises(PermissionDeniedError):
+        await _check_permission(MockCtx(), "exec_command")
+
+
+async def test_check_permission_allow_skips_handler():
+    """ALLOW level doesn't trigger interaction handler."""
+    from cody.core.permissions import PermissionManager
+    from cody.core.tools._base import _check_permission
+
+    call_count = 0
+
+    async def _counting_handler(request):
+        nonlocal call_count
+        call_count += 1
+
+    class MockDeps:
+        def __init__(self):
+            self.permission_manager = PermissionManager()
+            self.interaction_handler = _counting_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    # read_file is ALLOW — handler should never be called
+    await _check_permission(MockCtx(), "read_file")
+    assert call_count == 0
 
 
 def test_builder_build():

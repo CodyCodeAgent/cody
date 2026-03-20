@@ -16,33 +16,44 @@ Core never imports from shells.
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, AsyncGenerator, Literal, Optional, Union
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
     ImageUrl,
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    PartDeltaEvent,
+    PartStartEvent,
     TextPart,
     UserPromptPart,
 )
+from pydantic_graph import End
 
 from .audit import AuditLogger
 from .config import Config
 from .context import CompactResult, compact_messages, compact_messages_llm
 from .deps import CodyDeps
+from .errors import CircuitBreakerError, InteractionTimeoutError
 from .file_history import FileHistory
+from .interaction import InteractionRequest, InteractionResponse
 from .log import log_elapsed
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
+from .memory import ProjectMemoryStore
 from .permissions import PermissionLevel, PermissionManager
 from .prompt import Prompt, prompt_images, prompt_text
 from .session import Message, SessionStore
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
+from .user_input import UserInputQueue
 from .model_resolver import resolve_model
 from .project_instructions import load_project_instructions
 from . import tools
@@ -63,6 +74,15 @@ class ToolTrace:
 
 
 @dataclass
+class TaskMetadata:
+    """Structured metadata extracted from a completed task."""
+    summary: str = ""
+    confidence: Optional[float] = None
+    issues: list[str] = field(default_factory=list)
+    next_steps: list[str] = field(default_factory=list)
+
+
+@dataclass
 class CodyResult:
     """Rich result from the Cody engine.
 
@@ -72,6 +92,7 @@ class CodyResult:
     output: str
     thinking: Optional[str] = None
     tool_traces: list[ToolTrace] = field(default_factory=list)
+    metadata: Optional[TaskMetadata] = None
     _raw_result: Any = field(default=None, repr=False)
 
     def usage(self):
@@ -126,10 +147,14 @@ class CodyResult:
                                 content = str(content)
                             tool_calls[part.tool_call_id].result = content
 
+        output = raw_result.output
+        metadata = _extract_metadata(output)
+
         return CodyResult(
-            output=raw_result.output,
+            output=output,
             thinking="\n\n".join(thinking_parts) if thinking_parts else None,
             tool_traces=tool_traces,
+            metadata=metadata,
             _raw_result=raw_result,
         )
 
@@ -199,11 +224,63 @@ class SessionStartEvent:
     event_type: Literal["session_start"] = "session_start"
 
 
+@dataclass
+class CircuitBreakerEvent:
+    """Emitted when the circuit breaker trips."""
+    reason: str  # "token_limit" | "cost_limit" | "loop_detected"
+    tokens_used: int
+    cost_usd: float
+    event_type: Literal["circuit_breaker"] = "circuit_breaker"
+
+
+@dataclass
+class InteractionRequestEvent:
+    """Emitted when the runner needs human input."""
+    request: InteractionRequest
+    event_type: Literal["interaction_request"] = "interaction_request"
+
+
+@dataclass
+class UserInputReceivedEvent:
+    """User proactively sent a message (without AI asking). Will be visible next LLM turn."""
+    content: str
+    event_type: Literal["user_input_received"] = "user_input_received"
+
+
 StreamEvent = Union[
     SessionStartEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
-    CancelledEvent,
+    CancelledEvent, CircuitBreakerEvent, InteractionRequestEvent,
+    UserInputReceivedEvent,
 ]
+
+
+# ── Metadata extraction helpers ──────────────────────────────────────────
+
+_CONFIDENCE_RE = re.compile(r"<confidence>\s*([\d.]+)\s*</confidence>")
+
+
+def _extract_metadata(output: str) -> TaskMetadata:
+    """Extract structured metadata from model output text."""
+    confidence: Optional[float] = None
+    match = _CONFIDENCE_RE.search(output)
+    if match:
+        try:
+            val = float(match.group(1))
+            if 0.0 <= val <= 1.0:
+                confidence = val
+        except ValueError:
+            pass
+
+    # Build a one-line summary from the first non-empty line
+    summary = ""
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped:
+            summary = stripped[:200]
+            break
+
+    return TaskMetadata(summary=summary, confidence=confidence)
 
 
 def _build_allowed_roots(workdir: Path, config_roots: list[str], extra_roots: list[Path]) -> list[Path]:
@@ -278,6 +355,26 @@ class AgentRunner:
         # Shared todo list for AI task tracking
         self._todo_list: list = []
 
+        # Circuit breaker state (reset per run)
+        self._cb_total_tokens: int = 0
+        self._cb_estimated_cost: float = 0.0
+        self._cb_recent_results: list[str] = []
+
+        # Pending interaction requests (id → Future).
+        # Futures are created by consumers (CLI/TUI/Web) when they emit
+        # InteractionRequestEvent; submit_interaction() resolves them.
+        self._pending_interactions: dict[str, asyncio.Future] = {}
+
+        # User input queue: users can proactively send messages without AI asking.
+        self._user_input_queue = UserInputQueue()
+
+        # Project memory
+        self._memory_store: Optional[ProjectMemoryStore] = None
+        try:
+            self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
+        except Exception:
+            logger.debug("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
+
         # Create agent
         self.agent = self._create_agent()
 
@@ -298,7 +395,8 @@ class AgentRunner:
         System prompt order:
           1. Base persona
           2. CODY.md project instructions (global ~/.cody/CODY.md + project CODY.md)
-          3. Available skills XML (Agent Skills standard)
+          3. Project memory (cross-session learnings)
+          4. Available skills XML (Agent Skills standard)
         """
         # 1. Base persona
         system_parts = [
@@ -332,7 +430,13 @@ class AgentRunner:
                 "## Project Instructions (from CODY.md)\n\n" + project_instructions
             )
 
-        # 3. Available skills
+        # 3. Project memory (cross-session learnings)
+        if self._memory_store:
+            memory_prompt = self._memory_store.get_memory_for_prompt()
+            if memory_prompt:
+                system_parts.append(memory_prompt)
+
+        # 4. Available skills
         skills_xml = self.skill_manager.to_prompt_xml()
         if skills_xml:
             system_parts.append(skills_xml)
@@ -374,8 +478,12 @@ class AgentRunner:
 
         return agent  # type: ignore[return-value]
 
-    def _create_deps(self) -> CodyDeps:
-        """Create dependencies"""
+    def _create_deps(self, interaction_handler=None) -> CodyDeps:
+        """Create dependencies.
+
+        *interaction_handler*: async callable ``(InteractionRequest) -> InteractionResponse``.
+        Defaults to auto-approve when ``None``.
+        """
         return CodyDeps(
             config=self.config,
             workdir=self.workdir,
@@ -389,6 +497,8 @@ class AgentRunner:
             permission_manager=self._permission_manager,
             file_history=self._file_history,
             todo_list=self._todo_list,
+            memory_store=self._memory_store,
+            interaction_handler=interaction_handler or self._auto_approve_handler,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -633,6 +743,112 @@ class AgentRunner:
 
         return {"extra_body": extra_body}
 
+    # ── Circuit breaker ────────────────────────────────────────────────────
+
+    def _reset_circuit_breaker(self) -> None:
+        """Reset circuit breaker counters for a new run."""
+        self._cb_total_tokens = 0
+        self._cb_estimated_cost = 0.0
+        self._cb_recent_results = []
+
+    def _update_circuit_breaker(self, result_text: str, usage: Any) -> None:
+        """Update circuit breaker state after a tool call or model response."""
+        if usage:
+            tokens = getattr(usage, "total_tokens", 0) or 0
+            self._cb_total_tokens = tokens
+            price = self.config.circuit_breaker.model_prices.get(
+                self.config.model,
+                self.config.circuit_breaker.model_prices.get("default", 0.000003),
+            )
+            self._cb_estimated_cost = self._cb_total_tokens * price
+
+        if result_text:
+            self._cb_recent_results.append(result_text)
+            max_keep = self.config.circuit_breaker.loop_detect_turns + 1
+            if len(self._cb_recent_results) > max_keep:
+                self._cb_recent_results = self._cb_recent_results[-max_keep:]
+
+    def _check_circuit_breaker(self) -> None:
+        """Check circuit breaker conditions and raise if tripped."""
+        if not self.config.circuit_breaker.enabled:
+            return
+        cb = self.config.circuit_breaker
+        if self._cb_total_tokens > cb.max_tokens:
+            raise CircuitBreakerError("token_limit", self._cb_total_tokens, self._cb_estimated_cost)
+        if self._cb_estimated_cost > cb.max_cost_usd:
+            raise CircuitBreakerError("cost_limit", self._cb_total_tokens, self._cb_estimated_cost)
+        if self._is_loop_detected():
+            raise CircuitBreakerError("loop_detected", self._cb_total_tokens, self._cb_estimated_cost)
+
+    def _is_loop_detected(self) -> bool:
+        """Check if recent tool results indicate a loop."""
+        n = self.config.circuit_breaker.loop_detect_turns
+        if len(self._cb_recent_results) < n:
+            return False
+        recent = self._cb_recent_results[-n:]
+        threshold = self.config.circuit_breaker.loop_similarity_threshold
+        # All recent results must be similar to each other
+        first = recent[0]
+        return all(
+            SequenceMatcher(None, first, r).ratio() >= threshold
+            for r in recent[1:]
+        )
+
+    # ── Interaction (human-in-the-loop) ──────────────────────────────────
+
+    async def submit_interaction(self, response: InteractionResponse) -> None:
+        """Submit a human response to a pending interaction request."""
+        future = self._pending_interactions.pop(response.request_id, None)
+        if future and not future.done():
+            future.set_result(response)
+
+    async def inject_user_input(self, message: str) -> None:
+        """Send a proactive message to the running agent.
+
+        The message is queued and injected at the next node boundary
+        (after tool execution completes), so the LLM sees it on the
+        next turn alongside tool results.
+        """
+        await self._user_input_queue.put(message)
+
+    @staticmethod
+    async def _auto_approve_handler(request: InteractionRequest) -> InteractionResponse:
+        """Default handler: auto-approve all interaction requests."""
+        return InteractionResponse(request_id=request.id, action="approve")
+
+    def _build_stream_interaction_handler(self, interaction_q: asyncio.Queue):
+        """Build an interaction handler for streaming mode.
+
+        If interaction is disabled, returns auto-approve.
+        If enabled, returns a handler that:
+          1. Pushes InteractionRequestEvent to the interaction queue
+          2. Creates a Future in _pending_interactions
+          3. Awaits the Future with configured timeout
+          4. Raises InteractionTimeoutError on timeout
+
+        The interaction_q is a side channel: interaction events are pushed
+        here during tool execution (inside CallToolsNode) and drained by
+        the run_stream generator between stream events.
+        """
+        if not self.config.interaction.enabled:
+            return self._auto_approve_handler
+
+        timeout = self.config.interaction.timeout
+
+        async def _handler(request: InteractionRequest) -> InteractionResponse:
+            future: asyncio.Future[InteractionResponse] = asyncio.get_running_loop().create_future()
+            self._pending_interactions[request.id] = future
+            await interaction_q.put(InteractionRequestEvent(request=request))
+            try:
+                if timeout > 0:
+                    return await asyncio.wait_for(future, timeout=timeout)
+                return await future
+            except asyncio.TimeoutError:
+                self._pending_interactions.pop(request.id, None)
+                raise InteractionTimeoutError(request.id, timeout)
+
+        return _handler
+
     # ── Prompt conversion ───────────────────────────────────────────────────
 
     @staticmethod
@@ -661,6 +877,7 @@ class AgentRunner:
         message_history: Optional[list[ModelMessage]] = None,
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history"""
+        self._reset_circuit_breaker()
         deps = self._create_deps()
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
@@ -668,7 +885,10 @@ class AgentRunner:
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )
-        return CodyResult.from_raw(result)
+        cody_result = CodyResult.from_raw(result)
+        self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
+        self._check_circuit_breaker()
+        return cody_result
 
     @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
     async def run_stream(
@@ -679,6 +899,9 @@ class AgentRunner:
     ) -> AsyncGenerator[StreamEvent, None]:
         """Run agent with streaming, yielding structured StreamEvent objects.
 
+        Uses pydantic-ai's ``agent.iter()`` API for node-level control,
+        which enables proactive user input injection between nodes.
+
         Events:
           - CompactEvent: context was auto-compacted (first event if applicable)
           - ThinkingEvent: incremental thinking content
@@ -687,16 +910,22 @@ class AgentRunner:
           - ToolResultEvent: tool call result
           - DoneEvent: stream complete with full CodyResult
           - CancelledEvent: run was cancelled via cancel_event
-        """
-        from pydantic_ai.messages import (
-            PartStartEvent,
-            PartDeltaEvent,
-            FunctionToolCallEvent,
-            FunctionToolResultEvent,
-        )
-        from pydantic_ai.run import AgentRunResultEvent
+          - CircuitBreakerEvent: run terminated by circuit breaker
+          - InteractionRequestEvent: human input needed
+          - UserInputReceivedEvent: user proactively sent a message
 
-        deps = self._create_deps()
+        Raises:
+          InteractionTimeoutError: if an interaction request times out
+        """
+        self._reset_circuit_breaker()
+
+        # Side channel for interaction events emitted from within tool execution.
+        interaction_q: asyncio.Queue = asyncio.Queue()
+
+        # Build interaction handler for this stream.
+        interaction_handler = self._build_stream_interaction_handler(interaction_q)
+        deps = self._create_deps(interaction_handler=interaction_handler)
+
         message_history, compact_result = await self._compact_history_if_needed(
             message_history,
         )
@@ -710,61 +939,153 @@ class AgentRunner:
             )
 
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        async for event in self.agent.run_stream_events(  # type: ignore[call-overload]
-            pydantic_prompt, deps=deps, message_history=message_history,
-            model_settings=self._build_model_settings(),
-        ):
-            if cancel_event and cancel_event.is_set():
-                yield CancelledEvent()
-                return
 
-            if isinstance(event, PartStartEvent):
-                part = event.part
-                if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                    yield ThinkingEvent(content=part.content)
-                elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                    yield TextDeltaEvent(content=part.content)
+        def _drain_interaction_q():
+            """Drain interaction events that were pushed during tool execution."""
+            events = []
+            while True:
+                try:
+                    events.append(interaction_q.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            return events
 
-            elif isinstance(event, PartDeltaEvent):
-                delta = event.delta
-                if delta.part_delta_kind == "thinking":
-                    content = getattr(delta, "content_delta", None)
-                    if content:
-                        yield ThinkingEvent(content=content)
-                elif delta.part_delta_kind == "text":
-                    content = getattr(delta, "content_delta", None)
-                    if content:
-                        yield TextDeltaEvent(content=content)
+        # Drain any stale user input from a previous run.
+        self._user_input_queue.drain_all()
 
-            elif isinstance(event, FunctionToolCallEvent):
-                part = event.part
-                args = part.args if isinstance(part.args, dict) else {}
-                if isinstance(part.args, str):
-                    try:
-                        args = json.loads(part.args)
-                    except (json.JSONDecodeError, TypeError):
-                        args = {"raw": part.args}
-                yield ToolCallEvent(
-                    tool_name=part.tool_name,
-                    args=args,
-                    tool_call_id=part.tool_call_id,
-                )
+        try:
+            async with self.agent.iter(  # type: ignore[call-overload]
+                pydantic_prompt, deps=deps, message_history=message_history,
+                model_settings=self._build_model_settings(),
+            ) as agent_run:
+                async for node in agent_run:
+                    if cancel_event and cancel_event.is_set():
+                        yield CancelledEvent()
+                        return
 
-            elif isinstance(event, FunctionToolResultEvent):
-                result_part = event.result
-                if result_part.part_kind == "tool-return":
-                    content = result_part.content
-                    if not isinstance(content, str):
-                        content = str(content)
-                    yield ToolResultEvent(
-                        tool_name=result_part.tool_name,
-                        tool_call_id=result_part.tool_call_id,
-                        result=content,
-                    )
+                    # UserPromptNode is handled automatically by iter().
+                    # We only need to stream ModelRequestNode and CallToolsNode.
 
-            elif isinstance(event, AgentRunResultEvent):
-                cody_result = CodyResult.from_raw(event.result)
-                yield DoneEvent(result=cody_result)
+                    if self.agent.is_model_request_node(node):
+                        # Stream LLM response: thinking + text deltas
+                        async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
+                            async for event in stream:
+                                if isinstance(event, PartStartEvent):
+                                    part = event.part
+                                    if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                                        yield ThinkingEvent(content=part.content)
+                                    elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                                        yield TextDeltaEvent(content=part.content)
+                                elif isinstance(event, PartDeltaEvent):
+                                    delta = event.delta
+                                    if delta.part_delta_kind == "thinking":
+                                        content = getattr(delta, "content_delta", None)
+                                        if content:
+                                            yield ThinkingEvent(content=content)
+                                    elif delta.part_delta_kind == "text":
+                                        content = getattr(delta, "content_delta", None)
+                                        if content:
+                                            yield TextDeltaEvent(content=content)
+
+                    elif self.agent.is_call_tools_node(node):
+                        # Inject proactive user input alongside tool results.
+                        # node.user_prompt is appended after tool return parts
+                        # as a UserPromptPart, so the LLM sees it on the next turn.
+                        user_messages = self._user_input_queue.drain_all()
+                        if user_messages:
+                            combined = "\n".join(user_messages)
+                            node.user_prompt = combined  # type: ignore[union-attr]
+                            yield UserInputReceivedEvent(content=combined)
+
+                        # Stream tool calls and results, merging interaction
+                        # events that may arrive while tools are executing.
+                        # We use a merged queue so that interaction_request events
+                        # are yielded to the caller even when a tool (e.g. question)
+                        # is blocked awaiting a response via its Future.
+                        _merged_q: asyncio.Queue = asyncio.Queue()
+                        _TOOL_STREAM_DONE = object()
+
+                        async def _consume_tool_stream():
+                            async with node.stream(agent_run.ctx) as tool_stream:
+                                async for ev in tool_stream:
+                                    await _merged_q.put(("tool", ev))
+                            await _merged_q.put(("done", _TOOL_STREAM_DONE))
+
+                        async def _forward_interactions():
+                            while True:
+                                ia_event = await interaction_q.get()
+                                await _merged_q.put(("interaction", ia_event))
+
+                        _tool_task = asyncio.create_task(_consume_tool_stream())
+                        _ia_task = asyncio.create_task(_forward_interactions())
+
+                        try:
+                            while True:
+                                kind, item = await _merged_q.get()
+                                if kind == "done":
+                                    break
+                                if kind == "interaction":
+                                    yield item
+                                    continue
+                                # kind == "tool"
+                                event = item
+                                if isinstance(event, FunctionToolCallEvent):
+                                    part = event.part
+                                    args = part.args if isinstance(part.args, dict) else {}
+                                    if isinstance(part.args, str):
+                                        try:
+                                            args = json.loads(part.args)
+                                        except (json.JSONDecodeError, TypeError):
+                                            args = {"raw": part.args}
+                                    yield ToolCallEvent(
+                                        tool_name=part.tool_name,
+                                        args=args,
+                                        tool_call_id=part.tool_call_id,
+                                    )
+                                elif isinstance(event, FunctionToolResultEvent):
+                                    result_part = event.result
+                                    if result_part.part_kind == "tool-return":
+                                        content = result_part.content
+                                        if not isinstance(content, str):
+                                            content = str(content)
+                                        yield ToolResultEvent(
+                                            tool_name=result_part.tool_name,
+                                            tool_call_id=result_part.tool_call_id,
+                                            result=content,
+                                        )
+                                        self._update_circuit_breaker(content, None)
+                        finally:
+                            _ia_task.cancel()
+                            try:
+                                await _ia_task
+                            except asyncio.CancelledError:
+                                pass
+                            if not _tool_task.done():
+                                await _tool_task
+
+                        # Drain any remaining interaction events after tool execution
+                        for interaction_event in _drain_interaction_q():
+                            yield interaction_event
+
+                        # Check circuit breaker after each tool execution round
+                        self._check_circuit_breaker()
+
+                    elif isinstance(node, End):
+                        # Final result
+                        assert agent_run.result is not None
+                        self._update_circuit_breaker(
+                            "", agent_run.result.usage() if hasattr(agent_run.result, 'usage') else None,
+                        )
+                        self._check_circuit_breaker()
+                        cody_result = CodyResult.from_raw(agent_run.result)
+                        yield DoneEvent(result=cody_result)
+
+        except CircuitBreakerError as e:
+            yield CircuitBreakerEvent(
+                reason=e.reason,
+                tokens_used=e.tokens_used,
+                cost_usd=e.cost_usd,
+            )
 
     @log_elapsed("AgentRunner.run_sync", level=logging.INFO)
     def run_sync(
@@ -777,7 +1098,14 @@ class AgentRunner:
         Note: LLM compaction is not available in sync mode. Falls back to
         truncation-based compaction regardless of config.compaction.use_llm.
         """
-        deps = self._create_deps()
+        self._reset_circuit_breaker()
+        # run_sync always auto-approves — interaction requires async
+        if self.config.interaction.enabled:
+            logger.warning(
+                "interaction.enabled is ignored in run_sync (requires async); "
+                "all interaction requests will be auto-approved"
+            )
+        deps = self._create_deps()  # auto-approve handler by default
         if self.config.compaction.use_llm:
             logger.debug(
                 "LLM compaction unavailable in run_sync, using truncation"
@@ -788,7 +1116,10 @@ class AgentRunner:
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
         )
-        return CodyResult.from_raw(result)
+        cody_result = CodyResult.from_raw(result)
+        self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
+        self._check_circuit_breaker()
+        return cody_result
 
     # ── Session-aware run methods ────────────────────────────────────────────
 
@@ -873,4 +1204,9 @@ class AgentRunner:
                 store.add_message(sid, "assistant", event.result.output)
             elif isinstance(event, CancelledEvent):
                 store.add_message(sid, "assistant", "(cancelled)")
+            elif isinstance(event, CircuitBreakerEvent):
+                store.add_message(
+                    sid, "assistant",
+                    f"(circuit breaker: {event.reason})",
+                )
             yield event, sid

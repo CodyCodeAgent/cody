@@ -33,7 +33,7 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
         path: Path to the file
         content: Content to write
     """
-    _check_permission(ctx, "write_file")
+    await _check_permission(ctx, "write_file")
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     # Record old content for undo
@@ -66,7 +66,7 @@ async def edit_file(
         old_text: Exact text to replace
         new_text: New text
     """
-    _check_permission(ctx, "edit_file")
+    await _check_permission(ctx, "edit_file")
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():

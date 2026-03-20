@@ -28,7 +28,11 @@ ai_tests/
 │   ├── basic.md           # SDK 基本功能（run、结果检查）
 │   ├── streaming.md       # 流式输出测试
 │   ├── config.md          # 配置管理测试（加载、合并、覆盖）
-│   └── errors.md          # 错误处理测试（路径越权、错误格式）
+│   ├── errors.md          # 错误处理测试（路径越权、错误格式）
+│   ├── circuit_breaker.md # 熔断器测试（token/cost 上限、死循环）
+│   ├── interaction.md     # 人工交互测试（AI 提问、submit_interaction）
+│   ├── memory.md          # 跨任务记忆测试（add/get/clear、save_memory 工具）
+│   └── user_input.md      # 用户主动输入测试（inject_user_input）
 ├── web/
 │   ├── api.md             # Web API 端点测试
 │   └── chat.md            # Web Chat / WebSocket 测试

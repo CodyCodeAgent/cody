@@ -82,7 +82,9 @@ export interface WSEvent {
     | "error"
     | "cancelled"
     | "pong"
-    | "config_required";
+    | "config_required"
+    | "interaction_request"
+    | "user_input_received";
   content?: string;
   output?: string;
   thinking?: string;
@@ -97,6 +99,11 @@ export interface WSEvent {
   original_messages?: number;
   compacted_messages?: number;
   estimated_tokens_saved?: number;
+  // Interaction request fields
+  request_id?: string;
+  kind?: string;
+  prompt?: string;
+  options?: string[];
   [key: string]: unknown;
 }
 

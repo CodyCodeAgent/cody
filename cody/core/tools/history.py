@@ -8,7 +8,7 @@ from ._base import _check_permission
 
 async def undo_file(ctx: RunContext['CodyDeps']) -> str:
     """Undo the last file modification, restoring the file to its previous content"""
-    _check_permission(ctx, "undo_file")
+    await _check_permission(ctx, "undo_file")
     history = ctx.deps.file_history
     if history is None:
         return "[ERROR] File history not available"
@@ -31,7 +31,7 @@ async def undo_file(ctx: RunContext['CodyDeps']) -> str:
 
 async def redo_file(ctx: RunContext['CodyDeps']) -> str:
     """Redo a previously undone file modification"""
-    _check_permission(ctx, "redo_file")
+    await _check_permission(ctx, "redo_file")
     history = ctx.deps.file_history
     if history is None:
         return "[ERROR] File history not available"

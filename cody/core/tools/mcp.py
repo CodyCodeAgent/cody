@@ -34,7 +34,7 @@ async def mcp_call(
         tool_name: Qualified tool name, e.g. "github/create_issue"
         arguments: JSON string of tool arguments
     """
-    _check_permission(ctx, "mcp_call")
+    await _check_permission(ctx, "mcp_call")
     import json as _json
 
     client = ctx.deps.mcp_client

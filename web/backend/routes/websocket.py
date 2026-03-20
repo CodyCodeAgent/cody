@@ -1,6 +1,6 @@
 """WebSocket endpoint — WS /ws for raw agent interaction.
 
-Migrated from cody/server.py. Supports run/cancel/ping.
+Migrated from cody/server.py. Supports run/cancel/ping/user_input.
 """
 
 import asyncio
@@ -13,6 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from cody.core import AgentRunner
 from cody.core.auth import AuthError
 from cody.core.errors import ErrorCode
+from cody.core.interaction import InteractionResponse
 
 from ..helpers import build_prompt, serialize_stream_event
 from ..middleware import validate_credential
@@ -29,6 +30,9 @@ class _WSConnection:
     def __init__(self, ws: WebSocket):
         self.ws = ws
         self._cancel_event: Optional[asyncio.Event] = None
+        self._runner: Optional[AgentRunner] = None
+        self._run_task: Optional[asyncio.Task] = None
+        self._send_lock = asyncio.Lock()
 
     async def accept(self):
         await self.ws.accept()
@@ -38,22 +42,57 @@ class _WSConnection:
         payload: dict[str, Any] = {"type": event_type}
         if data:
             payload.update(data)
-        await self.ws.send_json(payload)
+        async with self._send_lock:
+            await self.ws.send_json(payload)
 
     async def handle(self):
-        """Main receive loop."""
+        """Main receive loop — runs concurrently with any active run task."""
         try:
             while True:
                 raw = await self.ws.receive_json()
                 msg_type = raw.get("type", "")
 
                 if msg_type == "run":
-                    await self._handle_run(raw.get("data", {}))
+                    await self._start_run(raw.get("data", {}))
                 elif msg_type == "cancel":
                     logger.info("RPC WS cancel requested")
                     if self._cancel_event:
                         self._cancel_event.set()
                     await self.send_event("cancelled")
+                elif msg_type == "submit_interaction":
+                    request_id = raw.get("request_id", "")
+                    action = raw.get("action", "answer")
+                    content = raw.get("content", "")
+                    if self._runner and request_id:
+                        response = InteractionResponse(
+                            request_id=request_id,
+                            action=action,
+                            content=content,
+                        )
+                        await self._runner.submit_interaction(response)
+                        logger.info(
+                            "RPC WS interaction submitted: id=%s action=%s",
+                            request_id, action,
+                        )
+                    else:
+                        await self.send_event("error", {
+                            "error": {
+                                "code": ErrorCode.INVALID_PARAMS.value,
+                                "message": "No active run or missing request_id",
+                            }
+                        })
+                elif msg_type == "user_input":
+                    content = raw.get("content", "")
+                    if self._runner and content:
+                        await self._runner.inject_user_input(content)
+                        logger.info("RPC WS user_input injected (%d chars)", len(content))
+                    else:
+                        await self.send_event("error", {
+                            "error": {
+                                "code": ErrorCode.INVALID_PARAMS.value,
+                                "message": "No active run or empty content",
+                            }
+                        })
                 elif msg_type == "ping":
                     await self.send_event("pong")
                 else:
@@ -67,8 +106,16 @@ class _WSConnection:
 
         except WebSocketDisconnect:
             logger.info("RPC WS disconnected")
+        finally:
+            if self._run_task and not self._run_task.done():
+                self._run_task.cancel()
+                try:
+                    await self._run_task
+                except asyncio.CancelledError:
+                    pass
 
-    async def _handle_run(self, data: dict):
+    async def _start_run(self, data: dict):
+        """Validate and launch a run as a background task."""
         prompt_text = data.get("prompt", "")
         if not prompt_text:
             logger.warning("RPC WS run: empty prompt")
@@ -80,6 +127,15 @@ class _WSConnection:
             })
             return
 
+        # Cancel any existing run
+        if self._run_task and not self._run_task.done():
+            if self._cancel_event:
+                self._cancel_event.set()
+
+        self._run_task = asyncio.create_task(self._handle_run(data))
+
+    async def _handle_run(self, data: dict):
+        prompt_text = data.get("prompt", "")
         prompt = build_prompt(prompt_text, data.get("images"))
         session_id = data.get("session_id")
         logger.info(
@@ -100,9 +156,12 @@ class _WSConnection:
                 extra_roots=data.get("allowed_roots"),
             )
             extra_roots = [Path(r) for r in (data.get("allowed_roots") or [])]
+            # Enable interaction so the AI can ask questions via WebSocket
+            config.interaction.enabled = True
             runner = AgentRunner(
                 config=config, workdir=workdir, extra_roots=extra_roots
             )
+            self._runner = runner
 
             await self.send_event("start", {"session_id": session_id})
 
@@ -132,6 +191,7 @@ class _WSConnection:
 
         finally:
             self._cancel_event = None
+            self._runner = None
 
 
 @router.websocket("/ws")

@@ -13,16 +13,25 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Literal, Optional, overload
 
-from .config import MCPServerConfig as SDKMCPServerConfig, SDKConfig, config as make_config
+from .config import (
+    CircuitBreakerConfig as SDKCircuitBreakerConfig,
+    InteractionConfig as SDKInteractionConfig,
+    MCPServerConfig as SDKMCPServerConfig,
+    SDKConfig,
+    config as make_config,
+)
 from .errors import (
     CodyConfigError,
     CodyNotFoundError,
     CodyToolError,
 )
 from .events import (
+    ContextCompactEvent as SDKContextCompactEvent,
     EventManager,
     EventType,
+    ModelEvent,
     RunEvent,
+    SessionEvent,
     StreamEvent as SDKStreamEvent,
     ThinkingEvent as SDKThinkingEvent,
     ToolEvent,
@@ -70,6 +79,8 @@ class CodyBuilder:
     _enable_events: bool = False
     _mcp_servers: list[dict | SDKMCPServerConfig] = field(default_factory=list)
     _auto_start_mcp: bool = False
+    _interaction: SDKInteractionConfig | None = None
+    _circuit_breaker: SDKCircuitBreakerConfig | None = None
     _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
@@ -146,6 +157,60 @@ class CodyBuilder:
         self._enable_events = True
         return self
 
+    def interaction(
+        self,
+        enabled: bool = True,
+        timeout: float = 30.0,
+    ) -> "CodyBuilder":
+        """Configure human-in-the-loop interaction.
+
+        When enabled, the runner pauses on interaction requests (e.g. the
+        ``question`` tool) and waits for a human response via
+        ``submit_interaction()``.  If no response arrives within *timeout*
+        seconds, the run is terminated with an ``InteractionTimeoutEvent``.
+
+        Only effective with async methods (``run()`` / ``stream()``).
+        ``run_sync()`` always auto-approves regardless of this setting.
+
+            Cody().interaction(enabled=True, timeout=30).build()
+        """
+        self._interaction = SDKInteractionConfig(enabled=enabled, timeout=timeout)
+        return self
+
+    def circuit_breaker(
+        self,
+        config: SDKCircuitBreakerConfig | None = None,
+        *,
+        enabled: bool = True,
+        max_tokens: int = 200_000,
+        max_cost_usd: float = 5.0,
+        loop_detect_turns: int = 6,
+        loop_similarity_threshold: float = 0.9,
+        model_prices: dict[str, float] | None = None,
+    ) -> "CodyBuilder":
+        """Configure circuit breaker for automatic run termination.
+
+        Accepts either a CircuitBreakerConfig object or keyword arguments:
+
+            # Option A: config object
+            Cody().circuit_breaker(CircuitBreakerConfig(max_cost_usd=10.0)).build()
+
+            # Option B: keyword arguments
+            Cody().circuit_breaker(max_cost_usd=10.0, max_tokens=500_000).build()
+        """
+        if config is not None:
+            self._circuit_breaker = config
+        else:
+            self._circuit_breaker = SDKCircuitBreakerConfig(
+                enabled=enabled,
+                max_tokens=max_tokens,
+                max_cost_usd=max_cost_usd,
+                loop_detect_turns=loop_detect_turns,
+                loop_similarity_threshold=loop_similarity_threshold,
+                model_prices=model_prices or {},
+            )
+        return self
+
     def mcp_server(self, server: dict | SDKMCPServerConfig) -> "CodyBuilder":
         """Add MCP server configuration (dict or MCPServerConfig)."""
         self._mcp_servers.append(server)
@@ -215,6 +280,10 @@ class CodyBuilder:
             enable_metrics=self._enable_metrics,
             enable_events=self._enable_events,
         )
+        if self._interaction is not None:
+            cfg.interaction = self._interaction
+        if self._circuit_breaker is not None:
+            cfg.circuit_breaker = self._circuit_breaker
         cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
@@ -299,6 +368,9 @@ class AsyncCodyClient:
         self._auto_start_mcp = auto_start_mcp
         self._mcp_started = False
 
+        # LSP auto-start: start configured language servers on first run
+        self._lsp_started = False
+
         # Enhanced features
         self._metrics: Optional[MetricsCollector] = None
         self._events: Optional[EventManager] = None
@@ -345,6 +417,31 @@ class AsyncCodyClient:
                     if d not in existing:
                         self._core_config.skills.custom_dirs.append(d)
                         existing.add(d)
+            # Apply interaction config from SDK
+            if self._config.interaction.enabled:
+                from ..core.config import InteractionConfig as CoreIAConfig
+                self._core_config.interaction = CoreIAConfig(
+                    enabled=self._config.interaction.enabled,
+                    timeout=self._config.interaction.timeout,
+                )
+            # Apply circuit breaker config from SDK
+            from ..core.config import CircuitBreakerConfig as CoreCBConfig
+            sdk_cb = self._config.circuit_breaker
+            # Default SDKCircuitBreakerConfig values for comparison
+            defaults = SDKCircuitBreakerConfig()
+            if (sdk_cb.enabled != defaults.enabled
+                    or sdk_cb.max_tokens != defaults.max_tokens
+                    or sdk_cb.max_cost_usd != defaults.max_cost_usd
+                    or sdk_cb.loop_detect_turns != defaults.loop_detect_turns
+                    or sdk_cb.loop_similarity_threshold != defaults.loop_similarity_threshold
+                    or sdk_cb.model_prices):
+                cb_dict = sdk_cb.to_dict()
+                # Merge model_prices: core defaults ← SDK overrides
+                merged_prices = dict(self._core_config.circuit_breaker.model_prices)
+                merged_prices.update(cb_dict.pop("model_prices", {}))
+                self._core_config.circuit_breaker = CoreCBConfig(
+                    **cb_dict, model_prices=merged_prices,
+                )
             # Apply MCP servers from SDK config
             if self._config.mcp.enabled and self._config.mcp.servers:
                 for s in self._config.mcp.servers:
@@ -392,6 +489,27 @@ class AsyncCodyClient:
         if not self._mcp_started:
             await runner.start_mcp()
             self._mcp_started = True
+
+    async def start_lsp(self) -> None:
+        """Start LSP servers for configured languages.
+
+        Called automatically on first run()/stream() when lsp.enabled is True
+        and lsp.languages is non-empty.  Silently skips languages whose
+        server binary is not installed.
+        """
+        if self._lsp_started:
+            return
+        self._lsp_started = True
+        languages = self._config.lsp.languages if self._config.lsp.enabled else []
+        if not languages:
+            return
+        runner = self.get_runner()
+        for lang in languages:
+            try:
+                await runner.start_lsp(lang)
+            except Exception:
+                # LSP server not installed — skip silently
+                pass
 
     async def add_mcp_server(
         self,
@@ -444,6 +562,10 @@ class AsyncCodyClient:
             await self._runner.stop_mcp()
             await self._runner.stop_lsp()
             self._runner = None
+        if self._events:
+            await self._events.dispatch_async(SessionEvent(
+                event_type=EventType.SESSION_CLOSE,
+            ))
 
     # ── Health ────────────────────────────────────────────────────────────
 
@@ -485,6 +607,10 @@ class AsyncCodyClient:
         if self._auto_start_mcp and not self._mcp_started:
             await self.start_mcp()
 
+        # Auto-start LSP servers for configured languages
+        if not self._lsp_started:
+            await self.start_lsp()
+
         # Fire event
         if self._events:
             await self._events.dispatch_async(RunEvent(
@@ -503,6 +629,13 @@ class AsyncCodyClient:
             if stream:
                 return self._stream_run(prompt, session_id)
 
+            # Emit MODEL_REQUEST before calling the model
+            if self._events:
+                await self._events.dispatch_async(ModelEvent(
+                    event_type=EventType.MODEL_REQUEST,
+                    model=self._config.model.model or "",
+                ))
+
             runner = self.get_runner()
             # Always use session to enable multi-turn by default
             store = self.get_session_store()
@@ -513,7 +646,17 @@ class AsyncCodyClient:
                 session_id=sid,
                 usage=_usage_from_result(result),
                 thinking=result.thinking,
+                metadata=result.metadata,
             )
+
+            # Emit MODEL_RESPONSE with usage
+            if self._events:
+                await self._events.dispatch_async(ModelEvent(
+                    event_type=EventType.MODEL_RESPONSE,
+                    model=self._config.model.model or "",
+                    input_tokens=run_result.usage.input_tokens,
+                    output_tokens=run_result.usage.output_tokens,
+                ))
 
             # Record metrics
             if self._metrics:
@@ -556,6 +699,11 @@ class AsyncCodyClient:
             if self._metrics and self._metrics._current_run is not None:
                 self._metrics.end_run("", TokenUsage(0, 0, 0))
             if self._events:
+                await self._events.dispatch_async(ModelEvent(
+                    event_type=EventType.MODEL_ERROR,
+                    model=self._config.model.model or "",
+                    error=str(e),
+                ))
                 await self._events.dispatch_async(RunEvent(
                     event_type=EventType.RUN_ERROR,
                     prompt=str(prompt),
@@ -571,10 +719,19 @@ class AsyncCodyClient:
         session_id: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream agent response. Yields StreamChunk objects."""
+        """Stream agent response. Yields StreamChunk objects.
+
+        Note: SDK EventType events (STREAM_START/END, THINKING_START/END, etc.)
+        are only dispatched in ``run(stream=True)`` which uses ``_stream_run()``.
+        Calling ``stream()`` directly yields raw StreamChunks without event dispatch.
+        """
         # Auto-start MCP servers on first stream (if enabled)
         if self._auto_start_mcp and not self._mcp_started:
             await self.start_mcp()
+
+        # Auto-start LSP servers for configured languages
+        if not self._lsp_started:
+            await self.start_lsp()
 
         runner = self.get_runner()
         store = self.get_session_store()
@@ -589,30 +746,87 @@ class AsyncCodyClient:
 
     async def _stream_run(self, prompt, session_id: Optional[str] = None):
         """Internal streaming run (called when run(stream=True))."""
+        in_thinking = False
+        stream_started = False
         async for chunk in self.stream(prompt, session_id=session_id):
             if self._events:
+                # Emit STREAM_START on first non-session_start chunk
+                if not stream_started and chunk.type != "session_start":
+                    stream_started = True
+                    await self._events.dispatch_async(SDKStreamEvent(
+                        event_type=EventType.STREAM_START,
+                        chunk_type="stream_start",
+                    ))
+
                 if chunk.type == "thinking":
+                    if not in_thinking:
+                        in_thinking = True
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_START,
+                            content="",
+                            is_start=True,
+                        ))
                     await self._events.dispatch_async(SDKThinkingEvent(
                         event_type=EventType.THINKING_CHUNK,
                         content=chunk.content,
                     ))
-                elif chunk.type == "tool_call":
-                    await self._events.dispatch_async(ToolEvent(
-                        event_type=EventType.TOOL_CALL,
-                        tool_name=chunk.tool_name or chunk.content,
-                        args=chunk.args or {},
-                    ))
-                elif chunk.type == "tool_result":
-                    await self._events.dispatch_async(ToolEvent(
-                        event_type=EventType.TOOL_RESULT,
-                        tool_name=chunk.tool_name or "",
-                        result=chunk.content,
-                    ))
-                elif chunk.type == "text_delta":
+                else:
+                    # End thinking block when a non-thinking chunk arrives
+                    if in_thinking:
+                        in_thinking = False
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_END,
+                            content="",
+                            is_end=True,
+                        ))
+
+                    if chunk.type == "tool_call":
+                        await self._events.dispatch_async(ToolEvent(
+                            event_type=EventType.TOOL_CALL,
+                            tool_name=chunk.tool_name or chunk.content,
+                            args=chunk.args or {},
+                        ))
+                    elif chunk.type == "tool_result":
+                        await self._events.dispatch_async(ToolEvent(
+                            event_type=EventType.TOOL_RESULT,
+                            tool_name=chunk.tool_name or "",
+                            result=chunk.content,
+                        ))
+                    elif chunk.type == "text_delta":
+                        await self._events.dispatch_async(SDKStreamEvent(
+                            event_type=EventType.STREAM_CHUNK,
+                            chunk_type=chunk.type,
+                            content=chunk.content,
+                        ))
+                    elif chunk.type == "compact":
+                        await self._events.dispatch_async(SDKContextCompactEvent(
+                            event_type=EventType.CONTEXT_COMPACT,
+                            original_messages=chunk.original_messages,
+                            compacted_messages=chunk.compacted_messages,
+                            tokens_saved=chunk.estimated_tokens_saved,
+                        ))
+                    elif chunk.type == "done":
+                        # Emit MODEL_RESPONSE with usage info
+                        usage = chunk.usage
+                        await self._events.dispatch_async(ModelEvent(
+                            event_type=EventType.MODEL_RESPONSE,
+                            model=self._config.model.model or "",
+                            input_tokens=usage.input_tokens if usage else 0,
+                            output_tokens=usage.output_tokens if usage else 0,
+                        ))
+
+                # Emit STREAM_END on done/cancelled/circuit_breaker
+                if chunk.type in ("done", "cancelled", "circuit_breaker"):
+                    if in_thinking:
+                        in_thinking = False
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_END,
+                            content="",
+                            is_end=True,
+                        ))
                     await self._events.dispatch_async(SDKStreamEvent(
-                        event_type=EventType.STREAM_CHUNK,
-                        chunk_type=chunk.type,
-                        content=chunk.content,
+                        event_type=EventType.STREAM_END,
+                        chunk_type="stream_end",
                     ))
             yield chunk
 
@@ -978,6 +1192,101 @@ class AsyncCodyClient:
         })
         return result.result
 
+    # ── Interaction Methods ──────────────────────────────────────────────
+
+    async def submit_interaction(
+        self,
+        request_id: str,
+        action: Literal["approve", "reject", "revise", "answer"] = "answer",
+        content: str = "",
+    ) -> None:
+        """Submit a human response to a pending interaction request.
+
+        Args:
+            request_id: The ID of the InteractionRequest to respond to.
+            action: One of "approve", "reject", "revise", "answer".
+            content: Response content (e.g., the user's answer or revision).
+        """
+        from ..core.interaction import InteractionResponse
+        runner = self.get_runner()
+        response = InteractionResponse(
+            request_id=request_id, action=action, content=content,
+        )
+        await runner.submit_interaction(response)
+
+    async def inject_user_input(self, message: str) -> None:
+        """Send a proactive message to the running agent without waiting for it to ask.
+
+        The message is queued and injected at the next node boundary
+        (after current tool execution), so the LLM sees it on the next turn.
+
+        Args:
+            message: The text to inject into the conversation.
+        """
+        runner = self.get_runner()
+        await runner.inject_user_input(message)
+
+    # ── Memory Methods ────────────────────────────────────────────────────
+
+    async def add_memory(
+        self,
+        category: str,
+        content: str,
+        *,
+        source_task_id: str = "",
+        source_task_title: str = "",
+        confidence: float = 1.0,
+        tags: list[str] | None = None,
+    ) -> None:
+        """Add a memory entry to the project memory store.
+
+        Args:
+            category: One of "conventions", "patterns", "issues", "decisions".
+            content: The memory content.
+            source_task_id: Optional task ID that produced this memory.
+            source_task_title: Optional task title.
+            confidence: Confidence score (0.0-1.0).
+            tags: Optional tags for filtering.
+        """
+        from ..core.memory import MemoryEntry
+        runner = self.get_runner()
+        if not runner._memory_store:
+            return
+        entry = MemoryEntry(
+            content=content,
+            source_task_id=source_task_id,
+            source_task_title=source_task_title,
+            confidence=confidence,
+            tags=tags or [],
+        )
+        await runner._memory_store.add_entries(category, [entry])
+
+    async def get_memory(self) -> dict[str, list[dict]]:
+        """Get all project memory entries grouped by category."""
+        runner = self.get_runner()
+        if not runner._memory_store:
+            return {}
+        all_entries = runner._memory_store.get_all_entries()
+        return {
+            cat: [
+                {
+                    "id": e.id,
+                    "content": e.content,
+                    "confidence": e.confidence,
+                    "tags": e.tags,
+                    "created_at": e.created_at,
+                }
+                for e in entries
+            ]
+            for cat, entries in all_entries.items()
+        }
+
+    async def clear_memory(self) -> None:
+        """Clear all project memory."""
+        runner = self.get_runner()
+        if runner._memory_store:
+            runner._memory_store.clear()
+
     # ── Event Methods ────────────────────────────────────────────────────
 
     def on(self, event_type, handler):
@@ -1132,3 +1441,18 @@ class CodyClient:
 
     def get_metrics(self) -> Optional[dict]:
         return self._async.get_metrics()
+
+    def submit_interaction(self, request_id: str, action: str = "answer", content: str = "") -> None:
+        _run_async(self._async.submit_interaction(request_id, action, content))
+
+    def inject_user_input(self, message: str) -> None:
+        _run_async(self._async.inject_user_input(message))
+
+    def add_memory(self, category: str, content: str, **kwargs) -> None:
+        _run_async(self._async.add_memory(category, content, **kwargs))
+
+    def get_memory(self) -> dict:
+        return _run_async(self._async.get_memory())
+
+    def clear_memory(self) -> None:
+        _run_async(self._async.clear_memory())

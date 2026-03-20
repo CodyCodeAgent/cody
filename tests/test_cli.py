@@ -114,6 +114,7 @@ def test_chat_help(runner):
 
 def test_chat_nonexistent_session(runner, monkeypatch):
     monkeypatch.setenv("CODY_MODEL_API_KEY", "sk-test-key")
+    monkeypatch.setenv("CODY_MODEL_BASE_URL", "https://api.example.com/v1")
     monkeypatch.setattr("cody.core.config.Config.is_ready", lambda self: True)
     result = runner.invoke(main, ['chat', '--session', 'nonexistent'], input='/quit\n')
     assert 'Session not found' in result.output

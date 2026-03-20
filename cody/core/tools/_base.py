@@ -11,6 +11,8 @@ from pydantic_ai import ModelRetry, RunContext
 from pathlib import Path
 
 from ..errors import ToolError, ToolPathDenied
+from ..interaction import InteractionRequest
+from ..permissions import PermissionDeniedError, PermissionLevel
 
 if TYPE_CHECKING:
     from ..deps import CodyDeps
@@ -18,10 +20,32 @@ if TYPE_CHECKING:
 _tool_logger = logging.getLogger("cody.core.tools")
 
 
-def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str) -> None:
-    """Check permission before tool execution. Raises ToolPermissionDenied if denied."""
-    if ctx.deps.permission_manager:
-        ctx.deps.permission_manager.check(tool_name)
+async def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str, args_summary: str = "") -> None:
+    """Check permission before tool execution.
+
+    - ALLOW: proceed immediately.
+    - DENY: raise PermissionDeniedError.
+    - CONFIRM + interaction enabled: pause and wait for human approval.
+      If the human rejects, raise PermissionDeniedError.
+    - CONFIRM + interaction disabled: auto-approve (backward compatible).
+    """
+    if not ctx.deps.permission_manager:
+        return
+    level = ctx.deps.permission_manager.check(tool_name)
+    if level != PermissionLevel.CONFIRM:
+        return
+    # CONFIRM level — route through interaction handler if available
+    handler = getattr(ctx.deps, "interaction_handler", None)
+    if handler is None:
+        return  # no handler → auto-approve (legacy)
+    request = InteractionRequest(
+        kind="confirm",
+        prompt=f"Tool '{tool_name}' requires confirmation to execute.",
+        context={"tool_name": tool_name, "args": args_summary},
+    )
+    response = await handler(request)
+    if response.action == "reject":
+        raise PermissionDeniedError(tool_name, f"User rejected execution of {tool_name}")
 
 
 def _resolve_and_check(

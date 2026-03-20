@@ -45,7 +45,7 @@ async def spawn_agent(
               requirements, and context — the agent cannot see your conversation history.
         agent_type: "code", "research", "test", or "generic"
     """
-    _check_permission(ctx, "spawn_agent")
+    await _check_permission(ctx, "spawn_agent")
     manager = ctx.deps.sub_agent_manager
     if manager is None:
         return "[ERROR] Sub-agent system not available"
@@ -91,7 +91,7 @@ async def kill_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
     Args:
         agent_id: ID of the sub-agent to kill
     """
-    _check_permission(ctx, "kill_agent")
+    await _check_permission(ctx, "kill_agent")
     manager = ctx.deps.sub_agent_manager
     if manager is None:
         return "[ERROR] Sub-agent system not available"

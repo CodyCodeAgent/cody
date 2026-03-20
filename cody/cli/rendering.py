@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, TYPE_CHECKING
 
 from rich.markup import escape as rich_escape
 
@@ -14,6 +14,9 @@ from ..shared import (
     format_elapsed as _format_elapsed,
     compact_message,
 )
+
+if TYPE_CHECKING:
+    from ..sdk.client import AsyncCodyClient
 
 
 async def _status_spinner(label: str, start: float, *, done_label: str = "") -> None:
@@ -49,11 +52,16 @@ async def _render_stream(
     stream: AsyncIterator[StreamChunk],
     *,
     verbose: bool = False,
+    client: "Optional[AsyncCodyClient]" = None,
 ) -> Optional[StreamChunk]:
     """Consume a StreamChunk async iterator and render to console.
 
     Shared by both `run` and `chat` commands.
     Returns the done StreamChunk, or None.
+
+    When *client* is provided, ``interaction_request`` events are handled
+    interactively: the user is prompted for input and the response is
+    submitted back via ``client.submit_interaction()``.
     """
     in_thinking = False
     thinking_buf: list[str] = []
@@ -115,6 +123,45 @@ async def _render_stream(
                 if verbose:
                     preview = chunk.content[:200]
                     console.print(f"    [dim]{rich_escape(preview)}[/dim]")
+            elif chunk.type == "interaction_request":
+                await _stop_spinner()
+                if in_thinking:
+                    console.print(rich_escape("".join(thinking_buf)), style="dim")
+                    thinking_buf.clear()
+                    in_thinking = False
+                # Display the AI's question
+                console.print()
+                console.print(f"  [bold yellow]? {rich_escape(chunk.content)}[/bold yellow]")
+                if chunk.options:
+                    for i, opt in enumerate(chunk.options, 1):
+                        console.print(f"    [cyan]{i})[/cyan] {rich_escape(opt)}")
+                # Collect user response
+                if client and chunk.request_id:
+                    loop = asyncio.get_running_loop()
+                    if chunk.options:
+                        prompt_text = f"  Enter choice (1-{len(chunk.options)}) or type answer: "
+                    else:
+                        prompt_text = "  Your answer: "
+                    answer = await loop.run_in_executor(
+                        None, lambda: input(prompt_text),
+                    )
+                    # If user entered a number matching an option, use the option text
+                    if chunk.options and answer.strip().isdigit():
+                        idx = int(answer.strip()) - 1
+                        if 0 <= idx < len(chunk.options):
+                            answer = chunk.options[idx]
+                    await client.submit_interaction(
+                        request_id=chunk.request_id,
+                        action="answer",
+                        content=answer.strip(),
+                    )
+                    console.print(f"  [dim]→ Answered: {rich_escape(answer.strip())}[/dim]")
+                    # Restart spinner while waiting for AI to continue
+                    spinner_task = asyncio.create_task(
+                        _status_spinner("Processing...", time.monotonic())
+                    )
+                else:
+                    console.print("  [dim](interaction not handled — no client)[/dim]")
             elif chunk.type == "text_delta":
                 await _stop_spinner()
                 if in_thinking:

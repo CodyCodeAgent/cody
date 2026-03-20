@@ -86,10 +86,10 @@ class PermissionManager:
         Returns the permission level. Raises PermissionDeniedError if denied.
 
         Note on CONFIRM level: this method returns PermissionLevel.CONFIRM without
-        raising an exception. The CONFIRM level passes through silently at the core
-        layer — actual confirmation UX (prompting the user, blocking until answered,
-        etc.) is entirely the responsibility of the caller (CLI, TUI, or Web frontend).
-        Core never blocks on user input.
+        raising an exception. When ``interaction.enabled=True``, the tool layer
+        (``_check_permission``) routes CONFIRM through the interaction handler to
+        pause and wait for human approval. When interaction is disabled (default),
+        CONFIRM is treated as ALLOW for backward compatibility.
         """
         level = self.get_level(tool_name)
         if level == PermissionLevel.DENY:

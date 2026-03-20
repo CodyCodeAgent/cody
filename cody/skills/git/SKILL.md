@@ -1,85 +1,34 @@
 ---
 name: git
-description: Git version control operations — status, diff, add, commit, push, pull, branching. Use when working with git repositories or version control.
-metadata:
-  author: cody
-  version: "1.0"
+description: Git version control workflows, branching strategies, and commit best practices.
 ---
 
-# Git Operations
+# Git Skill
 
-Git version control operations using the git CLI.
+## When to use
+- Managing git repositories
+- Creating branches and merging
+- Writing commit messages
+- Resolving merge conflicts
 
-## Prerequisites
+## Best practices
+- Write clear, descriptive commit messages
+- Use conventional commits format (feat:, fix:, docs:, etc.)
+- Keep commits atomic and focused
+- Use feature branches for new work
+- Rebase before merging to keep history clean
 
-- Git must be installed: `git --version`
-- Repository must be initialized: `git init`
-
-## Common Commands
-
-### Check Status
+## Common commands
 ```bash
-git status
-```
-
-### View Diff
-```bash
-git diff
-```
-
-### Add Files
-```bash
-git add <file>
-git add .  # Add all files
-```
-
-### Commit
-```bash
-git commit -m "commit message"
-```
-
-### Push
-```bash
-git push
-git push origin main
-```
-
-### Pull
-```bash
-git pull
-```
-
-### Create Branch
-```bash
-git checkout -b <branch-name>
-```
-
-### Switch Branch
-```bash
-git checkout <branch-name>
-```
-
-## Examples
-
-**Check what changed:**
-```bash
+# Status and diff
 git status
 git diff
-```
 
-**Commit changes:**
-```bash
-git add .
+# Branching
+git checkout -b feature/my-feature
+git merge main
+
+# Commit
+git add -p
 git commit -m "feat: add new feature"
 ```
-
-**Push to remote:**
-```bash
-git push origin main
-```
-
-## Notes
-
-- Always check status before committing
-- Use clear, descriptive commit messages
-- Pull before pushing to avoid conflicts

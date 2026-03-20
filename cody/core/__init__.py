@@ -17,6 +17,21 @@ _LAZY_IMPORTS = {
     "DoneEvent": (".runner", "DoneEvent"),
     "CancelledEvent": (".runner", "CancelledEvent"),
     "SessionStartEvent": (".runner", "SessionStartEvent"),
+    "CircuitBreakerEvent": (".runner", "CircuitBreakerEvent"),
+    "InteractionRequestEvent": (".runner", "InteractionRequestEvent"),
+    "UserInputReceivedEvent": (".runner", "UserInputReceivedEvent"),
+    "TaskMetadata": (".runner", "TaskMetadata"),
+    # interaction
+    "InteractionRequest": (".interaction", "InteractionRequest"),
+    "InteractionResponse": (".interaction", "InteractionResponse"),
+    "InteractionTimeoutError": (".errors", "InteractionTimeoutError"),
+    # memory
+    "ProjectMemoryStore": (".memory", "ProjectMemoryStore"),
+    "MemoryEntry": (".memory", "MemoryEntry"),
+    # circuit_breaker error
+    "CircuitBreakerError": (".errors", "CircuitBreakerError"),
+    # config
+    "CircuitBreakerConfig": (".config", "CircuitBreakerConfig"),
     # session
     "SessionStore": (".session", "SessionStore"),
     # skill_manager
@@ -54,6 +69,8 @@ _LAZY_IMPORTS = {
     # rate_limiter
     "RateLimiter": (".rate_limiter", "RateLimiter"),
     "RateLimitResult": (".rate_limiter", "RateLimitResult"),
+    # user_input
+    "UserInputQueue": (".user_input", "UserInputQueue"),
     # deps
     "CodyDeps": (".deps", "CodyDeps"),
     # log

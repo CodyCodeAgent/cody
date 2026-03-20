@@ -130,6 +130,58 @@ class MCPConfig:
 
 
 @dataclass
+class InteractionConfig:
+    """Human-in-the-loop interaction configuration.
+
+    When enabled, the runner pauses on interaction requests and waits
+    for a human response via ``submit_interaction()``.  When disabled
+    (default), interaction requests are auto-approved so the AI runs
+    autonomously.
+
+    Only effective with async clients (``run()`` / ``stream()``).
+    ``run_sync()`` always auto-approves regardless of this setting.
+    """
+
+    enabled: bool = False
+    timeout: float = 30.0  # seconds; 0 = no timeout
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for core config."""
+        return {
+            "enabled": self.enabled,
+            "timeout": self.timeout,
+        }
+
+
+@dataclass
+class CircuitBreakerConfig:
+    """Circuit breaker configuration for automatic run termination.
+
+    Controls safety limits that prevent runaway token usage and cost.
+    """
+
+    enabled: bool = True
+    max_tokens: int = 200_000
+    max_cost_usd: float = 5.0
+    loop_detect_turns: int = 6
+    loop_similarity_threshold: float = 0.9
+    model_prices: dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for core config."""
+        d: dict = {
+            "enabled": self.enabled,
+            "max_tokens": self.max_tokens,
+            "max_cost_usd": self.max_cost_usd,
+            "loop_detect_turns": self.loop_detect_turns,
+            "loop_similarity_threshold": self.loop_similarity_threshold,
+        }
+        if self.model_prices:
+            d["model_prices"] = self.model_prices
+        return d
+
+
+@dataclass
 class LSPConfig:
     """LSP configuration."""
     
@@ -181,6 +233,12 @@ class SDKConfig:
     # LSP
     lsp: LSPConfig = field(default_factory=LSPConfig)
     
+    # Interaction (human-in-the-loop)
+    interaction: InteractionConfig = field(default_factory=InteractionConfig)
+
+    # Circuit breaker
+    circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
+
     # Custom skill directories
     skill_dirs: list[str] = field(default_factory=list)
 
@@ -225,6 +283,20 @@ class SDKConfig:
             if isinstance(lsp_data, dict):
                 config.lsp = LSPConfig(**lsp_data)
         
+        if "interaction" in data:
+            ia_data = data["interaction"]
+            if isinstance(ia_data, dict):
+                config.interaction = InteractionConfig(**ia_data)
+            elif isinstance(ia_data, InteractionConfig):
+                config.interaction = ia_data
+
+        if "circuit_breaker" in data:
+            cb_data = data["circuit_breaker"]
+            if isinstance(cb_data, dict):
+                config.circuit_breaker = CircuitBreakerConfig(**cb_data)
+            elif isinstance(cb_data, CircuitBreakerConfig):
+                config.circuit_breaker = cb_data
+
         if "skill_dirs" in data:
             config.skill_dirs = data["skill_dirs"]
 
@@ -263,6 +335,12 @@ class SDKConfig:
             config_dict["enable_thinking"] = True
             if self.model.thinking_budget:
                 config_dict["thinking_budget"] = self.model.thinking_budget
+
+        # Add interaction
+        config_dict["interaction"] = self.interaction.to_dict()
+
+        # Add circuit breaker
+        config_dict["circuit_breaker"] = self.circuit_breaker.to_dict()
 
         # Add custom skill directories
         if self.skill_dirs:

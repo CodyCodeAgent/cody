@@ -45,12 +45,13 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 │  │  │          │           │          │              │      │  │
 │  │  │ file ops │ .cody/    │ stdio+   │ pyright      │      │  │
 │  │  │ search   │ ~/.cody/  │ http     │ tsserver     │      │  │
-│  │  │ exec     │ builtin/  │ JSON-RPC │ gopls        │      │  │
-│  │  │ web      │ 11 skills │ github   │              │      │  │
+│  │  │ exec     │ custom    │ JSON-RPC │ gopls        │      │  │
+│  │  │ web      │ skills    │ github   │              │      │  │
 │  │  │ todo     │           │ feishu   │ diagnostics  │      │  │
 │  │  │ question │           │ etc.     │ definition   │      │  │
 │  │  │ undo/    │           │          │ references   │      │  │
 │  │  │ redo     │           │          │ hover        │      │  │
+│  │  │ memory   │           │          │              │      │  │
 │  │  └──────────┴───────────┴──────────┴──────────────┘      │  │
 │  └───────────────────────────────────────────────────────────┘  │
 │             │                                                    │
@@ -63,7 +64,8 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 │  │  │ spawn     │ SQLite    │ compact  │ Audit Log   │      │  │
 │  │  │ kill      │ sessions  │ chunk    │ Rate Limit  │      │  │
 │  │  │ wait      │ messages  │ select   │ FileHistory │      │  │
-│  │  │ 4 types   │ history   │ tokens   │             │      │  │
+│  │  │ 4 types   │ history   │ tokens   │ CircuitBkr  │      │  │
+│  │  │           │           │          │ ProjMemory  │      │  │
 │  │  └───────────┴───────────┴──────────┴─────────────┘      │  │
 │  └───────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
@@ -99,13 +101,16 @@ The central orchestrator. Responsibilities:
 
 **StreamEvent system:** `run_stream()` yields structured `StreamEvent` objects (not raw text):
 ```
-SessionStartEvent — session ID (always first event in run_stream_with_session, v1.10.4+)
-ThinkingEvent     — incremental thinking content (delta)
-TextDeltaEvent    — incremental text output (delta)
-ToolCallEvent     — tool call initiated (tool_name, args, tool_call_id)
-ToolResultEvent   — tool call result (tool_name, result)
-DoneEvent         — stream complete, contains full CodyResult
-CancelledEvent    — run cancelled via cancel_event (v1.10.3+)
+SessionStartEvent       — session ID (always first event in run_stream_with_session, v1.11.0+)
+ThinkingEvent           — incremental thinking content (delta)
+TextDeltaEvent          — incremental text output (delta)
+ToolCallEvent           — tool call initiated (tool_name, args, tool_call_id)
+ToolResultEvent         — tool call result (tool_name, result)
+DoneEvent               — stream complete, contains full CodyResult
+CancelledEvent          — run cancelled via cancel_event (v1.10.3+)
+CircuitBreakerEvent     — run terminated by circuit breaker (reason, tokens, cost)
+InteractionRequestEvent — human input needed (question/confirm/feedback)
+UserInputReceivedEvent  — user proactively sent a message (injected at next node boundary)
 ```
 `run_stream()` accepts an optional `cancel_event: asyncio.Event` parameter. When set, the stream yields a `CancelledEvent` and stops. Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
 
@@ -115,6 +120,7 @@ CodyResult
 ├── output: str            # final text output
 ├── thinking: str | None   # concatenated thinking content
 ├── tool_traces: list      # all tool calls with args and results
+├── metadata: TaskMetadata | None  # structured output (summary, confidence, issues, next_steps)
 └── _raw_result            # pydantic-ai AgentRunResult (for all_messages, usage)
 ```
 
@@ -122,7 +128,8 @@ CodyResult
 
 ```text
 Config, workdir, SkillManager, MCPClient, SubAgentManager,
-LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list
+LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list,
+ProjectMemoryStore, interaction_handler
 ```
 
 **ToolContext** (`core/deps.py`): Lightweight context for direct tool invocation outside of agent runs (e.g., SDK `tool()` calls, Web `/tool` endpoint). Wraps `CodyDeps` in a `RunContext`-compatible interface.
@@ -151,6 +158,7 @@ core/tools/
 ├── history.py       — undo_file, redo_file, list_file_changes
 ├── todo.py          — todo_write, todo_read
 ├── user.py          — question
+├── memory.py        — save_memory
 └── registry.py      — *_TOOLS lists, CORE_TOOLS, register_tools(), register_sub_agent_tools()
 ```
 
@@ -167,8 +175,9 @@ LSP_TOOLS       — lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
 FILE_HISTORY_TOOLS — undo_file, redo_file, list_file_changes
 TODO_TOOLS      — todo_write, todo_read
 USER_TOOLS      — question
+MEMORY_TOOLS    — save_memory
 
-CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + USER_TOOLS  (all except MCP)
+CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 ```
 
 **Registration functions:**
@@ -177,7 +186,7 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + USER_TOOLS  (all except MCP)
 
 **Backward compatibility:** `from cody.core.tools import read_file` and `from cody.core import tools; tools.read_file` both work unchanged.
 
-**30+ tools across 11 categories:**
+**29+ tools across 12 categories:**
 
 | Category | Tools | Permission |
 |----------|-------|------------|
@@ -192,6 +201,7 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + USER_TOOLS  (all except MCP)
 | File History | undo_file, redo_file, list_file_changes | undo/redo=confirm, list=allow |
 | Task Mgmt | todo_write, todo_read | allow |
 | User I/O | question | allow |
+| Memory | save_memory | allow |
 
 **Typed exceptions:** Tool errors use a typed hierarchy (`ToolError` base, with `ToolPermissionDenied`, `ToolPathDenied`, `ToolInvalidParams`) defined in `core/errors.py`. The server catches these by type instead of string-matching, mapping them to correct HTTP status codes (403/400/500).
 
@@ -203,14 +213,13 @@ Implements the [Agent Skills open standard](https://agentskills.io/) (adopted by
 
 **SKILL.md format:** YAML frontmatter (`name`, `description`, optional `license`/`compatibility`/`metadata`/`allowed-tools`) + Markdown body.
 
-Three-tier priority loading:
+Two-tier priority loading:
 1. `.cody/skills/` — project-level (highest)
 2. `~/.cody/skills/` — user-level
-3. `{install}/skills/` — built-in
+
+> v1.11.0+: Built-in skills removed. Users create custom skills per project. Skill infrastructure (SkillManager, progressive loading, system prompt injection) unchanged.
 
 **Progressive disclosure:** Startup parses only YAML frontmatter (~50-100 tokens/skill). `skill.instructions` loads the full body on demand. `to_prompt_xml()` generates `<available_skills>` XML injected into the system prompt for model-driven skill discovery.
-
-**Built-in skills (11):** git, github, docker, npm, python, rust, go, java, web, cicd, testing
 
 ### 4. Sub-Agent System (`core/sub_agent.py`)
 
@@ -221,6 +230,41 @@ Three-tier priority loading:
 - Lifecycle: spawn → running → completed/failed/killed/timeout
 
 **Note:** `_execute()` uses delayed imports to break `runner → sub_agent → runner` circular dependency.
+
+### 4b. Circuit Breaker (`core/runner.py`)
+
+Prevents runaway agent execution. Three trigger conditions:
+- **Token limit** — cumulative `total_tokens` exceeds `max_tokens` (default 200,000)
+- **Cost limit** — estimated cost exceeds `max_cost_usd` (default $5.0)
+- **Loop detection** — consecutive N tool results have SequenceMatcher similarity ≥ threshold (default 0.9)
+
+Configured via `CircuitBreakerConfig` in `core/config.py`. Checked after each `CallToolsNode` in `run_stream()` and after `run()`/`run_sync()`.
+
+### 4c. Interaction Layer (`core/interaction.py`)
+
+Unified human-in-the-loop mechanism:
+- `InteractionRequest` — AI asks for input (kind: `question`/`confirm`/`feedback`)
+- `InteractionResponse` — human replies (action: `approve`/`reject`/`revise`/`answer`)
+- Wired via `CodyDeps.interaction_handler` callback (async callable)
+- `_build_stream_interaction_handler()` creates a handler that pushes events to a side queue and awaits a Future
+- `submit_interaction()` resolves the pending Future
+
+### 4d. Proactive User Input (`core/user_input.py`)
+
+Users can send messages without the AI asking:
+- `UserInputQueue` — async queue for unsolicited messages
+- `inject_user_input(msg)` — enqueue from any consumer (SDK/Web/CLI)
+- Drained at each `CallToolsNode` boundary in `run_stream()`
+- Injected via `CallToolsNode.user_prompt` — pydantic-ai appends it as a `UserPromptPart` after tool results
+
+### 4e. Project Memory (`core/memory.py`)
+
+Cross-session knowledge store per project:
+- Storage: `~/.cody/memory/<project_hash>/` with one JSON file per category
+- Categories: `conventions`, `patterns`, `issues`, `decisions` (max 50 entries each)
+- `ProjectMemoryStore.get_memory_for_prompt()` formats entries for system prompt injection
+- `save_memory` tool lets the AI proactively persist learnings
+- Low-confidence entries (< 0.3) filtered from prompt injection
 
 ### 5. MCP Client (`core/mcp_client.py`)
 
@@ -346,6 +390,7 @@ HTTP POST /run/stream → SSE stream (structured events)
 
 WS /ws → WebSocket bidirectional (same event types as SSE)
   → {"type":"run"} → stream → structured events
+  → {"type":"user_input","content":"..."} → inject into agent queue
   → {"type":"cancel"} → abort → {"type":"cancelled"}
 ```
 
@@ -401,4 +446,4 @@ cody/sdk/ ───────→ core/*  (direct import, in-process)
 
 ---
 
-**Last updated:** 2026-03-11
+**Last updated:** 2026-03-20

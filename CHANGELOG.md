@@ -6,15 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [1.10.4] - 2026-03-20
+## [1.11.0] - 2026-03-20
 
 ### Fixed
 
 - **session_id 始终返回**：`stream()` 不再区分有无 `session_id` 参数，始终走 `run_stream_with_session` 路径。首次调用不传 `session_id` 时 core 自动创建 session 并返回 sid，修复了调用方拿不到 session_id 的 bug
+- **interaction_request 流式死锁修复**：`run_stream()` 中 `interaction_request` 事件原先在 `CallToolsNode` 完成后才推送，导致 `question` 工具阻塞等待响应形成死锁。修复为使用合并队列（merged queue）+ 并发任务，在工具执行期间实时推送交互事件
 
 ### Added
 
 - **SessionStartEvent**：新增 `session_start` 流式事件，作为 stream 的第一个事件 yield，确保调用方在 AI 调用前就能拿到 `session_id`（即使后续 AI 报错也不影响）
+- **CLI/TUI/Web 完整 Human-in-the-Loop 支持**：
+  - **CLI**：`interaction_request` 事件自动暂停并在终端提示用户输入，支持选项选择和自由文本回答
+  - **TUI**：交互请求在对话气泡中显示黄色高亮问题，用户在输入框直接回答
+  - **Web**：黄色交互卡片 UI 显示 AI 提问，支持选项按钮快捷回答或文本框输入
+  - **WebSocket**：所有 WS 端点（`/ws`、`/ws/chat/{id}`、`/ws/chat/task/{id}`）新增 `submit_interaction` 消息类型
+- **CircuitBreaker 止损熔断**：新增 `CircuitBreakerConfig` 配置块，支持 token 上限（`max_tokens`）、成本上限（`max_cost_usd`）、死循环检测（`loop_detect_turns` + `loop_similarity_threshold`）。超限时 `run()` 抛出 `CircuitBreakerError`，`run_stream()` 产出 `CircuitBreakerEvent` 后停止
+- **CircuitBreaker Builder 支持**：`CodyBuilder` 新增 `.circuit_breaker()` 方法，支持关键字参数或 `CircuitBreakerConfig` 对象。配置优先级：SDK 代码 > 项目配置 > 全局配置
+- **Human-in-the-Loop 交互**：`CodyBuilder` 新增 `.interaction(enabled, timeout)` 方法。开启后 `question` 工具和 CONFIRM 级别工具（`exec_command`、`write_file` 等）均暂停等待人类响应，超时抛出 `InteractionTimeoutError` 终止 run。`run_sync()` 忽略此配置，始终自动批准
+- **StructuredOutput 结构化输出**：`CodyResult` 新增 `metadata: TaskMetadata` 字段，包含 `summary`（一句话摘要）、`confidence`（AI 自评置信度，解析 `<confidence>` 标记）、`issues`、`next_steps`。不破坏现有 `result.output` 接口
+- **HumanInteraction 统一交互层**：新建 `core/interaction.py`，定义 `InteractionRequest`（kind=question/confirm/feedback）和 `InteractionResponse`（action=approve/reject/revise/answer），通过 `request_id` 匹配。`AgentRunner` 新增 `submit_interaction()` 方法，`StreamEvent` 新增 `InteractionRequestEvent`
+- **ProjectMemory 跨任务记忆**：新建 `core/memory.py`，`ProjectMemoryStore` 按 workdir 哈希存储跨会话记忆（conventions/patterns/issues/decisions 四类 JSON 文件），AgentRunner 初始化时自动加载并注入 system prompt
 
 ---
 
