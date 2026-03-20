@@ -11,14 +11,13 @@
 Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为中枢：
 
 ```
-                    ┌─────────┐
-                    │  CLI    │
-                    └────┬────┘
+┌─────────┐    ┌─────────────────────┐
+│  CLI    │───▸│   SDK (client.py)   │
+└─────────┘    └─────────┬───────────┘
                          │
-┌─────────┐    ┌─────────┴──────────┐    ┌─────────┐
-│  TUI    │───▸│   SDK (client.py)  │◂───│   Web   │
-└─────────┘    └─────────┬──────────┘    └─────────┘
-                         │
+┌─────────┐              │              ┌─────────┐
+│  TUI    │───▸  SDK     │     Core ◂───│   Web   │
+└─────────┘              │              └─────────┘
                ┌─────────▾──────────┐
                │  Core / AgentRunner │
                │    (runner.py)      │
@@ -30,30 +29,32 @@ Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为
    (29 个)   (SQLite) (File)  Client  Client
 ```
 
+> **注意：** CLI/TUI 通过 SDK 访问 Core，但 Web Backend 直接导入 Core（`AgentRunner`/`SessionStore`），不经过 SDK。
+
 **评价：架构清晰，分层合理。** Core 不依赖任何上层模块，工具注册声明式，依赖注入通过 `CodyDeps` 统一管理。
 
 ### 1.2 模块划分
 
 | 模块 | 文件数 | 代码行数 | 职责 | 评分 |
 |------|--------|---------|------|------|
-| `core/` | 24 | ~5,928 | 框架核心引擎 | ★★★★★ |
-| `core/tools/` | 16 | ~2,500 | 29 个工具实现 | ★★★★★ |
-| `sdk/` | 7 | ~2,960 | Python SDK | ★★★★☆ |
-| `cli/` | 8 | ~850 | 命令行实现 | ★★★☆☆ |
-| `tui/` | 3 | ~700 | 终端 UI | ★★★☆☆ |
-| `web/backend/` | 22 | ~4,415 | Web API | ★★★★☆ |
+| `core/` | 41 | ~7,547 | 框架核心引擎 | ★★★★★ |
+| `core/tools/` | 16 | ~1,619 | 29 个工具实现 | ★★★★★ |
+| `sdk/` | 12 | ~3,163 | Python SDK | ★★★★☆ |
+| `cli/` | 9 | ~949 | 命令行实现 | ★★★☆☆ |
+| `tui/` | 3 | ~607 | 终端 UI | ★★★☆☆ |
+| `web/backend/` | 22 | ~3,140 | Web API | ★★★★☆ |
 | `web/src/` | ~13 | — | React 前端 | ★★★☆☆ |
-| `tests/` | 28 | — | 673+ 测试 | ★★★★☆ |
-| `docs/` | 10 | — | 项目文档 | ★★★★☆ |
+| `tests/` | 29 | — | 804 测试 | ★★★★☆ |
+| `docs/` | 11 | — | 项目文档 | ★★★★☆ |
 
 ### 1.3 代码抽象亮点
 
 1. **声明式工具注册** — 在 `registry.py` 的列表中添加函数即可，无需修改 runner
 2. **依赖注入** — `CodyDeps` 数据类集中管理 14 个依赖，工具通过 `ctx.deps` 访问
-3. **懒加载** — `__init__.py` 使用 `__getattr__()` 延迟导入 70+ 公开符号
+3. **懒加载** — `__init__.py` 使用 `__getattr__()` 延迟导入 12 个公开符号
 4. **Builder 模式** — SDK 提供 `Cody().workdir().model().build()` 流式 API
 5. **策略模式** — 上下文压缩支持截断和 LLM 两种策略
-6. **流式事件** — 14 种事件类型覆盖完整的 Agent 生命周期
+6. **流式事件** — 18 种事件类型覆盖完整的 Agent 生命周期
 
 ---
 
@@ -61,9 +62,9 @@ Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为
 
 ### 2.1 当前 Prompt 架构
 
-系统共有 **10 个 Prompt 来源**，按注入顺序：
+系统共有 **5 个 Prompt 来源**，按注入顺序：
 
-1. **Base Persona**（`runner.py:402-423`）— 角色定义 + 子 Agent 并行指导
+1. **Base Persona**（`runner.py:401-424`）— 角色定义 + 子 Agent 并行指导
 2. **Project Instructions**（合并 `~/.cody/CODY.md` + 项目 `CODY.md`）
 3. **Project Memory**（跨会话学习记忆，按分类注入）
 4. **Available Skills XML**（Agent Skills 标准格式）
@@ -75,7 +76,7 @@ Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为
 
 #### 问题 1：Base Persona 过于简略
 
-**现状：** 主 Agent Prompt 仅 ~15 行，缺少关键行为约束。
+**现状：** 主 Agent Prompt 仅 ~21 行，缺少关键行为约束。
 
 **建议补充：**
 - **输出格式规范** — 何时使用 Markdown、代码块、列表
@@ -154,7 +155,7 @@ Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为
 |------|------|
 | 批量执行 | 不支持并行运行多个 Prompt |
 | 重试机制 | 瞬态失败（网络超时等）没有自动重试 + 指数退避 |
-| 速率限制元数据 | 客户端无法获取剩余配额信息 |
+| ~~速率限制元数据~~ | ~~客户端无法获取剩余配额信息~~ — **已实现**：`CodyRateLimitError` 暴露了 `retry_after`/`limit`/`remaining` |
 | Builder 验证 | `build()` 前不检查 model 是否为空 |
 | 并发流安全 | 多个并发 `stream()` 调用的 `_current_run` 追踪可能竞态 |
 
@@ -184,7 +185,7 @@ Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为
 
 | 项目 | 说明 |
 |------|------|
-| WebSocket 心跳 | 无 keepalive/ping-pong 机制 |
+| ~~WebSocket 心跳~~ | ~~无 keepalive/ping-pong 机制~~ — **已实现**：`chat.py` 中有 ping/pong 处理 |
 | 请求去重 | 相同请求会重复执行 |
 | Rate Limit Headers | 客户端看不到 `X-RateLimit-Remaining` |
 | 熔断器指标 API | 无法查询熔断器状态 |
@@ -273,7 +274,7 @@ opencode 支持 glob 模式的命令权限：
 }
 ```
 
-**Cody 现状：** `SecurityConfig.allowed_commands` 是简单的字符串列表 + 黑名单模式。
+**Cody 现状：** `SecurityConfig` 使用 `allowed_commands`（白名单）+ `blocked_commands`（黑名单）双列表模式，但不支持 glob 模式匹配。
 
 #### (6) 会话分享 ★★★☆☆
 
@@ -342,7 +343,7 @@ opencode 有 VS Code 和 Zed 扩展。
 - [ ] **LSP 自动安装** — 检测项目语言后自动安装对应 language server
 - [ ] **SDK Builder 验证** — 构建时校验必填参数
 - [ ] **并发安全** — 修复 metrics 竞态、增加并发流测试
-- [ ] **Web 增强** — WebSocket 心跳、Rate Limit Headers、熔断器指标 API
+- [ ] **Web 增强** — Rate Limit Headers、熔断器指标 API、Agent 生命周期事件
 - [ ] **TUI 增强** — 命令面板、会话切换、文件浏览
 
 ### 长期（v2.0）
