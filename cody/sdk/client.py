@@ -1194,7 +1194,12 @@ class AsyncCodyClient:
 
     # ── Interaction Methods ──────────────────────────────────────────────
 
-    async def submit_interaction(self, request_id: str, action: str = "answer", content: str = "") -> None:
+    async def submit_interaction(
+        self,
+        request_id: str,
+        action: Literal["approve", "reject", "revise", "answer"] = "answer",
+        content: str = "",
+    ) -> None:
         """Submit a human response to a pending interaction request.
 
         Args:

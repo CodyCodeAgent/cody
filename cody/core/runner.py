@@ -956,7 +956,7 @@ class AgentRunner:
 
                     if self.agent.is_model_request_node(node):
                         # Stream LLM response: thinking + text deltas
-                        async with node.stream(agent_run.ctx) as stream:
+                        async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
                             async for event in stream:
                                 if isinstance(event, PartStartEvent):
                                     part = event.part
