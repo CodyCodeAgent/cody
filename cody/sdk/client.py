@@ -15,6 +15,7 @@ from typing import AsyncIterator, Literal, Optional, overload
 
 from .config import (
     CircuitBreakerConfig as SDKCircuitBreakerConfig,
+    InteractionConfig as SDKInteractionConfig,
     MCPServerConfig as SDKMCPServerConfig,
     SDKConfig,
     config as make_config,
@@ -75,6 +76,7 @@ class CodyBuilder:
     _enable_events: bool = False
     _mcp_servers: list[dict | SDKMCPServerConfig] = field(default_factory=list)
     _auto_start_mcp: bool = False
+    _interaction: SDKInteractionConfig | None = None
     _circuit_breaker: SDKCircuitBreakerConfig | None = None
     _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
@@ -150,6 +152,26 @@ class CodyBuilder:
     def enable_events(self) -> "CodyBuilder":
         """Enable event system."""
         self._enable_events = True
+        return self
+
+    def interaction(
+        self,
+        enabled: bool = True,
+        timeout: float = 30.0,
+    ) -> "CodyBuilder":
+        """Configure human-in-the-loop interaction.
+
+        When enabled, the runner pauses on interaction requests (e.g. the
+        ``question`` tool) and waits for a human response via
+        ``submit_interaction()``.  If no response arrives within *timeout*
+        seconds, the run is terminated with an ``InteractionTimeoutEvent``.
+
+        Only effective with async methods (``run()`` / ``stream()``).
+        ``run_sync()`` always auto-approves regardless of this setting.
+
+            Cody().interaction(enabled=True, timeout=30).build()
+        """
+        self._interaction = SDKInteractionConfig(enabled=enabled, timeout=timeout)
         return self
 
     def circuit_breaker(
@@ -255,6 +277,8 @@ class CodyBuilder:
             enable_metrics=self._enable_metrics,
             enable_events=self._enable_events,
         )
+        if self._interaction is not None:
+            cfg.interaction = self._interaction
         if self._circuit_breaker is not None:
             cfg.circuit_breaker = self._circuit_breaker
         cfg.skill_dirs = self._skill_dirs
@@ -387,6 +411,13 @@ class AsyncCodyClient:
                     if d not in existing:
                         self._core_config.skills.custom_dirs.append(d)
                         existing.add(d)
+            # Apply interaction config from SDK
+            if self._config.interaction.enabled:
+                from ..core.config import InteractionConfig as CoreIAConfig
+                self._core_config.interaction = CoreIAConfig(
+                    enabled=self._config.interaction.enabled,
+                    timeout=self._config.interaction.timeout,
+                )
             # Apply circuit breaker config from SDK
             from ..core.config import CircuitBreakerConfig as CoreCBConfig
             sdk_cb = self._config.circuit_breaker

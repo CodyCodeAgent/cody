@@ -36,7 +36,7 @@ from .audit import AuditLogger
 from .config import Config
 from .context import CompactResult, compact_messages, compact_messages_llm
 from .deps import CodyDeps
-from .errors import CircuitBreakerError
+from .errors import CircuitBreakerError, InteractionTimeoutError
 from .file_history import FileHistory
 from .interaction import InteractionRequest, InteractionResponse
 from .log import log_elapsed
@@ -234,10 +234,19 @@ class InteractionRequestEvent:
     event_type: Literal["interaction_request"] = "interaction_request"
 
 
+@dataclass
+class InteractionTimeoutEvent:
+    """Emitted when a human interaction request times out."""
+    request_id: str
+    timeout: float
+    event_type: Literal["interaction_timeout"] = "interaction_timeout"
+
+
 StreamEvent = Union[
     SessionStartEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
     CancelledEvent, CircuitBreakerEvent, InteractionRequestEvent,
+    InteractionTimeoutEvent,
 ]
 
 
@@ -449,8 +458,12 @@ class AgentRunner:
 
         return agent  # type: ignore[return-value]
 
-    def _create_deps(self) -> CodyDeps:
-        """Create dependencies"""
+    def _create_deps(self, interaction_handler=None) -> CodyDeps:
+        """Create dependencies.
+
+        *interaction_handler*: async callable ``(InteractionRequest) -> InteractionResponse``.
+        Defaults to auto-approve when ``None``.
+        """
         return CodyDeps(
             config=self.config,
             workdir=self.workdir,
@@ -464,6 +477,7 @@ class AgentRunner:
             permission_manager=self._permission_manager,
             file_history=self._file_history,
             todo_list=self._todo_list,
+            interaction_handler=interaction_handler or self._auto_approve_handler,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -767,6 +781,40 @@ class AgentRunner:
         if future and not future.done():
             future.set_result(response)
 
+    @staticmethod
+    async def _auto_approve_handler(request: InteractionRequest) -> InteractionResponse:
+        """Default handler: auto-approve all interaction requests."""
+        return InteractionResponse(request_id=request.id, action="approve")
+
+    def _build_stream_interaction_handler(self, out_q: asyncio.Queue):
+        """Build an interaction handler for streaming mode.
+
+        If interaction is disabled, returns auto-approve.
+        If enabled, returns a handler that:
+          1. Pushes InteractionRequestEvent to the output queue
+          2. Creates a Future in _pending_interactions
+          3. Awaits the Future with configured timeout
+          4. Raises InteractionTimeoutError on timeout
+        """
+        if not self.config.interaction.enabled:
+            return self._auto_approve_handler
+
+        timeout = self.config.interaction.timeout
+
+        async def _handler(request: InteractionRequest) -> InteractionResponse:
+            future: asyncio.Future[InteractionResponse] = asyncio.get_event_loop().create_future()
+            self._pending_interactions[request.id] = future
+            await out_q.put(InteractionRequestEvent(request=request))
+            try:
+                if timeout > 0:
+                    return await asyncio.wait_for(future, timeout=timeout)
+                return await future
+            except asyncio.TimeoutError:
+                self._pending_interactions.pop(request.id, None)
+                raise InteractionTimeoutError(request.id, timeout)
+
+        return _handler
+
     # ── Prompt conversion ───────────────────────────────────────────────────
 
     @staticmethod
@@ -827,17 +875,18 @@ class AgentRunner:
           - CancelledEvent: run was cancelled via cancel_event
           - CircuitBreakerEvent: run terminated by circuit breaker
           - InteractionRequestEvent: human input needed
+          - InteractionTimeoutEvent: interaction request timed out
         """
-        from pydantic_ai.messages import (
-            PartStartEvent,
-            PartDeltaEvent,
-            FunctionToolCallEvent,
-            FunctionToolResultEvent,
-        )
-        from pydantic_ai.run import AgentRunResultEvent
-
         self._reset_circuit_breaker()
-        deps = self._create_deps()
+
+        # Output queue — all events (pydantic-ai + interaction) go through here.
+        _sentinel = object()
+        out_q: asyncio.Queue = asyncio.Queue()
+
+        # Build interaction handler for this stream.
+        interaction_handler = self._build_stream_interaction_handler(out_q)
+        deps = self._create_deps(interaction_handler=interaction_handler)
+
         message_history, compact_result = await self._compact_history_if_needed(
             message_history,
         )
@@ -851,76 +900,109 @@ class AgentRunner:
             )
 
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        try:
-            async for event in self.agent.run_stream_events(  # type: ignore[call-overload]
-                pydantic_prompt, deps=deps, message_history=message_history,
-                model_settings=self._build_model_settings(),
-            ):
-                if cancel_event and cancel_event.is_set():
-                    yield CancelledEvent()
-                    return
 
-                if isinstance(event, PartStartEvent):
-                    part = event.part
-                    if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                        yield ThinkingEvent(content=part.content)
-                    elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                        yield TextDeltaEvent(content=part.content)
-
-                elif isinstance(event, PartDeltaEvent):
-                    delta = event.delta
-                    if delta.part_delta_kind == "thinking":
-                        content = getattr(delta, "content_delta", None)
-                        if content:
-                            yield ThinkingEvent(content=content)
-                    elif delta.part_delta_kind == "text":
-                        content = getattr(delta, "content_delta", None)
-                        if content:
-                            yield TextDeltaEvent(content=content)
-
-                elif isinstance(event, FunctionToolCallEvent):
-                    part = event.part
-                    args = part.args if isinstance(part.args, dict) else {}
-                    if isinstance(part.args, str):
-                        try:
-                            args = json.loads(part.args)
-                        except (json.JSONDecodeError, TypeError):
-                            args = {"raw": part.args}
-                    yield ToolCallEvent(
-                        tool_name=part.tool_name,
-                        args=args,
-                        tool_call_id=part.tool_call_id,
-                    )
-
-                elif isinstance(event, FunctionToolResultEvent):
-                    result_part = event.result
-                    if result_part.part_kind == "tool-return":
-                        content = result_part.content
-                        if not isinstance(content, str):
-                            content = str(content)
-                        yield ToolResultEvent(
-                            tool_name=result_part.tool_name,
-                            tool_call_id=result_part.tool_call_id,
-                            result=content,
-                        )
-                        # Circuit breaker: track tool results
-                        self._cb_recent_results.append(content)
-                        max_keep = self.config.circuit_breaker.loop_detect_turns + 1
-                        if len(self._cb_recent_results) > max_keep:
-                            self._cb_recent_results = self._cb_recent_results[-max_keep:]
-
-                elif isinstance(event, AgentRunResultEvent):
-                    self._update_circuit_breaker("", event.result.usage() if hasattr(event.result, 'usage') else None)
-                    self._check_circuit_breaker()
-                    cody_result = CodyResult.from_raw(event.result)
-                    yield DoneEvent(result=cody_result)
-
-        except CircuitBreakerError as e:
-            yield CircuitBreakerEvent(
-                reason=e.reason,
-                tokens_used=e.tokens_used,
-                cost_usd=e.cost_usd,
+        async def _run_agent():
+            """Background task: run pydantic-ai stream, push events to out_q."""
+            from pydantic_ai.messages import (
+                PartStartEvent,
+                PartDeltaEvent,
+                FunctionToolCallEvent,
+                FunctionToolResultEvent,
             )
+            from pydantic_ai.run import AgentRunResultEvent
+
+            try:
+                async for event in self.agent.run_stream_events(  # type: ignore[call-overload]
+                    pydantic_prompt, deps=deps, message_history=message_history,
+                    model_settings=self._build_model_settings(),
+                ):
+                    if cancel_event and cancel_event.is_set():
+                        await out_q.put(CancelledEvent())
+                        return
+
+                    if isinstance(event, PartStartEvent):
+                        part = event.part
+                        if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                            await out_q.put(ThinkingEvent(content=part.content))
+                        elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                            await out_q.put(TextDeltaEvent(content=part.content))
+
+                    elif isinstance(event, PartDeltaEvent):
+                        delta = event.delta
+                        if delta.part_delta_kind == "thinking":
+                            content = getattr(delta, "content_delta", None)
+                            if content:
+                                await out_q.put(ThinkingEvent(content=content))
+                        elif delta.part_delta_kind == "text":
+                            content = getattr(delta, "content_delta", None)
+                            if content:
+                                await out_q.put(TextDeltaEvent(content=content))
+
+                    elif isinstance(event, FunctionToolCallEvent):
+                        part = event.part
+                        args = part.args if isinstance(part.args, dict) else {}
+                        if isinstance(part.args, str):
+                            try:
+                                args = json.loads(part.args)
+                            except (json.JSONDecodeError, TypeError):
+                                args = {"raw": part.args}
+                        await out_q.put(ToolCallEvent(
+                            tool_name=part.tool_name,
+                            args=args,
+                            tool_call_id=part.tool_call_id,
+                        ))
+
+                    elif isinstance(event, FunctionToolResultEvent):
+                        result_part = event.result
+                        if result_part.part_kind == "tool-return":
+                            content = result_part.content
+                            if not isinstance(content, str):
+                                content = str(content)
+                            await out_q.put(ToolResultEvent(
+                                tool_name=result_part.tool_name,
+                                tool_call_id=result_part.tool_call_id,
+                                result=content,
+                            ))
+                            # Circuit breaker: track tool results
+                            self._cb_recent_results.append(content)
+                            max_keep = self.config.circuit_breaker.loop_detect_turns + 1
+                            if len(self._cb_recent_results) > max_keep:
+                                self._cb_recent_results = self._cb_recent_results[-max_keep:]
+
+                    elif isinstance(event, AgentRunResultEvent):
+                        self._update_circuit_breaker("", event.result.usage() if hasattr(event.result, 'usage') else None)
+                        self._check_circuit_breaker()
+                        cody_result = CodyResult.from_raw(event.result)
+                        await out_q.put(DoneEvent(result=cody_result))
+
+            except CircuitBreakerError as e:
+                await out_q.put(CircuitBreakerEvent(
+                    reason=e.reason,
+                    tokens_used=e.tokens_used,
+                    cost_usd=e.cost_usd,
+                ))
+            except InteractionTimeoutError as e:
+                await out_q.put(InteractionTimeoutEvent(
+                    request_id=e.request_id,
+                    timeout=e.timeout,
+                ))
+            finally:
+                await out_q.put(_sentinel)
+
+        task = asyncio.create_task(_run_agent())
+        try:
+            while True:
+                item = await out_q.get()
+                if item is _sentinel:
+                    break
+                yield item
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     @log_elapsed("AgentRunner.run_sync", level=logging.INFO)
     def run_sync(
@@ -934,7 +1016,13 @@ class AgentRunner:
         truncation-based compaction regardless of config.compaction.use_llm.
         """
         self._reset_circuit_breaker()
-        deps = self._create_deps()
+        # run_sync always auto-approves — interaction requires async
+        if self.config.interaction.enabled:
+            logger.warning(
+                "interaction.enabled is ignored in run_sync (requires async); "
+                "all interaction requests will be auto-approved"
+            )
+        deps = self._create_deps()  # auto-approve handler by default
         if self.config.compaction.use_llm:
             logger.debug(
                 "LLM compaction unavailable in run_sync, using truncation"

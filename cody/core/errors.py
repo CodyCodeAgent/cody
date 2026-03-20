@@ -112,6 +112,15 @@ class ToolInvalidParams(ToolError):
         super().__init__(ErrorCode.INVALID_PARAMS, message)
 
 
+class InteractionTimeoutError(Exception):
+    """Raised when a human interaction request times out."""
+
+    def __init__(self, request_id: str, timeout: float):
+        self.request_id = request_id
+        self.timeout = timeout
+        super().__init__(f"Interaction request {request_id} timed out after {timeout}s")
+
+
 class CircuitBreakerError(Exception):
     """Raised when the circuit breaker trips (token/cost limit or loop detected)."""
 

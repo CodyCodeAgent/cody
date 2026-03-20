@@ -1078,6 +1078,61 @@ async with AsyncCodyClient(config=cfg, auto_start_mcp=True) as client:
 
 ---
 
+## 人工交互（Human-in-the-Loop Interaction）
+
+当 AI 需要人类确认或回答时（如 `question` 工具），可以通过交互机制暂停执行、等待响应。
+
+### 配置
+
+```python
+# 开启交互，30s 超时（默认）
+client = Cody().interaction(enabled=True, timeout=30).build()
+
+# 自定义超时
+client = Cody().interaction(enabled=True, timeout=60).build()
+```
+
+### 行为
+
+| 模式 | `interaction.enabled=False`（默认） | `interaction.enabled=True` |
+|------|-------------------------------------|----------------------------|
+| `run()` / `stream()` | 自动批准，AI 全自主 | 暂停等待人类响应 |
+| `run_sync()` | 自动批准 | **忽略配置，仍然自动批准**（同步无法并发等待） |
+
+### 使用示例
+
+```python
+import asyncio
+from cody.sdk import Cody
+
+client = Cody().interaction(enabled=True, timeout=30).build()
+
+async def main():
+    async for chunk in client.stream("帮我重构这个文件"):
+        if chunk.type == "interaction_request":
+            # AI 在等你回答
+            print(f"AI asks: {chunk.content}")
+            print(f"Options: {chunk.options}")
+            # 30s 内必须响应
+            await client.submit_interaction(
+                request_id=chunk.request_id,
+                action="answer",
+                content="Yes, go ahead",
+            )
+        elif chunk.type == "interaction_timeout":
+            # 超时，run 终止
+            print(f"Timed out: {chunk.content}")
+            break
+        elif chunk.type == "text_delta":
+            print(chunk.content, end="")
+```
+
+### 超时行为
+
+超时后 runner 终止当前 run，stream 产出 `InteractionTimeoutEvent`（SDK 转为 `StreamChunk(type="interaction_timeout")`）。
+
+---
+
 ## 熔断器（Circuit Breaker）
 
 AgentRunner 内置熔断保护，防止 Agent 失控消耗过多资源。熔断器在每次 `run()` / `run_stream()` / `run_sync()` 执行前自动重置，执行后检查。
@@ -1437,6 +1492,7 @@ async with client:
 | `.mcp_stdio_server(name, command, args=, env=)` | 添加 stdio MCP 服务器（v1.9.0+） |
 | `.mcp_http_server(name, url, headers=)` | 添加 HTTP MCP 服务器（v1.9.0+） |
 | `.auto_start_mcp(enabled)` | 首次 run() 自动启动 MCP（默认 False，v1.9.0+） |
+| `.interaction(enabled=True, timeout=30)` | 配置人工交互（仅异步模式生效） |
 | `.circuit_breaker(config_or_kwargs)` | 配置熔断器（支持 `CircuitBreakerConfig` 对象或关键字参数） |
 | `.lsp_languages(languages)` | 设置 LSP 语言列表 |
 | `.build()` | 构建并返回 `AsyncCodyClient` |

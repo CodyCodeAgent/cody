@@ -35,3 +35,7 @@ class CodyDeps:
     permission_manager: Optional[PermissionManager] = None
     file_history: Optional[FileHistory] = None
     todo_list: Optional[list] = None
+    # Callback for human-in-the-loop interaction.
+    # Set by AgentRunner when interaction is enabled.
+    # Signature: (InteractionRequest) -> Awaitable[InteractionResponse]
+    interaction_handler: Optional[object] = None

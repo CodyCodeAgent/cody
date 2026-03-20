@@ -15,6 +15,7 @@ from ..core.runner import (
     CompactEvent,
     DoneEvent,
     InteractionRequestEvent,
+    InteractionTimeoutEvent,
     SessionStartEvent,
     StreamEvent as CoreStreamEvent,
     TextDeltaEvent,
@@ -144,6 +145,13 @@ def _event_to_chunk(
             request_id=event.request.id,
             interaction_kind=event.request.kind,
             options=event.request.options or None,
+        )
+    elif isinstance(event, InteractionTimeoutEvent):
+        return StreamChunk(
+            type="interaction_timeout",
+            content=f"Interaction request {event.request_id} timed out after {event.timeout}s",
+            session_id=session_id,
+            request_id=event.request_id,
         )
     return StreamChunk(type="unknown", session_id=session_id)
 

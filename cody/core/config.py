@@ -99,6 +99,11 @@ class CompactionConfig(BaseModel):
     max_summary_tokens: int = 500
 
 
+class InteractionConfig(BaseModel):
+    """Human-in-the-loop interaction configuration."""
+    enabled: bool = False
+    timeout: float = 30.0  # seconds; 0 = no timeout (wait forever)
+
 class CircuitBreakerConfig(BaseModel):
     """Circuit breaker configuration for automatic run termination."""
     enabled: bool = True
@@ -125,6 +130,7 @@ class Config(BaseModel):
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
     compaction: CompactionConfig = Field(default_factory=CompactionConfig)
+    interaction: InteractionConfig = Field(default_factory=InteractionConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
 
     def is_ready(self) -> bool:
