@@ -1209,6 +1209,18 @@ class AsyncCodyClient:
         )
         await runner.submit_interaction(response)
 
+    async def inject_user_input(self, message: str) -> None:
+        """Send a proactive message to the running agent without waiting for it to ask.
+
+        The message is queued and injected at the next node boundary
+        (after current tool execution), so the LLM sees it on the next turn.
+
+        Args:
+            message: The text to inject into the conversation.
+        """
+        runner = self.get_runner()
+        await runner.inject_user_input(message)
+
     # ── Memory Methods ────────────────────────────────────────────────────
 
     async def add_memory(
@@ -1427,6 +1439,9 @@ class CodyClient:
 
     def submit_interaction(self, request_id: str, action: str = "answer", content: str = "") -> None:
         _run_async(self._async.submit_interaction(request_id, action, content))
+
+    def inject_user_input(self, message: str) -> None:
+        _run_async(self._async.inject_user_input(message))
 
     def add_memory(self, category: str, content: str, **kwargs) -> None:
         _run_async(self._async.add_memory(category, content, **kwargs))

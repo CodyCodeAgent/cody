@@ -36,7 +36,7 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
     from cody.core.runner import (
         CancelledEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
         ToolCallEvent, ToolResultEvent, DoneEvent, CircuitBreakerEvent,
-        InteractionRequestEvent,
+        InteractionRequestEvent, UserInputReceivedEvent,
     )
 
     base: dict[str, Any] = {"type": event.event_type}
@@ -93,6 +93,8 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
         base["kind"] = event.request.kind
         base["prompt"] = event.request.prompt
         base["options"] = event.request.options
+    elif isinstance(event, UserInputReceivedEvent):
+        base["content"] = event.content
 
     return base
 

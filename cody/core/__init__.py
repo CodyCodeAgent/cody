@@ -19,6 +19,7 @@ _LAZY_IMPORTS = {
     "SessionStartEvent": (".runner", "SessionStartEvent"),
     "CircuitBreakerEvent": (".runner", "CircuitBreakerEvent"),
     "InteractionRequestEvent": (".runner", "InteractionRequestEvent"),
+    "UserInputReceivedEvent": (".runner", "UserInputReceivedEvent"),
     "TaskMetadata": (".runner", "TaskMetadata"),
     # interaction
     "InteractionRequest": (".interaction", "InteractionRequest"),
@@ -68,6 +69,8 @@ _LAZY_IMPORTS = {
     # rate_limiter
     "RateLimiter": (".rate_limiter", "RateLimiter"),
     "RateLimitResult": (".rate_limiter", "RateLimitResult"),
+    # user_input
+    "UserInputQueue": (".user_input", "UserInputQueue"),
     # deps
     "CodyDeps": (".deps", "CodyDeps"),
     # log
