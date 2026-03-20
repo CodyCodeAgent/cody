@@ -22,6 +22,7 @@ from ..core.runner import (
     ThinkingEvent,
     ToolCallEvent,
     ToolResultEvent,
+    UserInputReceivedEvent,
 )
 
 
@@ -47,7 +48,8 @@ class RunResult:
 @dataclass
 class StreamChunk:
     type: str  # "session_start", "text_delta", "thinking", "tool_call", "tool_result", "done",
-    #            "compact", "cancelled", "circuit_breaker", "interaction_request"
+    #            "compact", "cancelled", "circuit_breaker", "interaction_request",
+    #            "user_input_received"
     content: str = ""
     session_id: Optional[str] = None
     # Tool call details (populated when type="tool_call")
@@ -146,6 +148,12 @@ def _event_to_chunk(
             request_id=event.request.id,
             interaction_kind=event.request.kind,
             options=event.request.options or None,
+        )
+    elif isinstance(event, UserInputReceivedEvent):
+        return StreamChunk(
+            type="user_input_received",
+            content=event.content,
+            session_id=session_id,
         )
     return StreamChunk(type="unknown", session_id=session_id)
 

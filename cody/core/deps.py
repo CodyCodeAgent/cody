@@ -1,8 +1,14 @@
 """Cody agent dependencies - extracted to break circular imports."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Awaitable
+    from .interaction import InteractionRequest, InteractionResponse
 
 from .audit import AuditLogger
 from .config import Config
@@ -37,7 +43,4 @@ class CodyDeps:
     file_history: Optional[FileHistory] = None
     todo_list: Optional[list] = None
     memory_store: Optional[ProjectMemoryStore] = None
-    # Callback for human-in-the-loop interaction.
-    # Set by AgentRunner when interaction is enabled.
-    # Signature: (InteractionRequest) -> Awaitable[InteractionResponse]
-    interaction_handler: Optional[object] = None
+    interaction_handler: Optional[Callable[[InteractionRequest], Awaitable[InteractionResponse]]] = None

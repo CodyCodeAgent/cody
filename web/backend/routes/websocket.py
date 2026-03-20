@@ -31,6 +31,7 @@ class _WSConnection:
         self._cancel_event: Optional[asyncio.Event] = None
         self._runner: Optional[AgentRunner] = None
         self._run_task: Optional[asyncio.Task] = None
+        self._send_lock = asyncio.Lock()
 
     async def accept(self):
         await self.ws.accept()
@@ -40,7 +41,8 @@ class _WSConnection:
         payload: dict[str, Any] = {"type": event_type}
         if data:
             payload.update(data)
-        await self.ws.send_json(payload)
+        async with self._send_lock:
+            await self.ws.send_json(payload)
 
     async def handle(self):
         """Main receive loop — runs concurrently with any active run task."""

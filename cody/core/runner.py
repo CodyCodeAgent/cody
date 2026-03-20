@@ -24,22 +24,18 @@ from typing import Any, AsyncGenerator, Literal, Optional, Union
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
     ImageUrl,
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    PartDeltaEvent,
+    PartStartEvent,
     TextPart,
     UserPromptPart,
 )
-
-from pydantic_ai._agent_graph import CallToolsNode as _CallToolsNode, ModelRequestNode as _ModelRequestNode
-from pydantic_ai.messages import (
-    PartStartEvent as _PartStartEvent,
-    PartDeltaEvent as _PartDeltaEvent,
-    FunctionToolCallEvent as _FunctionToolCallEvent,
-    FunctionToolResultEvent as _FunctionToolResultEvent,
-)
-from pydantic_graph import End as _End
+from pydantic_graph import End
 
 from .audit import AuditLogger
 from .config import Config
@@ -828,7 +824,7 @@ class AgentRunner:
         timeout = self.config.interaction.timeout
 
         async def _handler(request: InteractionRequest) -> InteractionResponse:
-            future: asyncio.Future[InteractionResponse] = asyncio.get_event_loop().create_future()
+            future: asyncio.Future[InteractionResponse] = asyncio.get_running_loop().create_future()
             self._pending_interactions[request.id] = future
             await interaction_q.put(InteractionRequestEvent(request=request))
             try:
@@ -942,6 +938,9 @@ class AgentRunner:
                     break
             return events
 
+        # Drain any stale user input from a previous run.
+        self._user_input_queue.drain_all()
+
         try:
             async with self.agent.iter(  # type: ignore[call-overload]
                 pydantic_prompt, deps=deps, message_history=message_history,
@@ -952,17 +951,20 @@ class AgentRunner:
                         yield CancelledEvent()
                         return
 
-                    if isinstance(node, _ModelRequestNode):
+                    # UserPromptNode is handled automatically by iter().
+                    # We only need to stream ModelRequestNode and CallToolsNode.
+
+                    if self.agent.is_model_request_node(node):
                         # Stream LLM response: thinking + text deltas
                         async with node.stream(agent_run.ctx) as stream:
                             async for event in stream:
-                                if isinstance(event, _PartStartEvent):
+                                if isinstance(event, PartStartEvent):
                                     part = event.part
                                     if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
                                         yield ThinkingEvent(content=part.content)
                                     elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
                                         yield TextDeltaEvent(content=part.content)
-                                elif isinstance(event, _PartDeltaEvent):
+                                elif isinstance(event, PartDeltaEvent):
                                     delta = event.delta
                                     if delta.part_delta_kind == "thinking":
                                         content = getattr(delta, "content_delta", None)
@@ -973,20 +975,20 @@ class AgentRunner:
                                         if content:
                                             yield TextDeltaEvent(content=content)
 
-                    elif isinstance(node, _CallToolsNode):
-                        # Inject proactive user input before tool execution.
-                        # CallToolsNode.user_prompt is appended after tool results
-                        # as a UserPromptPart, visible to the LLM on the next turn.
+                    elif self.agent.is_call_tools_node(node):
+                        # Inject proactive user input alongside tool results.
+                        # node.user_prompt is appended after tool return parts
+                        # as a UserPromptPart, so the LLM sees it on the next turn.
                         user_messages = self._user_input_queue.drain_all()
                         if user_messages:
                             combined = "\n".join(user_messages)
-                            node.user_prompt = combined
+                            node.user_prompt = combined  # type: ignore[union-attr]
                             yield UserInputReceivedEvent(content=combined)
 
                         # Stream tool calls and results
                         async with node.stream(agent_run.ctx) as tool_stream:
                             async for event in tool_stream:
-                                if isinstance(event, _FunctionToolCallEvent):
+                                if isinstance(event, FunctionToolCallEvent):
                                     part = event.part
                                     args = part.args if isinstance(part.args, dict) else {}
                                     if isinstance(part.args, str):
@@ -999,7 +1001,7 @@ class AgentRunner:
                                         args=args,
                                         tool_call_id=part.tool_call_id,
                                     )
-                                elif isinstance(event, _FunctionToolResultEvent):
+                                elif isinstance(event, FunctionToolResultEvent):
                                     result_part = event.result
                                     if result_part.part_kind == "tool-return":
                                         content = result_part.content
@@ -1010,17 +1012,16 @@ class AgentRunner:
                                             tool_call_id=result_part.tool_call_id,
                                             result=content,
                                         )
-                                        # Circuit breaker: track tool results
-                                        self._cb_recent_results.append(content)
-                                        max_keep = self.config.circuit_breaker.loop_detect_turns + 1
-                                        if len(self._cb_recent_results) > max_keep:
-                                            self._cb_recent_results = self._cb_recent_results[-max_keep:]
+                                        self._update_circuit_breaker(content, None)
 
                         # Drain any interaction events emitted during tool execution
                         for interaction_event in _drain_interaction_q():
                             yield interaction_event
 
-                    elif isinstance(node, _End):
+                        # Check circuit breaker after each tool execution round
+                        self._check_circuit_breaker()
+
+                    elif isinstance(node, End):
                         # Final result
                         assert agent_run.result is not None
                         self._update_circuit_breaker(
