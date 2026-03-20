@@ -130,7 +130,7 @@ data: {"type": "done", "output": "这是文件内容", "thinking": "...", "tool_
 **事件类型：**
 | 事件 | 说明 |
 |------|------|
-| session_start | 会话开始，始终是第一个事件（v1.10.4+），包含 `session_id` |
+| session_start | 会话开始，始终是第一个事件（v1.11.0+），包含 `session_id` |
 | thinking | 模型思考过程（增量），`content` 字段 |
 | tool_call | 工具调用发起，包含 `tool_name`、`args`、`tool_call_id` |
 | tool_result | 工具返回结果，包含 `tool_name`、`tool_call_id`、`result` |
@@ -592,7 +592,7 @@ Authorization: Bearer your_auth_token
 {"type": "cancel"}
 ```
 
-**User Input 消息（用户随时输入，v1.10.4+）：**
+**User Input 消息（用户随时输入，v1.11.0+）：**
 ```json
 {"type": "user_input", "content": "先处理这个紧急 bug"}
 ```

@@ -118,7 +118,7 @@ skill-name/
 ~/.cody/skills/        # 全局 Skills
 ```
 
-> v1.10.4 起不再提供内置 Skills，鼓励用户按项目需求创建自定义 Skills。Skill 基础设施（SkillManager、渐进式加载、system prompt 注入）保持不变。
+> v1.11.0 起不再提供内置 Skills，鼓励用户按项目需求创建自定义 Skills。Skill 基础设施（SkillManager、渐进式加载、system prompt 注入）保持不变。
 
 **渐进式加载（Progressive Disclosure）：**
 1. 启动时 — 只解析 YAML frontmatter（name + description）
@@ -776,7 +776,7 @@ cody run "使用项目 B 的配置"
   - `ai-test-gen.yml` — 自动为变更文件生成测试
 - [x] CI/CD Skill — `cicd` 技能文档，覆盖 GitHub Actions / GitLab CI 用法
 
-**更多内置 Skills（5 -> 11，v1.10.4 后移除内置 Skills，改为用户自建）**
+**更多内置 Skills（5 -> 11，v1.11.0 后移除内置 Skills，改为用户自建）**
 - [x] `web` — 网页搜索和抓取（websearch/webfetch 工具使用指南）
 - [x] `rust` — Rust/Cargo 项目管理（构建、测试、Clippy、工作空间）
 - [x] `go` — Go 项目管理（模块、测试、golangci-lint、交叉编译）

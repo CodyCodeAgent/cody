@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [1.10.4] - 2026-03-20
+## [1.11.0] - 2026-03-20
 
 ### Fixed
 

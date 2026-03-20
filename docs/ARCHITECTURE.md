@@ -101,7 +101,7 @@ The central orchestrator. Responsibilities:
 
 **StreamEvent system:** `run_stream()` yields structured `StreamEvent` objects (not raw text):
 ```
-SessionStartEvent       — session ID (always first event in run_stream_with_session, v1.10.4+)
+SessionStartEvent       — session ID (always first event in run_stream_with_session, v1.11.0+)
 ThinkingEvent           — incremental thinking content (delta)
 TextDeltaEvent          — incremental text output (delta)
 ToolCallEvent           — tool call initiated (tool_name, args, tool_call_id)
@@ -217,7 +217,7 @@ Two-tier priority loading:
 1. `.cody/skills/` — project-level (highest)
 2. `~/.cody/skills/` — user-level
 
-> v1.10.4+: Built-in skills removed. Users create custom skills per project. Skill infrastructure (SkillManager, progressive loading, system prompt injection) unchanged.
+> v1.11.0+: Built-in skills removed. Users create custom skills per project. Skill infrastructure (SkillManager, progressive loading, system prompt injection) unchanged.
 
 **Progressive disclosure:** Startup parses only YAML frontmatter (~50-100 tokens/skill). `skill.instructions` loads the full body on demand. `to_prompt_xml()` generates `<available_skills>` XML injected into the system prompt for model-driven skill discovery.
 
