@@ -9,6 +9,7 @@ from .config import Config
 from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
+from .memory import ProjectMemoryStore
 from .permissions import PermissionManager
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
@@ -35,6 +36,7 @@ class CodyDeps:
     permission_manager: Optional[PermissionManager] = None
     file_history: Optional[FileHistory] = None
     todo_list: Optional[list] = None
+    memory_store: Optional[ProjectMemoryStore] = None
     # Callback for human-in-the-loop interaction.
     # Set by AgentRunner when interaction is enabled.
     # Signature: (InteractionRequest) -> Awaitable[InteractionResponse]

@@ -468,6 +468,7 @@ class AgentRunner:
             permission_manager=self._permission_manager,
             file_history=self._file_history,
             todo_list=self._todo_list,
+            memory_store=self._memory_store,
             interaction_handler=interaction_handler or self._auto_approve_handler,
         )
 
