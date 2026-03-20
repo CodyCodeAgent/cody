@@ -26,9 +26,12 @@ from .errors import (
     CodyToolError,
 )
 from .events import (
+    ContextCompactEvent as SDKContextCompactEvent,
     EventManager,
     EventType,
+    ModelEvent,
     RunEvent,
+    SessionEvent,
     StreamEvent as SDKStreamEvent,
     ThinkingEvent as SDKThinkingEvent,
     ToolEvent,
@@ -365,6 +368,9 @@ class AsyncCodyClient:
         self._auto_start_mcp = auto_start_mcp
         self._mcp_started = False
 
+        # LSP auto-start: start configured language servers on first run
+        self._lsp_started = False
+
         # Enhanced features
         self._metrics: Optional[MetricsCollector] = None
         self._events: Optional[EventManager] = None
@@ -484,6 +490,27 @@ class AsyncCodyClient:
             await runner.start_mcp()
             self._mcp_started = True
 
+    async def start_lsp(self) -> None:
+        """Start LSP servers for configured languages.
+
+        Called automatically on first run()/stream() when lsp.enabled is True
+        and lsp.languages is non-empty.  Silently skips languages whose
+        server binary is not installed.
+        """
+        if self._lsp_started:
+            return
+        self._lsp_started = True
+        languages = self._config.lsp.languages if self._config.lsp.enabled else []
+        if not languages:
+            return
+        runner = self.get_runner()
+        for lang in languages:
+            try:
+                await runner.start_lsp(lang)
+            except Exception:
+                # LSP server not installed — skip silently
+                pass
+
     async def add_mcp_server(
         self,
         name: str,
@@ -535,6 +562,10 @@ class AsyncCodyClient:
             await self._runner.stop_mcp()
             await self._runner.stop_lsp()
             self._runner = None
+        if self._events:
+            await self._events.dispatch_async(SessionEvent(
+                event_type=EventType.SESSION_CLOSE,
+            ))
 
     # ── Health ────────────────────────────────────────────────────────────
 
@@ -576,6 +607,10 @@ class AsyncCodyClient:
         if self._auto_start_mcp and not self._mcp_started:
             await self.start_mcp()
 
+        # Auto-start LSP servers for configured languages
+        if not self._lsp_started:
+            await self.start_lsp()
+
         # Fire event
         if self._events:
             await self._events.dispatch_async(RunEvent(
@@ -594,6 +629,13 @@ class AsyncCodyClient:
             if stream:
                 return self._stream_run(prompt, session_id)
 
+            # Emit MODEL_REQUEST before calling the model
+            if self._events:
+                await self._events.dispatch_async(ModelEvent(
+                    event_type=EventType.MODEL_REQUEST,
+                    model=self._config.model.model or "",
+                ))
+
             runner = self.get_runner()
             # Always use session to enable multi-turn by default
             store = self.get_session_store()
@@ -604,7 +646,17 @@ class AsyncCodyClient:
                 session_id=sid,
                 usage=_usage_from_result(result),
                 thinking=result.thinking,
+                metadata=result.metadata,
             )
+
+            # Emit MODEL_RESPONSE with usage
+            if self._events:
+                await self._events.dispatch_async(ModelEvent(
+                    event_type=EventType.MODEL_RESPONSE,
+                    model=self._config.model.model or "",
+                    input_tokens=run_result.usage.input_tokens,
+                    output_tokens=run_result.usage.output_tokens,
+                ))
 
             # Record metrics
             if self._metrics:
@@ -647,6 +699,11 @@ class AsyncCodyClient:
             if self._metrics and self._metrics._current_run is not None:
                 self._metrics.end_run("", TokenUsage(0, 0, 0))
             if self._events:
+                await self._events.dispatch_async(ModelEvent(
+                    event_type=EventType.MODEL_ERROR,
+                    model=self._config.model.model or "",
+                    error=str(e),
+                ))
                 await self._events.dispatch_async(RunEvent(
                     event_type=EventType.RUN_ERROR,
                     prompt=str(prompt),
@@ -662,10 +719,19 @@ class AsyncCodyClient:
         session_id: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Stream agent response. Yields StreamChunk objects."""
+        """Stream agent response. Yields StreamChunk objects.
+
+        Note: SDK EventType events (STREAM_START/END, THINKING_START/END, etc.)
+        are only dispatched in ``run(stream=True)`` which uses ``_stream_run()``.
+        Calling ``stream()`` directly yields raw StreamChunks without event dispatch.
+        """
         # Auto-start MCP servers on first stream (if enabled)
         if self._auto_start_mcp and not self._mcp_started:
             await self.start_mcp()
+
+        # Auto-start LSP servers for configured languages
+        if not self._lsp_started:
+            await self.start_lsp()
 
         runner = self.get_runner()
         store = self.get_session_store()
@@ -680,30 +746,87 @@ class AsyncCodyClient:
 
     async def _stream_run(self, prompt, session_id: Optional[str] = None):
         """Internal streaming run (called when run(stream=True))."""
+        in_thinking = False
+        stream_started = False
         async for chunk in self.stream(prompt, session_id=session_id):
             if self._events:
+                # Emit STREAM_START on first non-session_start chunk
+                if not stream_started and chunk.type != "session_start":
+                    stream_started = True
+                    await self._events.dispatch_async(SDKStreamEvent(
+                        event_type=EventType.STREAM_START,
+                        chunk_type="stream_start",
+                    ))
+
                 if chunk.type == "thinking":
+                    if not in_thinking:
+                        in_thinking = True
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_START,
+                            content="",
+                            is_start=True,
+                        ))
                     await self._events.dispatch_async(SDKThinkingEvent(
                         event_type=EventType.THINKING_CHUNK,
                         content=chunk.content,
                     ))
-                elif chunk.type == "tool_call":
-                    await self._events.dispatch_async(ToolEvent(
-                        event_type=EventType.TOOL_CALL,
-                        tool_name=chunk.tool_name or chunk.content,
-                        args=chunk.args or {},
-                    ))
-                elif chunk.type == "tool_result":
-                    await self._events.dispatch_async(ToolEvent(
-                        event_type=EventType.TOOL_RESULT,
-                        tool_name=chunk.tool_name or "",
-                        result=chunk.content,
-                    ))
-                elif chunk.type == "text_delta":
+                else:
+                    # End thinking block when a non-thinking chunk arrives
+                    if in_thinking:
+                        in_thinking = False
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_END,
+                            content="",
+                            is_end=True,
+                        ))
+
+                    if chunk.type == "tool_call":
+                        await self._events.dispatch_async(ToolEvent(
+                            event_type=EventType.TOOL_CALL,
+                            tool_name=chunk.tool_name or chunk.content,
+                            args=chunk.args or {},
+                        ))
+                    elif chunk.type == "tool_result":
+                        await self._events.dispatch_async(ToolEvent(
+                            event_type=EventType.TOOL_RESULT,
+                            tool_name=chunk.tool_name or "",
+                            result=chunk.content,
+                        ))
+                    elif chunk.type == "text_delta":
+                        await self._events.dispatch_async(SDKStreamEvent(
+                            event_type=EventType.STREAM_CHUNK,
+                            chunk_type=chunk.type,
+                            content=chunk.content,
+                        ))
+                    elif chunk.type == "compact":
+                        await self._events.dispatch_async(SDKContextCompactEvent(
+                            event_type=EventType.CONTEXT_COMPACT,
+                            original_messages=chunk.original_messages,
+                            compacted_messages=chunk.compacted_messages,
+                            tokens_saved=chunk.estimated_tokens_saved,
+                        ))
+                    elif chunk.type == "done":
+                        # Emit MODEL_RESPONSE with usage info
+                        usage = chunk.usage
+                        await self._events.dispatch_async(ModelEvent(
+                            event_type=EventType.MODEL_RESPONSE,
+                            model=self._config.model.model or "",
+                            input_tokens=usage.input_tokens if usage else 0,
+                            output_tokens=usage.output_tokens if usage else 0,
+                        ))
+
+                # Emit STREAM_END on done/cancelled/circuit_breaker
+                if chunk.type in ("done", "cancelled", "circuit_breaker"):
+                    if in_thinking:
+                        in_thinking = False
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_END,
+                            content="",
+                            is_end=True,
+                        ))
                     await self._events.dispatch_async(SDKStreamEvent(
-                        event_type=EventType.STREAM_CHUNK,
-                        chunk_type=chunk.type,
-                        content=chunk.content,
+                        event_type=EventType.STREAM_END,
+                        chunk_type="stream_end",
                     ))
             yield chunk
 

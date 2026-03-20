@@ -17,6 +17,7 @@ from ..core.runner import (
     InteractionRequestEvent,
     SessionStartEvent,
     StreamEvent as CoreStreamEvent,
+    TaskMetadata,
     TextDeltaEvent,
     ThinkingEvent,
     ToolCallEvent,
@@ -40,6 +41,7 @@ class RunResult:
     session_id: Optional[str] = None
     usage: Usage = field(default_factory=Usage)
     thinking: Optional[str] = None
+    metadata: Optional[TaskMetadata] = None
 
 
 @dataclass
