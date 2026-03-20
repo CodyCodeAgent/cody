@@ -114,13 +114,14 @@ Cody 采用 **Hub-and-Spoke（中心辐射）** 分层架构，`AgentRunner` 为
 - 保留文件修改记录（哪些文件被写入/编辑）
 - 添加"进行到哪一步了"的进度标记
 
-#### 问题 4：Skills Prompt 缺少使用策略
+#### 问题 4：Skills 匹配策略可进一步细化
 
-**现状：** 只列出可用 Skills，没有指导何时/如何使用。
+**现状：** Prompt 已指导 "When a skill matches the task, call read_skill()"，`<available_skills>` XML 提供 name + description 供模型匹配，渐进式加载设计合理。
 
-**建议补充：**
-- 自动匹配规则（检测到 Dockerfile → 自动加载 docker skill）
-- 明确 `read_skill` 的调用时机（不要每次都加载所有 skills）
+**可选优化：**
+- 基于文件类型/项目特征的自动触发建议（检测到 Dockerfile → 提示 docker skill）
+- skill 之间的优先级 / 冲突处理规则
+- 明确何时**不应该**加载 skill（避免不必要的 context 占用）
 
 #### 问题 5：缺少"思考链"指导
 
