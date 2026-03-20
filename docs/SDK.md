@@ -1104,32 +1104,32 @@ client = Cody().interaction(enabled=True, timeout=60).build()
 ```python
 import asyncio
 from cody.sdk import Cody
+from cody.core.errors import InteractionTimeoutError
 
 client = Cody().interaction(enabled=True, timeout=30).build()
 
 async def main():
-    async for chunk in client.stream("帮我重构这个文件"):
-        if chunk.type == "interaction_request":
-            # AI 在等你回答
-            print(f"AI asks: {chunk.content}")
-            print(f"Options: {chunk.options}")
-            # 30s 内必须响应
-            await client.submit_interaction(
-                request_id=chunk.request_id,
-                action="answer",
-                content="Yes, go ahead",
-            )
-        elif chunk.type == "interaction_timeout":
-            # 超时，run 终止
-            print(f"Timed out: {chunk.content}")
-            break
-        elif chunk.type == "text_delta":
-            print(chunk.content, end="")
+    try:
+        async for chunk in client.stream("帮我重构这个文件"):
+            if chunk.type == "interaction_request":
+                # AI 在等你回答
+                print(f"AI asks: {chunk.content}")
+                print(f"Options: {chunk.options}")
+                # 30s 内必须响应
+                await client.submit_interaction(
+                    request_id=chunk.request_id,
+                    action="answer",
+                    content="Yes, go ahead",
+                )
+            elif chunk.type == "text_delta":
+                print(chunk.content, end="")
+    except InteractionTimeoutError as e:
+        print(f"交互超时: {e}")
 ```
 
 ### 超时行为
 
-超时后 runner 终止当前 run，stream 产出 `InteractionTimeoutEvent`（SDK 转为 `StreamChunk(type="interaction_timeout")`）。
+超时后直接抛出 `InteractionTimeoutError`，终止 stream 迭代。调用方通过 `try/except` 捕获。`run()` 同理。
 
 ---
 

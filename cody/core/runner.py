@@ -234,19 +234,10 @@ class InteractionRequestEvent:
     event_type: Literal["interaction_request"] = "interaction_request"
 
 
-@dataclass
-class InteractionTimeoutEvent:
-    """Emitted when a human interaction request times out."""
-    request_id: str
-    timeout: float
-    event_type: Literal["interaction_timeout"] = "interaction_timeout"
-
-
 StreamEvent = Union[
     SessionStartEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
     CancelledEvent, CircuitBreakerEvent, InteractionRequestEvent,
-    InteractionTimeoutEvent,
 ]
 
 
@@ -875,7 +866,9 @@ class AgentRunner:
           - CancelledEvent: run was cancelled via cancel_event
           - CircuitBreakerEvent: run terminated by circuit breaker
           - InteractionRequestEvent: human input needed
-          - InteractionTimeoutEvent: interaction request timed out
+
+        Raises:
+          InteractionTimeoutError: if an interaction request times out
         """
         self._reset_circuit_breaker()
 
@@ -981,11 +974,8 @@ class AgentRunner:
                     tokens_used=e.tokens_used,
                     cost_usd=e.cost_usd,
                 ))
-            except InteractionTimeoutError as e:
-                await out_q.put(InteractionTimeoutEvent(
-                    request_id=e.request_id,
-                    timeout=e.timeout,
-                ))
+            except InteractionTimeoutError:
+                raise
             finally:
                 await out_q.put(_sentinel)
 
@@ -996,6 +986,9 @@ class AgentRunner:
                 if item is _sentinel:
                     break
                 yield item
+            # Re-raise any exception from the background task
+            if task.done() and task.exception():
+                raise task.exception()
         finally:
             if not task.done():
                 task.cancel()

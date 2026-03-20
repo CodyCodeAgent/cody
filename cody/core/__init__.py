@@ -19,7 +19,6 @@ _LAZY_IMPORTS = {
     "SessionStartEvent": (".runner", "SessionStartEvent"),
     "CircuitBreakerEvent": (".runner", "CircuitBreakerEvent"),
     "InteractionRequestEvent": (".runner", "InteractionRequestEvent"),
-    "InteractionTimeoutEvent": (".runner", "InteractionTimeoutEvent"),
     "TaskMetadata": (".runner", "TaskMetadata"),
     # interaction
     "InteractionRequest": (".interaction", "InteractionRequest"),
