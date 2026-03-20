@@ -204,7 +204,7 @@ async def patch(
         path: Path to the file to patch
         diff: Unified diff content (lines starting with +/- and context lines)
     """
-    _check_permission(ctx, "patch")
+    await _check_permission(ctx, "patch")
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():

@@ -42,7 +42,7 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int =
         command: Command to execute
         timeout: Timeout in seconds (0 = use config default)
     """
-    _check_permission(ctx, "exec_command")
+    await _check_permission(ctx, "exec_command", args_summary=command)
 
     # Reject excessively long commands
     if len(command) > _MAX_COMMAND_LENGTH:

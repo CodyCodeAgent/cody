@@ -1080,7 +1080,10 @@ async with AsyncCodyClient(config=cfg, auto_start_mcp=True) as client:
 
 ## 人工交互（Human-in-the-Loop Interaction）
 
-当 AI 需要人类确认或回答时（如 `question` 工具），可以通过交互机制暂停执行、等待响应。
+当 AI 需要人类确认或回答时，可以通过交互机制暂停执行、等待响应。支持两种场景：
+
+- **`question` 工具**：AI 主动提问，等待人类回答
+- **CONFIRM 级别工具审批**：`exec_command`、`write_file`、`edit_file` 等变更性工具在执行前暂停，等待人类批准或拒绝
 
 ### 配置
 
@@ -1098,6 +1101,8 @@ client = Cody().interaction(enabled=True, timeout=60).build()
 |------|-------------------------------------|----------------------------|
 | `run()` / `stream()` | 自动批准，AI 全自主 | 暂停等待人类响应 |
 | `run_sync()` | 自动批准 | **忽略配置，仍然自动批准**（同步无法并发等待） |
+
+> **注意**：当 `interaction.enabled=False` 时，CONFIRM 级别工具（如 `exec_command`）也会自动放行。如需审批变更操作，必须开启 interaction。
 
 ### 使用示例
 

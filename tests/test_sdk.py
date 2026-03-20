@@ -766,6 +766,72 @@ async def test_stream_interaction_handler_responds():
     assert response.content == "blue"
 
 
+async def test_check_permission_confirm_auto_approve():
+    """CONFIRM level auto-approves when interaction handler is auto-approve."""
+    from cody.core.permissions import PermissionManager
+    from cody.core.runner import AgentRunner
+    from cody.core.tools._base import _check_permission
+
+    class MockDeps:
+        def __init__(self):
+            self.permission_manager = PermissionManager()
+            self.interaction_handler = AgentRunner._auto_approve_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    # exec_command is CONFIRM — should not raise
+    await _check_permission(MockCtx(), "exec_command")
+
+
+async def test_check_permission_confirm_reject():
+    """CONFIRM level raises PermissionDeniedError when human rejects."""
+    from cody.core.interaction import InteractionResponse
+    from cody.core.permissions import PermissionDeniedError, PermissionManager
+    from cody.core.tools._base import _check_permission
+
+    async def _reject_handler(request):
+        return InteractionResponse(request_id=request.id, action="reject")
+
+    class MockDeps:
+        def __init__(self):
+            self.permission_manager = PermissionManager()
+            self.interaction_handler = _reject_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    with pytest.raises(PermissionDeniedError):
+        await _check_permission(MockCtx(), "exec_command")
+
+
+async def test_check_permission_allow_skips_handler():
+    """ALLOW level doesn't trigger interaction handler."""
+    from cody.core.permissions import PermissionManager
+    from cody.core.tools._base import _check_permission
+
+    call_count = 0
+
+    async def _counting_handler(request):
+        nonlocal call_count
+        call_count += 1
+
+    class MockDeps:
+        def __init__(self):
+            self.permission_manager = PermissionManager()
+            self.interaction_handler = _counting_handler
+
+    class MockCtx:
+        def __init__(self):
+            self.deps = MockDeps()
+
+    # read_file is ALLOW — handler should never be called
+    await _check_permission(MockCtx(), "read_file")
+    assert call_count == 0
+
+
 def test_builder_build():
     client = (
         Cody()
