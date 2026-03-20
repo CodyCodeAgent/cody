@@ -25,6 +25,16 @@ from cody.sdk.client import _event_to_chunk, _usage_from_result
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
+def _make_project_skill(tmp_path, name="git"):
+    """Create a project-level skill for testing."""
+    skill_dir = tmp_path / ".cody" / "skills" / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: Git operations for version control.\n"
+        f"metadata:\n  author: cody\n  version: \"1.0\"\n---\n\n# {name.title()}\n\nInstructions."
+    )
+
+
 def _make_result(output="done", thinking=None):
     """Create a CodyResult with optional mock usage."""
     mock_usage = MagicMock()
@@ -353,8 +363,9 @@ async def test_async_delete_session_not_found(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_async_list_skills():
-    client = AsyncCodyClient()
+async def test_async_list_skills(tmp_path):
+    _make_project_skill(tmp_path)
+    client = AsyncCodyClient(workdir=str(tmp_path))
     skills = await client.list_skills()
     assert isinstance(skills, list)
     names = [s["name"] for s in skills]
@@ -363,8 +374,9 @@ async def test_async_list_skills():
 
 
 @pytest.mark.asyncio
-async def test_async_get_skill():
-    client = AsyncCodyClient()
+async def test_async_get_skill(tmp_path):
+    _make_project_skill(tmp_path)
+    client = AsyncCodyClient(workdir=str(tmp_path))
     skill = await client.get_skill("git")
     assert skill["name"] == "git"
     assert "documentation" in skill
@@ -373,8 +385,8 @@ async def test_async_get_skill():
 
 
 @pytest.mark.asyncio
-async def test_async_get_skill_not_found():
-    client = AsyncCodyClient()
+async def test_async_get_skill_not_found(tmp_path):
+    client = AsyncCodyClient(workdir=str(tmp_path))
     with pytest.raises(CodyNotFoundError):
         await client.get_skill("nonexistent_skill_xyz")
     await client.close()

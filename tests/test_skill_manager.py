@@ -1,7 +1,5 @@
 """Tests for skill management system (Agent Skills open standard)"""
 
-from pathlib import Path
-
 import pytest
 
 from cody.core.config import Config
@@ -151,45 +149,61 @@ def test_skill_documentation_missing(tmp_path):
 # ── SkillManager init ────────────────────────────────────────────────────────
 
 
-def test_skill_manager_loads_builtin():
-    """SkillManager loads at least the built-in git skill."""
+def _make_project_skill(tmp_path, name="git", description="Git operations for version control",
+                        author="cody", version="1.0"):
+    """Create a project-level skill in tmp_path/.cody/skills/ for testing."""
+    skill_dir = tmp_path / ".cody" / "skills" / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {description}\n"
+        f"metadata:\n  author: {author}\n  version: \"{version}\"\n---\n\n"
+        f"# {name.title()}\n\nInstructions for {name}."
+    )
+    return skill_dir
+
+
+def test_skill_manager_loads_project_skill(tmp_path):
+    """SkillManager loads project-level skills."""
+    _make_project_skill(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     skills = manager.list_skills()
     names = [s.name for s in skills]
     assert "git" in names
 
 
-def test_skill_manager_get_skill():
+def test_skill_manager_get_skill(tmp_path):
+    _make_project_skill(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     git = manager.get_skill("git")
     assert git is not None
     assert git.name == "git"
-    assert git.source == "builtin"
+    assert git.source == "project"
 
 
-def test_skill_manager_get_skill_not_found():
+def test_skill_manager_get_skill_not_found(tmp_path):
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     assert manager.get_skill("nonexistent_skill_xyz") is None
 
 
-def test_skill_description_from_frontmatter():
+def test_skill_description_from_frontmatter(tmp_path):
     """Description comes from YAML frontmatter, not markdown heading."""
+    _make_project_skill(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     git = manager.get_skill("git")
     assert git is not None
-    # Should be the frontmatter description, not "Git Operations"
     assert "git" in git.description.lower()
-    assert len(git.description) > 20  # frontmatter descriptions are longer
+    assert len(git.description) > 20
 
 
-def test_skill_metadata_fields():
+def test_skill_metadata_fields(tmp_path):
     """Skills should have metadata from frontmatter."""
+    _make_project_skill(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     git = manager.get_skill("git")
     assert git is not None
     assert git.metadata.get("author") == "cody"
@@ -199,9 +213,10 @@ def test_skill_metadata_fields():
 # ── Enable / Disable ─────────────────────────────────────────────────────────
 
 
-def test_enable_skill():
+def test_enable_skill(tmp_path):
+    _make_project_skill(tmp_path)
     config = Config(skills={"enabled": [], "disabled": ["git"]})
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
 
     git = manager.get_skill("git")
     assert git is not None
@@ -213,9 +228,10 @@ def test_enable_skill():
     assert "git" not in config.skills.disabled
 
 
-def test_disable_skill():
+def test_disable_skill(tmp_path):
+    _make_project_skill(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
 
     git = manager.get_skill("git")
     assert git is not None
@@ -226,17 +242,17 @@ def test_disable_skill():
     assert "git" in config.skills.disabled
 
 
-def test_enable_nonexistent_skill():
+def test_enable_nonexistent_skill(tmp_path):
     """Enabling a skill that doesn't exist is a no-op."""
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     manager.enable_skill("nonexistent_skill_xyz")
     # No error raised
 
 
-def test_disable_nonexistent_skill():
+def test_disable_nonexistent_skill(tmp_path):
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     manager.disable_skill("nonexistent_skill_xyz")
     # No error raised
 
@@ -282,35 +298,36 @@ def test_skill_workdir_finds_project_skills(tmp_path):
 # ── Enabled filter ───────────────────────────────────────────────────────────
 
 
-def test_is_enabled_default():
+def test_is_enabled_default(tmp_path):
     """By default all skills are enabled."""
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     assert manager._is_enabled("anything") is True
 
 
-def test_is_enabled_whitelist():
+def test_is_enabled_whitelist(tmp_path):
     """When enabled list is set, only listed skills are enabled."""
     config = Config(skills={"enabled": ["git"], "disabled": []})
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     assert manager._is_enabled("git") is True
     assert manager._is_enabled("docker") is False
 
 
-def test_is_enabled_blacklist():
+def test_is_enabled_blacklist(tmp_path):
     """Disabled list takes precedence."""
     config = Config(skills={"enabled": [], "disabled": ["git"]})
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     assert manager._is_enabled("git") is False
 
 
 # ── to_prompt_xml ────────────────────────────────────────────────────────────
 
 
-def test_to_prompt_xml():
+def test_to_prompt_xml(tmp_path):
     """Generates <available_skills> XML for system prompt."""
+    _make_project_skill(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     xml = manager.to_prompt_xml()
     assert "<available_skills>" in xml
     assert "</available_skills>" in xml
@@ -336,7 +353,7 @@ def test_to_prompt_xml_empty():
 def test_validate_skill_valid(tmp_path):
     skill_dir = _make_skill_dir(tmp_path)
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     problems = manager.validate_skill(skill_dir)
     assert problems == []
 
@@ -345,7 +362,7 @@ def test_validate_skill_missing_skill_md(tmp_path):
     skill_dir = tmp_path / "bad"
     skill_dir.mkdir()
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     problems = manager.validate_skill(skill_dir)
     assert any("Missing SKILL.md" in p for p in problems)
 
@@ -355,7 +372,7 @@ def test_validate_skill_no_frontmatter(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("# No frontmatter\n\nJust markdown.")
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     problems = manager.validate_skill(skill_dir)
     assert any("frontmatter" in p.lower() for p in problems)
 
@@ -365,7 +382,7 @@ def test_validate_skill_missing_name(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("---\ndescription: something\n---\n\nBody.")
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     problems = manager.validate_skill(skill_dir)
     assert any("name" in p.lower() for p in problems)
 
@@ -375,7 +392,7 @@ def test_validate_skill_missing_description(tmp_path):
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("---\nname: bad\n---\n\nBody.")
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     problems = manager.validate_skill(skill_dir)
     assert any("description" in p.lower() for p in problems)
 
@@ -387,7 +404,7 @@ def test_validate_skill_name_mismatch(tmp_path):
         "---\nname: correct\ndescription: something\n---\n\nBody."
     )
     config = Config()
-    manager = SkillManager(config, workdir=Path.cwd())
+    manager = SkillManager(config, workdir=tmp_path)
     problems = manager.validate_skill(skill_dir)
     assert any("does not match" in p for p in problems)
 
@@ -488,6 +505,9 @@ def test_custom_dirs_highest_priority(tmp_path):
 
 def test_custom_dirs_supplement_defaults(tmp_path):
     """Custom dirs supplement (not replace) the default search paths."""
+    # Create a project-level skill
+    _make_project_skill(tmp_path)
+
     custom_dir = tmp_path / "my-skills"
     skill_dir = custom_dir / "hello"
     skill_dir.mkdir(parents=True)
@@ -500,7 +520,7 @@ def test_custom_dirs_supplement_defaults(tmp_path):
 
     # Custom skill loaded
     assert manager.get_skill("hello") is not None
-    # Builtin skills still available
+    # Project skills still available
     assert manager.get_skill("git") is not None
 
 
