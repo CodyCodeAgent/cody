@@ -6,7 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [Unreleased]
+## [1.10.4] - 2026-03-20
+
+### Fixed
+
+- **session_id 始终返回**：`stream()` 不再区分有无 `session_id` 参数，始终走 `run_stream_with_session` 路径。首次调用不传 `session_id` 时 core 自动创建 session 并返回 sid，修复了调用方拿不到 session_id 的 bug
+
+### Added
+
+- **SessionStartEvent**：新增 `session_start` 流式事件，作为 stream 的第一个事件 yield，确保调用方在 AI 调用前就能拿到 `session_id`（即使后续 AI 报错也不影响）
 
 ---
 

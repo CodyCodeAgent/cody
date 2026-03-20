@@ -577,16 +577,12 @@ class AsyncCodyClient:
             await self.start_mcp()
 
         runner = self.get_runner()
+        store = self.get_session_store()
 
-        if session_id:
-            store = self.get_session_store()
-            async for event, sid in runner.run_stream_with_session(
-                prompt, store, session_id, cancel_event=cancel_event,
-            ):
-                yield _event_to_chunk(event, sid)
-        else:
-            async for event in runner.run_stream(prompt, cancel_event=cancel_event):
-                yield _event_to_chunk(event)
+        async for event, sid in runner.run_stream_with_session(
+            prompt, store, session_id, cancel_event=cancel_event,
+        ):
+            yield _event_to_chunk(event, sid)
 
     # Alias for stream() — matches the name used in demos/docs
     run_stream = stream

@@ -99,12 +99,13 @@ The central orchestrator. Responsibilities:
 
 **StreamEvent system:** `run_stream()` yields structured `StreamEvent` objects (not raw text):
 ```
-ThinkingEvent    — incremental thinking content (delta)
-TextDeltaEvent   — incremental text output (delta)
-ToolCallEvent    — tool call initiated (tool_name, args, tool_call_id)
-ToolResultEvent  — tool call result (tool_name, result)
-DoneEvent        — stream complete, contains full CodyResult
-CancelledEvent   — run cancelled via cancel_event (v1.10.3+)
+SessionStartEvent — session ID (always first event in run_stream_with_session, v1.10.4+)
+ThinkingEvent     — incremental thinking content (delta)
+TextDeltaEvent    — incremental text output (delta)
+ToolCallEvent     — tool call initiated (tool_name, args, tool_call_id)
+ToolResultEvent   — tool call result (tool_name, result)
+DoneEvent         — stream complete, contains full CodyResult
+CancelledEvent    — run cancelled via cancel_event (v1.10.3+)
 ```
 `run_stream()` accepts an optional `cancel_event: asyncio.Event` parameter. When set, the stream yields a `CancelledEvent` and stops. Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
 

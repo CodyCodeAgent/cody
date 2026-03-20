@@ -13,6 +13,7 @@ from ..core.runner import (
     CodyResult,
     CompactEvent,
     DoneEvent,
+    SessionStartEvent,
     StreamEvent as CoreStreamEvent,
     TextDeltaEvent,
     ThinkingEvent,
@@ -41,7 +42,7 @@ class RunResult:
 
 @dataclass
 class StreamChunk:
-    type: str  # "text_delta", "thinking", "tool_call", "tool_result", "done", "compact"
+    type: str  # "session_start", "text_delta", "thinking", "tool_call", "tool_result", "done", "compact", "cancelled"
     content: str = ""
     session_id: Optional[str] = None
     # Tool call details (populated when type="tool_call")
@@ -120,6 +121,8 @@ def _event_to_chunk(
         )
     elif isinstance(event, CancelledEvent):
         return StreamChunk(type="cancelled", session_id=session_id)
+    elif isinstance(event, SessionStartEvent):
+        return StreamChunk(type="session_start", session_id=session_id)
     return StreamChunk(type="unknown", session_id=session_id)
 
 
