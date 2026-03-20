@@ -307,10 +307,22 @@ class AgentRunner:
             "and code intelligence via LSP. "
             "When a skill matches the task, call read_skill(skill_name) to load its "
             "full instructions. "
-            "For complex tasks with independent parts, use spawn_agent() to run "
-            "sub-agents in parallel — see its description for usage guide. "
             "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
-            "Always execute commands and file operations as needed to complete tasks.",
+            "Always execute commands and file operations as needed to complete tasks.\n\n"
+
+            "## Sub-Agent Parallelism\n"
+            "You SHOULD use spawn_agent() when the task involves 2 or more independent "
+            "sub-tasks. Doing work in parallel is faster and preferred over doing it "
+            "sequentially. Spawn multiple agents in a single tool-call turn.\n\n"
+            "Examples of when to spawn agents:\n"
+            "  - User: 'Add unit tests for auth, billing, and notification modules'\n"
+            "    → spawn 3 test agents, one per module\n"
+            "  - User: 'Refactor logging in src/api/ and src/workers/'\n"
+            "    → spawn 2 code agents, one per directory\n"
+            "  - User: 'Analyze the architecture of frontend and backend'\n"
+            "    → spawn 2 research agents in parallel\n\n"
+            "Only skip sub-agents when: the task is truly single-step, or steps have "
+            "sequential dependencies (step B needs output of step A).",
         ]
 
         # 2. CODY.md project instructions (global + project, merged)

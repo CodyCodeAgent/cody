@@ -13,39 +13,36 @@ async def spawn_agent(
 ) -> str:
     """Spawn a sub-agent to handle a task in the background.
 
-    Use sub-agents to parallelize independent work or isolate specialized tasks.
-    Each sub-agent runs with its own context and returns a text result.
+    IMPORTANT: You should actively use sub-agents whenever a task can be decomposed
+    into 2+ independent parts. Parallel execution is significantly faster. Spawn
+    multiple agents in a single turn — do NOT do them one by one sequentially.
 
-    Agent types and their capabilities:
-      - "code": File read/write + search + shell commands. For writing or modifying code.
-      - "research": Read-only (file read + search). For code analysis, pattern finding,
-        no modifications.
-      - "test": File read/write + shell commands. For writing tests and running test
-        suites.
-      - "generic": Same as code. For general-purpose tasks.
+    Examples:
+      - "Add tests for auth and billing" → spawn 2 test agents in one turn
+      - "Refactor logging in api/ and workers/" → spawn 2 code agents
+      - "Analyze frontend and backend architecture" → spawn 2 research agents
+      - "Add error handling to 5 service files" → spawn up to 5 code agents
 
-    When to use sub-agents:
-      - Task has multiple independent parts that can run in parallel
-      - Need to analyze different areas of the codebase simultaneously
-      - Want to isolate risky operations (e.g., test execution) from the main flow
+    Agent types:
+      - "code" / "generic": File read/write + search + shell. For writing/modifying code.
+      - "research": Read-only (file read + search). For analysis without side effects.
+      - "test": File read/write + shell. For writing and running tests.
 
-    When NOT to use sub-agents:
-      - Task is simple and sequential (just do it directly)
-      - Reading a specific file or searching for a known symbol (use read_file/grep
-        directly)
-      - Task requires results from a previous step (run sequentially instead)
+    Only do it yourself (no sub-agent) when:
+      - The task is a single simple step (one file read, one grep, one small edit)
+      - Steps are strictly sequential (step B depends on step A's output)
 
     Best practices:
-      - Launch multiple agents in a single turn for parallel execution
-      - Provide detailed, self-contained task descriptions (agents have no shared context)
-      - Use "research" type for analysis to prevent accidental file modifications
-      - Check results with get_agent_status() after spawning
+      - Provide detailed, self-contained task descriptions (agents have NO shared context
+        with the current conversation — include file paths, requirements, constraints)
+      - Use "research" type for read-only analysis to prevent accidental modifications
+      - After spawning, call get_agent_status() to collect results
 
     Limits: max 5 concurrent agents, 300s timeout per agent.
 
     Args:
-        task: Detailed task description. Must be self-contained — the agent has no
-              context from the current conversation.
+        task: Detailed, self-contained task description. Include all relevant file paths,
+              requirements, and context — the agent cannot see your conversation history.
         agent_type: "code", "research", "test", or "generic"
     """
     _check_permission(ctx, "spawn_agent")
