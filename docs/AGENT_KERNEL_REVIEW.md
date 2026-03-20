@@ -284,3 +284,377 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 4. **可嵌入性：** 缺少自定义工具和 Prompt — 业务方无法让 Agent 适配自己的场景
 
 好消息是前 6 项（重试、截断、Compaction、Prompt、max_steps、small model）都是低难度高收益的改进，可以快速落地。
+
+---
+
+## 五、具体实现方案
+
+### 方案 1：LLM API 重试（`runner.py`）
+
+**现状：** `runner.py` 直接调用 `agent.run()` / `agent.run_stream()`，无任何重试。
+`CodyRateLimitError` 在 `core/__init__.py` 中定义但从未使用。
+
+**改法：** 在 `runner.py` 的 `run()` 和 `stream()` 中包装重试逻辑。
+
+```python
+# core/retry.py（新文件）
+
+import asyncio
+import logging
+from typing import TypeVar, Callable, Awaitable
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+# 可重试的 HTTP 状态码
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
+
+# 可重试的错误关键词（pydantic-ai / httpx 抛出的异常信息）
+_RETRYABLE_KEYWORDS = ("rate limit", "overloaded", "too many requests", "server error", "connection")
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """判断异常是否可重试。"""
+    msg = str(exc).lower()
+    # 检查状态码
+    for code in _RETRYABLE_STATUS_CODES:
+        if str(code) in msg:
+            return True
+    # 检查关键词
+    return any(kw in msg for kw in _RETRYABLE_KEYWORDS)
+
+
+async def with_retry(
+    fn: Callable[..., Awaitable[T]],
+    *args,
+    max_retries: int = 3,
+    base_delay: float = 2.0,
+    max_delay: float = 30.0,
+    **kwargs,
+) -> T:
+    """带指数退避的重试包装器。
+
+    仅对 rate limit (429) 和 server error (5xx) 重试。
+    对参数错误 (4xx) 和 context overflow 不重试（让上层处理）。
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= max_retries or not _is_retryable(exc):
+                raise
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            logger.warning(
+                "LLM call failed (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1, max_retries, delay, exc,
+            )
+            await asyncio.sleep(delay)
+    raise last_exc  # unreachable, but satisfies type checker
+```
+
+**集成点：** 在 `runner.py` 的 `run()` 方法中：
+```python
+# 现在：
+result = await agent.run(prompt, message_history=history, deps=deps)
+
+# 改为：
+from .retry import with_retry
+result = await with_retry(agent.run, prompt, message_history=history, deps=deps)
+```
+
+---
+
+### 方案 2：工具输出截断（`core/tools/` 装饰器）
+
+**现状：** 每个工具直接返回 `str`，无长度限制。`grep` 虽有 `max_matches=200`，但 200 个匹配行仍可能很长。`read_file` 没有上限。`exec_command` 返回完整 stdout。
+
+**改法：** 在工具注册层统一截断。
+
+```python
+# core/tools/truncate.py（新文件）
+
+import tempfile
+from pathlib import Path
+
+# 工具输出的 token 上限（约 30K tokens ≈ 120K chars）
+MAX_OUTPUT_TOKENS = 30_000
+MAX_OUTPUT_CHARS = MAX_OUTPUT_TOKENS * 4  # 粗估
+
+
+def truncate_output(output: str, tool_name: str = "") -> str:
+    """截断工具输出。超长部分写入临时文件，返回截断内容 + 文件路径。"""
+    if len(output) <= MAX_OUTPUT_CHARS:
+        return output
+
+    # 写入临时文件
+    suffix = f".{tool_name}.txt" if tool_name else ".tool_output.txt"
+    fd = tempfile.NamedTemporaryFile(
+        mode="w", suffix=suffix, prefix="cody_", delete=False
+    )
+    fd.write(output)
+    fd.close()
+    path = fd.name
+
+    # 返回截断内容 + 提示
+    truncated = output[:MAX_OUTPUT_CHARS]
+    return (
+        f"{truncated}\n\n"
+        f"... [OUTPUT TRUNCATED — {len(output):,} chars total, "
+        f"showing first {MAX_OUTPUT_CHARS:,}]\n"
+        f"Full output saved to: {path}\n"
+        f"Use read_file('{path}') to read specific sections if needed."
+    )
+```
+
+**集成点：** 在 `core/tools/registry.py` 的 `register_tools()` 中包装每个工具的返回值。或更简单——在每个工具函数末尾调用 `truncate_output()`。
+
+推荐在 `grep`、`read_file`、`exec_command`、`glob` 四个高风险工具中优先加。
+
+---
+
+### 方案 3：结构化 Compaction 模板
+
+**现状（`context.py:114-126`）：**
+```python
+_SUMMARIZATION_PROMPT = """
+You are a conversation summarizer for an AI coding assistant.
+Summarize the conversation below. Preserve:
+- User goals and intent
+- Key decisions made
+- File paths and code locations mentioned
+- Tool results (especially errors and warnings)
+- Constraints or requirements stated
+Format: bullet points, 300 words or fewer. Do NOT include code blocks unless they contain critical one-liners.
+"""
+```
+
+问题：太泛，LLM 会丢掉关键上下文（如当前在哪个文件的哪一行工作）。
+
+**改为（参考 opencode 的结构化模板）：**
+```python
+_SUMMARIZATION_PROMPT = """\
+You are summarizing a conversation between a user and an AI coding assistant.
+
+Output your summary using EXACTLY this structure:
+
+## Goal
+What the user is trying to accomplish (1-2 sentences).
+
+## Key Instructions
+Constraints, preferences, or requirements the user stated (bullet points).
+
+## What Was Done
+Actions already completed, with specific outcomes (bullet points with file paths).
+
+## Current State
+Where things stand right now — what's working, what's not, any errors encountered.
+
+## Relevant Files
+File paths that are actively being worked on or referenced, with brief notes:
+- `path/to/file.py` — modified: added X function
+- `path/to/test.py` — created: tests for X
+
+## Open Items
+Anything still pending or unresolved.
+
+Be specific. Include file paths, function names, line numbers, error messages.
+Do NOT include code blocks. Keep total length under 500 words.
+"""
+```
+
+**核心差异：**
+- 固定结构 → LLM 不会遗漏关键类别
+- "Relevant Files" 带状态注释 → Agent 恢复后知道哪些文件改过/创建过
+- "Current State" → Agent 恢复后知道上次停在哪里
+- "Open Items" → Agent 知道接下来该做什么
+- 500 words 而非 300 → 对长对话 300 太短
+
+---
+
+### 方案 4：模型特定 Prompt
+
+**现状（`runner.py:402-424`）：** 一套 21 行的通用 prompt，不区分模型。
+
+**改法：** 在 `runner.py` 的 `_build_agent()` 中根据模型名称选择 prompt 变体。
+
+```python
+# core/prompts.py（新文件）
+
+# 所有模型共享的基础段落
+_BASE = (
+    "You are Cody, an AI coding assistant. "
+    "You have access to file operations, shell commands, skills, web search, "
+    "and code intelligence via LSP. "
+    "When a skill matches the task, call read_skill(skill_name) to load its full instructions. "
+    "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
+    "Always execute commands and file operations as needed to complete tasks."
+)
+
+_SUB_AGENT_GUIDANCE = (
+    "## Sub-Agent Parallelism\n"
+    "You SHOULD use spawn_agent() when the task involves 2 or more independent "
+    "sub-tasks. Doing work in parallel is faster and preferred over doing it "
+    "sequentially. Spawn multiple agents in a single tool-call turn.\n\n"
+    "Examples of when to spawn agents:\n"
+    "  - User: 'Add unit tests for auth, billing, and notification modules'\n"
+    "    → spawn 3 test agents, one per module\n"
+    "  - User: 'Refactor logging in src/api/ and src/workers/'\n"
+    "    → spawn 2 code agents, one per directory\n"
+    "  - User: 'Analyze the architecture of frontend and backend'\n"
+    "    → spawn 2 research agents in parallel\n\n"
+    "Only skip sub-agents when: the task is truly single-step, or steps have "
+    "sequential dependencies (step B needs output of step A)."
+)
+
+# Claude 系列专用指导
+_CLAUDE_SPECIFIC = (
+    "## Working Style\n"
+    "- Keep responses concise. Lead with the action, not the reasoning.\n"
+    "- When modifying code, read the file first, then edit. Never guess file contents.\n"
+    "- After making changes, verify by running tests or checking with LSP diagnostics.\n"
+    "- If a tool call fails, analyze the error and try a different approach "
+    "rather than retrying the same call.\n"
+    "- When the task is complete, provide a brief summary of what was done.\n\n"
+
+    "## Tool Usage\n"
+    "- Prefer grep/glob for file discovery over listing directories.\n"
+    "- Use exec_command for running tests, builds, and git operations.\n"
+    "- For large codebases, spawn a research sub-agent to explore before modifying.\n"
+    "- Read relevant files before editing — never assume content.\n"
+    "- When multiple independent tool calls are needed, make them all in a single turn."
+)
+
+# GPT/OpenAI 系列专用指导
+_GPT_SPECIFIC = (
+    "## Working Style\n"
+    "- You are an autonomous coding agent. Keep working until the task is fully complete.\n"
+    "- Do NOT ask the user for confirmation at intermediate steps. Just do the work.\n"
+    "- After making changes, ALWAYS verify by running tests or the build.\n"
+    "- If tests fail, fix the issue and re-run. Do not stop until tests pass.\n"
+    "- If you are unsure about something, read more code to understand before acting.\n\n"
+
+    "## Tool Usage\n"
+    "- Read the file BEFORE editing. Never assume file contents.\n"
+    "- Use grep to find relevant code across the codebase.\n"
+    "- Use exec_command to run tests, builds, and linters.\n"
+    "- When you encounter an error, analyze it and try a different approach."
+)
+
+# Gemini 系列专用指导
+_GEMINI_SPECIFIC = (
+    "## Working Style\n"
+    "- Be thorough and systematic. Read relevant files before making changes.\n"
+    "- After editing code, verify the changes work by running tests.\n"
+    "- If a tool call fails, try an alternative approach.\n"
+    "- Provide a clear summary when the task is complete.\n\n"
+
+    "## Tool Usage\n"
+    "- Use grep and glob for codebase exploration.\n"
+    "- Use exec_command for running tests, builds, and other commands.\n"
+    "- Read files before editing to understand existing code."
+)
+
+# 默认/其他模型
+_DEFAULT_SPECIFIC = (
+    "## Working Style\n"
+    "- Read files before editing. Verify changes work by running tests.\n"
+    "- If a tool call fails, analyze the error and try a different approach.\n"
+    "- Keep responses short and focused on the task."
+)
+
+
+def get_persona(model_name: str) -> str:
+    """根据模型名称返回优化的 system prompt。"""
+    model_lower = model_name.lower()
+
+    if "claude" in model_lower or "anthropic" in model_lower:
+        specific = _CLAUDE_SPECIFIC
+    elif "gpt" in model_lower or "o1" in model_lower or "o3" in model_lower or "o4" in model_lower:
+        specific = _GPT_SPECIFIC
+    elif "gemini" in model_lower:
+        specific = _GEMINI_SPECIFIC
+    else:
+        specific = _DEFAULT_SPECIFIC
+
+    return f"{_BASE}\n\n{_SUB_AGENT_GUIDANCE}\n\n{specific}"
+```
+
+**集成点：** `runner.py:402` 改为：
+```python
+from .prompts import get_persona
+system_parts = [get_persona(self.config.model)]
+```
+
+**核心差异解释：**
+
+| 模型 | 关键差异 | 原因 |
+|------|---------|------|
+| Claude | 强调并行工具调用、简洁回复、先读后改 | Claude 擅长并行工具调用，但默认回复偏长 |
+| GPT | 强调自主执行、不要中间确认、测试必须通过 | GPT 系列倾向在中间停下来问用户，需要推它继续 |
+| Gemini | 强调系统性、先读后改 | Gemini 有时会跳过读文件直接编辑 |
+| 默认 | 最精简，只给核心规则 | 未知模型不宜给太多特定指导 |
+
+---
+
+### 方案 5：`max_steps` 熔断
+
+**现状：** `CircuitBreakerConfig` 有 `max_tokens`、`max_cost_usd`、`loop_detect_turns`，但没有步数限制。
+
+**改法：**
+
+```python
+# config.py — CircuitBreakerConfig 增加字段
+class CircuitBreakerConfig(BaseModel):
+    enabled: bool = True
+    max_tokens: int = 200_000
+    max_cost_usd: float = 5.0
+    max_steps: int = 50          # 新增：最大工具调用步数，0=无限制
+    loop_detect_turns: int = 6
+    loop_similarity_threshold: float = 0.9
+    model_prices: dict[str, float] = Field(default_factory=lambda: {
+        "default": 0.000003,
+    })
+```
+
+**集成点：** `runner.py` 的 `_check_circuit_breaker()` 增加步数检查。
+
+---
+
+### 方案 6：Small Model 配置
+
+**现状：** `CompactionConfig` 已支持独立 `model`，但没有通用的 "small model" 概念。
+
+**改法：**
+
+```python
+# config.py — Config 增加字段
+class Config(BaseModel):
+    model: str = ''
+    model_base_url: Optional[str] = None
+    model_api_key: Optional[str] = None
+    small_model: Optional[str] = None      # 新增：低成本操作用的小模型
+    small_model_base_url: Optional[str] = None
+    small_model_api_key: Optional[str] = None
+    # ... 其他字段不变
+```
+
+**使用场景：**
+- Compaction（如果 `compaction.model` 未设置，自动用 `small_model`）
+- 子 Agent（research 类型可以用 small model）
+- 未来：session 标题生成
+
+---
+
+### 实现优先级建议
+
+以上 6 个方案按**实现顺序**排列（考虑依赖关系和收益）：
+
+1. **Prompt 优化（方案 4）**— 零风险，立即提升结果质量，不改任何逻辑
+2. **Compaction 模板（方案 3）**— 零风险，替换一个字符串常量
+3. **工具输出截断（方案 2）**— 低风险，防止 context 爆炸
+4. **LLM API 重试（方案 1）**— 中风险，需要测试重试逻辑
+5. **max_steps 熔断（方案 5）**— 低风险，加一个配置字段 + 一个条件检查
+6. **Small model（方案 6）**— 低风险，加配置字段 + 修改 model resolver 的 fallback
