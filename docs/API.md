@@ -125,11 +125,12 @@ data: {"type": "text_delta", "content": "文件内容"}
 data: {"type": "done", "output": "这是文件内容", "thinking": "...", "tool_traces": [...], "usage": {"total_tokens": 230}}
 ```
 
-带 session_id 时，每个事件都包含 `session_id` 字段。
+每个事件都包含 `session_id` 字段。第一个事件始终是 `session_start`，确保客户端在 AI 调用前就能拿到 session ID。
 
 **事件类型：**
 | 事件 | 说明 |
 |------|------|
+| session_start | 会话开始，始终是第一个事件（v1.10.4+），包含 `session_id` |
 | thinking | 模型思考过程（增量），`content` 字段 |
 | tool_call | 工具调用发起，包含 `tool_name`、`args`、`tool_call_id` |
 | tool_result | 工具返回结果，包含 `tool_name`、`tool_call_id`、`result` |

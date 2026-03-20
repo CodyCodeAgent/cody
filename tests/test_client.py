@@ -135,15 +135,18 @@ async def test_async_stream_with_tool_events():
     """Verify stream() yields StreamChunks with tool_call_id for tool events."""
     client = AsyncCodyClient()
 
-    async def fake_stream(prompt, message_history=None, cancel_event=None):
-        yield ToolCallEvent(tool_name="grep", args={"pattern": "foo"}, tool_call_id="tc_1")
-        yield ToolResultEvent(tool_name="grep", tool_call_id="tc_1", result="match found")
-        yield DoneEvent(result=CodyResult(output="done"))
+    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None):
+        sid = session_id or "test-sid"
+        yield ToolCallEvent(tool_name="grep", args={"pattern": "foo"}, tool_call_id="tc_1"), sid
+        yield ToolResultEvent(tool_name="grep", tool_call_id="tc_1", result="match found"), sid
+        yield DoneEvent(result=CodyResult(output="done")), sid
 
-    with patch.object(client, "get_runner") as mock_get_runner:
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store") as mock_get_store:
         mock_runner = MagicMock()
-        mock_runner.run_stream = fake_stream
+        mock_runner.run_stream_with_session = fake_stream_with_session
         mock_get_runner.return_value = mock_runner
+        mock_get_store.return_value = MagicMock()
 
         chunks = []
         async for chunk in client.stream("test"):
@@ -167,17 +170,20 @@ async def test_async_stream_cancel():
     """Verify cancel_event stops the stream and yields a 'cancelled' chunk."""
     client = AsyncCodyClient()
 
-    async def fake_stream(prompt, message_history=None, cancel_event=None):
-        yield TextDeltaEvent(content="Hello")
+    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None):
+        sid = session_id or "test-sid"
+        yield TextDeltaEvent(content="Hello"), sid
         # Simulate cancel being set mid-stream
         if cancel_event:
             cancel_event.set()
-        yield CancelledEvent()
+        yield CancelledEvent(), sid
 
-    with patch.object(client, "get_runner") as mock_get_runner:
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store") as mock_get_store:
         mock_runner = MagicMock()
-        mock_runner.run_stream = fake_stream
+        mock_runner.run_stream_with_session = fake_stream_with_session
         mock_get_runner.return_value = mock_runner
+        mock_get_store.return_value = MagicMock()
 
         cancel = asyncio.Event()
         chunks = []
@@ -253,15 +259,18 @@ async def test_async_run_with_session():
 async def test_async_stream():
     client = AsyncCodyClient()
 
-    async def fake_stream(prompt, message_history=None, cancel_event=None):
-        yield TextDeltaEvent(content="Hello")
-        yield TextDeltaEvent(content=" async")
-        yield DoneEvent(result=CodyResult(output="Hello async"))
+    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None):
+        sid = session_id or "test-sid"
+        yield TextDeltaEvent(content="Hello"), sid
+        yield TextDeltaEvent(content=" async"), sid
+        yield DoneEvent(result=CodyResult(output="Hello async")), sid
 
-    with patch.object(client, "get_runner") as mock_get_runner:
+    with patch.object(client, "get_runner") as mock_get_runner, \
+         patch.object(client, "get_session_store") as mock_get_store:
         mock_runner = MagicMock()
-        mock_runner.run_stream = fake_stream
+        mock_runner.run_stream_with_session = fake_stream_with_session
         mock_get_runner.return_value = mock_runner
+        mock_get_store.return_value = MagicMock()
 
         chunks = []
         async for chunk in client.stream("test"):

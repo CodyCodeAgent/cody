@@ -258,6 +258,7 @@ class StreamChunk:
 
 | 类型 | 说明 | 特有字段 |
 | ---- | ---- | -------- |
+| `session_start` | 会话开始，始终是第一个事件（v1.10.4+） | `session_id` |
 | `text_delta` | 文本内容（增量） | `content` |
 | `thinking` | 思考内容（增量） | `content` |
 | `tool_call` | 工具调用 | `tool_name`, `args`, `tool_call_id` |
@@ -270,7 +271,9 @@ class StreamChunk:
 ```python
 async with AsyncCodyClient() as client:
     async for chunk in client.run_stream("创建 Flask 应用"):
-        if chunk.type == "text_delta":
+        if chunk.type == "session_start":
+            print(f"Session: {chunk.session_id}")
+        elif chunk.type == "text_delta":
             print(chunk.content, end="")
         elif chunk.type == "thinking":
             print(f"[思考] {chunk.content}", end="")

@@ -192,8 +192,15 @@ class CancelledEvent:
     event_type: Literal["cancelled"] = "cancelled"
 
 
+@dataclass
+class SessionStartEvent:
+    """Emitted at the very beginning of run_stream_with_session with the session ID."""
+    session_id: str
+    event_type: Literal["session_start"] = "session_start"
+
+
 StreamEvent = Union[
-    CompactEvent, ThinkingEvent, TextDeltaEvent,
+    SessionStartEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
     CancelledEvent,
 ]
@@ -831,6 +838,10 @@ class AgentRunner:
         re-compacting already-summarized messages.
         """
         sid, history = self.prepare_session(store, session_id)
+
+        # Yield session ID immediately so callers always receive it,
+        # even if the AI call fails later.
+        yield SessionStartEvent(session_id=sid), sid
 
         # Pre-compact and save checkpoint before streaming
         history, compact_result = await self._compact_history_if_needed(history)
