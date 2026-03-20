@@ -483,7 +483,7 @@ Do NOT include code blocks. Keep total length under 500 words.
 | # | 问题 | 位置 |
 |---|------|------|
 | 4a | Base Persona 过于简略，缺少行为约束 | `runner.py:402-424` |
-| 4b | 不区分模型，所有模型用同一套 prompt | `runner.py:402-424` |
+| 4b | ~~不区分模型~~ **已决定不做** — 框架不应硬编码模型特定 prompt | `runner.py:402-424` |
 | 4c | 子 Agent Prompt 缺少协作指导 | `sub_agent.py:62-94` |
 | 4d | 缺少"思考链"指导 | 全局缺失 |
 | 4e | Skills 匹配策略可进一步细化 | `runner.py:439-442` |
@@ -510,9 +510,9 @@ Do NOT include code blocks. Keep total length under 500 words.
 6. 工具使用指南（优先级和策略）
 ```
 
-#### 问题 4b：不区分模型
+#### ~~问题 4b：不区分模型~~（已决定不做）
 
-不同模型对 prompt 的响应差异很大，需要按模型家族分别优化。
+理由：Cody 是框架，不应对特定模型做硬编码的 prompt hack；维护成本高；好的 prompt 应该是模型无关的。
 
 #### 问题 4c：子 Agent Prompt 缺少协作指导
 
@@ -631,74 +631,22 @@ _SKILLS_GUIDANCE = (
     "- If the task is simple (single file edit, quick grep), skip skills entirely.\n"
 )
 
-# ── 模型特定指导 ─────────────────────────────────────────────────────
-
-_CLAUDE_SPECIFIC = (
-    "## Model-Specific Guidelines\n"
-    "- Keep responses concise. Lead with the action, not the reasoning.\n"
-    "- When multiple independent tool calls are needed, make them all in a single turn.\n"
-    "- If a tool call fails, analyze the error and try a different approach "
-    "rather than retrying the same call.\n"
-    "- Prefer grep/glob for file discovery over listing directories.\n"
-    "- For large codebases, spawn a research sub-agent to explore before modifying."
-)
-
-_GPT_SPECIFIC = (
-    "## Model-Specific Guidelines\n"
-    "- You are an autonomous coding agent. Keep working until the task is fully complete.\n"
-    "- Do NOT ask the user for confirmation at intermediate steps. Just do the work.\n"
-    "- After making changes, ALWAYS verify by running tests or the build.\n"
-    "- If tests fail, fix the issue and re-run. Do not stop until tests pass.\n"
-    "- If you are unsure about something, read more code to understand before acting.\n"
-    "- Read the file BEFORE editing. Never assume file contents.\n"
-    "- Use grep to find relevant code across the codebase."
-)
-
-_GEMINI_SPECIFIC = (
-    "## Model-Specific Guidelines\n"
-    "- Be thorough and systematic. Read relevant files before making changes.\n"
-    "- After editing code, verify the changes work by running tests.\n"
-    "- If a tool call fails, try an alternative approach.\n"
-    "- Provide a clear summary when the task is complete.\n"
-    "- Use grep and glob for codebase exploration.\n"
-    "- Read files before editing to understand existing code."
-)
-
-_DEFAULT_SPECIFIC = (
-    "## Model-Specific Guidelines\n"
-    "- Read files before editing. Verify changes work by running tests.\n"
-    "- If a tool call fails, analyze the error and try a different approach.\n"
-    "- Keep responses short and focused on the task."
-)
-
-
-def get_persona(model_name: str) -> str:
-    """根据模型名称返回优化的 system prompt。
+def build_system_prompt() -> str:
+    """构建统一的 system prompt（模型无关）。
 
     Prompt 结构：
       1. 角色定义 + 能力边界 + 安全约束（_BASE）
       2. 思考链指导（_THINKING_GUIDANCE）
       3. 子 Agent 并行指导（_SUB_AGENT_GUIDANCE）
       4. Skills 使用指导（_SKILLS_GUIDANCE）
-      5. 模型特定指导（_*_SPECIFIC）
+
+    注意：不做模型区分。框架不应硬编码模型特定的 prompt hack。
     """
-    model_lower = model_name.lower()
-
-    if "claude" in model_lower or "anthropic" in model_lower:
-        specific = _CLAUDE_SPECIFIC
-    elif any(k in model_lower for k in ("gpt", "o1", "o3", "o4")):
-        specific = _GPT_SPECIFIC
-    elif "gemini" in model_lower:
-        specific = _GEMINI_SPECIFIC
-    else:
-        specific = _DEFAULT_SPECIFIC
-
     return "\n\n".join([
         _BASE,
         _THINKING_GUIDANCE,
         _SUB_AGENT_GUIDANCE,
         _SKILLS_GUIDANCE,
-        specific,
     ])
 ```
 
@@ -789,18 +737,9 @@ _AGENT_PROMPTS = {
 
 `runner.py:402` 改为：
 ```python
-from .prompts import get_persona
-system_parts = [get_persona(self.config.model)]
+from .prompts import build_system_prompt
+system_parts = [build_system_prompt()]
 ```
-
-#### 模型特定策略解释
-
-| 模型 | 关键差异 | 原因 |
-|------|---------|------|
-| Claude | 强调并行工具调用、简洁回复 | Claude 擅长并行工具调用，但默认回复偏长 |
-| GPT | 强调自主执行、不要中间确认、测试必须通过 | GPT 系列倾向在中间停下来问用户，需要推它继续 |
-| Gemini | 强调系统性、先读后改 | Gemini 有时会跳过读文件直接编辑 |
-| 默认 | 最精简，只给核心规则 | 未知模型不宜给太多特定指导 |
 
 #### 新旧 Prompt 对比
 
@@ -816,7 +755,7 @@ system_parts = [get_persona(self.config.model)]
 | 上下文管理 | ❌ 无 | ✅ 有（save_memory 指导） |
 | 子 Agent 并行 | ✅ 有 | ✅ 保留 |
 | Skills 指导 | ⚠️ 一句话 | ✅ 详细（上下文线索、不要过度加载） |
-| 模型区分 | ❌ 无 | ✅ 4 种变体（Claude/GPT/Gemini/默认） |
+| 模型区分 | ❌ 无 | ❌ 不做（框架不应硬编码模型特定 prompt） |
 | 子 Agent 协作 | ❌ 无 | ✅ 结构化输出格式 + 错误上报 + 范围约束 |
 
 ---

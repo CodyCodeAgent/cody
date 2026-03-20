@@ -50,6 +50,7 @@ web/backend/            →  core/runner.py  →  core/tools/
 ## 关键入口文件
 
 - `core/runner.py` — 框架中枢：Agent 创建、工具注册、run/stream 执行、熔断检查、记忆加载
+- `core/prompts.py` — System prompt 构建（Base persona、思考链、子 Agent 并行、Skills 指导）
 - `core/tools/registry.py` — 声明式工具注册表（`*_TOOLS` 列表）
 - `core/deps.py` — CodyDeps 数据类 + ToolContext，工具的依赖注入容器
 - `core/config.py` — 配置管理，含 `CircuitBreakerConfig` 熔断配置

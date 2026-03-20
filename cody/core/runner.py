@@ -398,30 +398,10 @@ class AgentRunner:
           3. Project memory (cross-session learnings)
           4. Available skills XML (Agent Skills standard)
         """
-        # 1. Base persona
-        system_parts = [
-            "You are Cody, an AI coding assistant. "
-            "You have access to file operations, shell commands, skills, web search, "
-            "and code intelligence via LSP. "
-            "When a skill matches the task, call read_skill(skill_name) to load its "
-            "full instructions. "
-            "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
-            "Always execute commands and file operations as needed to complete tasks.\n\n"
+        # 1. Base persona (from core/prompts.py)
+        from .prompts import build_system_prompt
 
-            "## Sub-Agent Parallelism\n"
-            "You SHOULD use spawn_agent() when the task involves 2 or more independent "
-            "sub-tasks. Doing work in parallel is faster and preferred over doing it "
-            "sequentially. Spawn multiple agents in a single tool-call turn.\n\n"
-            "Examples of when to spawn agents:\n"
-            "  - User: 'Add unit tests for auth, billing, and notification modules'\n"
-            "    → spawn 3 test agents, one per module\n"
-            "  - User: 'Refactor logging in src/api/ and src/workers/'\n"
-            "    → spawn 2 code agents, one per directory\n"
-            "  - User: 'Analyze the architecture of frontend and backend'\n"
-            "    → spawn 2 research agents in parallel\n\n"
-            "Only skip sub-agents when: the task is truly single-step, or steps have "
-            "sequential dependencies (step B needs output of step A).",
-        ]
+        system_parts = [build_system_prompt()]
 
         # 2. CODY.md project instructions (global + project, merged)
         project_instructions = load_project_instructions(self.workdir)
