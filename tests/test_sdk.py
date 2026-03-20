@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from cody.sdk.config import SDKConfig, ModelConfig, PermissionConfig, SecurityConfig, MCPConfig, LSPConfig, config
+from cody.sdk.config import SDKConfig, ModelConfig, PermissionConfig, SecurityConfig, CircuitBreakerConfig, MCPConfig, LSPConfig, config
 from cody.sdk.errors import (
     CodyError,
     CodyModelError,
@@ -540,6 +540,63 @@ def test_builder_mcp_server():
 def test_builder_lsp_languages():
     builder = Cody().lsp_languages(["rust", "java"])
     assert builder._lsp_languages == ["rust", "java"]
+
+
+def test_builder_circuit_breaker_kwargs():
+    builder = Cody().circuit_breaker(max_cost_usd=10.0, max_tokens=500_000)
+    assert builder._circuit_breaker is not None
+    assert builder._circuit_breaker.max_cost_usd == 10.0
+    assert builder._circuit_breaker.max_tokens == 500_000
+    assert builder._circuit_breaker.enabled is True
+
+
+def test_builder_circuit_breaker_config_object():
+    cb = CircuitBreakerConfig(max_cost_usd=20.0, enabled=False)
+    builder = Cody().circuit_breaker(cb)
+    assert builder._circuit_breaker.max_cost_usd == 20.0
+    assert builder._circuit_breaker.enabled is False
+
+
+def test_builder_circuit_breaker_model_prices():
+    builder = Cody().circuit_breaker(
+        max_cost_usd=8.0,
+        model_prices={"claude-sonnet-4-0": 0.000009},
+    )
+    assert builder._circuit_breaker.model_prices == {"claude-sonnet-4-0": 0.000009}
+
+
+def test_builder_circuit_breaker_build():
+    client = (
+        Cody()
+        .workdir("/tmp")
+        .model("test:model")
+        .circuit_breaker(max_cost_usd=15.0, max_tokens=300_000)
+        .build()
+    )
+    assert isinstance(client, AsyncCodyClient)
+    assert client._config.circuit_breaker.max_cost_usd == 15.0
+    assert client._config.circuit_breaker.max_tokens == 300_000
+
+
+def test_sdk_config_circuit_breaker_defaults():
+    cfg = SDKConfig()
+    assert cfg.circuit_breaker.enabled is True
+    assert cfg.circuit_breaker.max_cost_usd == 5.0
+    assert cfg.circuit_breaker.max_tokens == 200_000
+
+
+def test_sdk_config_from_dict_circuit_breaker():
+    data = {
+        "circuit_breaker": {
+            "max_cost_usd": 12.0,
+            "max_tokens": 400_000,
+            "enabled": False,
+        }
+    }
+    cfg = SDKConfig.from_dict(data)
+    assert cfg.circuit_breaker.max_cost_usd == 12.0
+    assert cfg.circuit_breaker.max_tokens == 400_000
+    assert cfg.circuit_breaker.enabled is False
 
 
 def test_builder_build():

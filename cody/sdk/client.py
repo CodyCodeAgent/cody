@@ -13,7 +13,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Literal, Optional, overload
 
-from .config import MCPServerConfig as SDKMCPServerConfig, SDKConfig, config as make_config
+from .config import (
+    CircuitBreakerConfig as SDKCircuitBreakerConfig,
+    MCPServerConfig as SDKMCPServerConfig,
+    SDKConfig,
+    config as make_config,
+)
 from .errors import (
     CodyConfigError,
     CodyNotFoundError,
@@ -70,6 +75,7 @@ class CodyBuilder:
     _enable_events: bool = False
     _mcp_servers: list[dict | SDKMCPServerConfig] = field(default_factory=list)
     _auto_start_mcp: bool = False
+    _circuit_breaker: SDKCircuitBreakerConfig | None = None
     _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
@@ -146,6 +152,40 @@ class CodyBuilder:
         self._enable_events = True
         return self
 
+    def circuit_breaker(
+        self,
+        config: SDKCircuitBreakerConfig | None = None,
+        *,
+        enabled: bool = True,
+        max_tokens: int = 200_000,
+        max_cost_usd: float = 5.0,
+        loop_detect_turns: int = 6,
+        loop_similarity_threshold: float = 0.9,
+        model_prices: dict[str, float] | None = None,
+    ) -> "CodyBuilder":
+        """Configure circuit breaker for automatic run termination.
+
+        Accepts either a CircuitBreakerConfig object or keyword arguments:
+
+            # Option A: config object
+            Cody().circuit_breaker(CircuitBreakerConfig(max_cost_usd=10.0)).build()
+
+            # Option B: keyword arguments
+            Cody().circuit_breaker(max_cost_usd=10.0, max_tokens=500_000).build()
+        """
+        if config is not None:
+            self._circuit_breaker = config
+        else:
+            self._circuit_breaker = SDKCircuitBreakerConfig(
+                enabled=enabled,
+                max_tokens=max_tokens,
+                max_cost_usd=max_cost_usd,
+                loop_detect_turns=loop_detect_turns,
+                loop_similarity_threshold=loop_similarity_threshold,
+                model_prices=model_prices or {},
+            )
+        return self
+
     def mcp_server(self, server: dict | SDKMCPServerConfig) -> "CodyBuilder":
         """Add MCP server configuration (dict or MCPServerConfig)."""
         self._mcp_servers.append(server)
@@ -215,6 +255,8 @@ class CodyBuilder:
             enable_metrics=self._enable_metrics,
             enable_events=self._enable_events,
         )
+        if self._circuit_breaker is not None:
+            cfg.circuit_breaker = self._circuit_breaker
         cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
@@ -345,6 +387,24 @@ class AsyncCodyClient:
                     if d not in existing:
                         self._core_config.skills.custom_dirs.append(d)
                         existing.add(d)
+            # Apply circuit breaker config from SDK
+            from ..core.config import CircuitBreakerConfig as CoreCBConfig
+            sdk_cb = self._config.circuit_breaker
+            # Default SDKCircuitBreakerConfig values for comparison
+            defaults = SDKCircuitBreakerConfig()
+            if (sdk_cb.enabled != defaults.enabled
+                    or sdk_cb.max_tokens != defaults.max_tokens
+                    or sdk_cb.max_cost_usd != defaults.max_cost_usd
+                    or sdk_cb.loop_detect_turns != defaults.loop_detect_turns
+                    or sdk_cb.loop_similarity_threshold != defaults.loop_similarity_threshold
+                    or sdk_cb.model_prices):
+                cb_dict = sdk_cb.to_dict()
+                # Merge model_prices: core defaults ← SDK overrides
+                merged_prices = dict(self._core_config.circuit_breaker.model_prices)
+                merged_prices.update(cb_dict.pop("model_prices", {}))
+                self._core_config.circuit_breaker = CoreCBConfig(
+                    **cb_dict, model_prices=merged_prices,
+                )
             # Apply MCP servers from SDK config
             if self._config.mcp.enabled and self._config.mcp.servers:
                 for s in self._config.mcp.servers:
