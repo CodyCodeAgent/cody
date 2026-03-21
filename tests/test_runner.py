@@ -98,9 +98,12 @@ async def test_compact_history_returns_compact_result():
     from pydantic_ai.messages import TextPart, UserPromptPart
     from cody.core.context import CompactResult
 
+    config = Config(
+        compaction=CompactionConfig(max_tokens=100, enable_pruning=False),
+    )
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
-        runner.config = Config()
+        runner.config = config
 
     # Create enough messages to trigger compaction
     history = []

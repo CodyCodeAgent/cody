@@ -635,6 +635,10 @@ class AgentRunner:
         2. **Compact** — if pruning alone didn't free enough tokens, fall back
            to full compaction (truncation or LLM summarization).
 
+        The effective token threshold is determined by
+        ``CompactionConfig.effective_max_tokens()`` which honours
+        ``trigger_ratio`` and ``context_window_tokens`` when set.
+
         Returns (history, compact_result_or_none).
         """
         if not history:
@@ -642,12 +646,13 @@ class AgentRunner:
 
         msgs = self._history_to_dicts(history)
         cc = self.config.compaction
+        eff_max = cc.effective_max_tokens()
 
         # ── Phase 1: Selective pruning ───────────────────────────────────
         if cc.enable_pruning:
             pruned, prune_result = prune_tool_outputs(
                 msgs,
-                max_tokens=cc.max_tokens,
+                max_tokens=eff_max,
                 protect_recent_tokens=cc.prune_protect_tokens,
                 min_saving_tokens=cc.prune_min_saving_tokens,
                 min_content_tokens=cc.prune_min_content_tokens,
@@ -663,7 +668,7 @@ class AgentRunner:
                 remaining = sum(
                     estimate_tokens(m.get("content", "")) for m in msgs
                 )
-                if remaining <= cc.max_tokens:
+                if remaining <= eff_max:
                     # Pruning was enough — convert back and return
                     return (
                         self._dicts_to_history(msgs),
@@ -696,8 +701,9 @@ class AgentRunner:
                     msgs,
                     config=self.config,
                     existing_summary=existing_summary,
-                    max_tokens=cc.max_tokens,
+                    max_tokens=eff_max,
                     keep_recent=cc.keep_recent,
+                    keep_recent_tokens=cc.keep_recent_tokens,
                     max_summary_tokens=cc.max_summary_tokens,
                 )
             except Exception:
@@ -706,10 +712,16 @@ class AgentRunner:
                     exc_info=True,
                 )
                 compacted, result = compact_messages(
-                    msgs, max_tokens=max_tokens,
+                    msgs,
+                    max_tokens=eff_max,
+                    keep_recent_tokens=cc.keep_recent_tokens,
                 )
         else:
-            compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+            compacted, result = compact_messages(
+                msgs,
+                max_tokens=eff_max,
+                keep_recent_tokens=cc.keep_recent_tokens,
+            )
 
         if result is None:
             return history, None  # no compaction needed
@@ -735,12 +747,13 @@ class AgentRunner:
 
         msgs = self._history_to_dicts(history)
         cc = self.config.compaction
+        eff_max = cc.effective_max_tokens()
 
         # Phase 1: Selective pruning
         if cc.enable_pruning:
             pruned, prune_result = prune_tool_outputs(
                 msgs,
-                max_tokens=cc.max_tokens,
+                max_tokens=eff_max,
                 protect_recent_tokens=cc.prune_protect_tokens,
                 min_saving_tokens=cc.prune_min_saving_tokens,
                 min_content_tokens=cc.prune_min_content_tokens,
@@ -750,7 +763,7 @@ class AgentRunner:
                 remaining = sum(
                     estimate_tokens(m.get("content", "")) for m in msgs
                 )
-                if remaining <= cc.max_tokens:
+                if remaining <= eff_max:
                     return (
                         self._dicts_to_history(msgs),
                         CompactResult(
@@ -762,7 +775,11 @@ class AgentRunner:
                     )
 
         # Phase 2: Truncation
-        compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+        compacted, result = compact_messages(
+            msgs,
+            max_tokens=eff_max,
+            keep_recent_tokens=cc.keep_recent_tokens,
+        )
         if result is None:
             return history, None
 

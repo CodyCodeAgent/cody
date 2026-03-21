@@ -172,24 +172,59 @@ class CompactResult:
     used_llm: bool = False
 
 
+def _split_recent(
+    messages: list[dict],
+    keep_recent: int = 4,
+    keep_recent_tokens: int = 0,
+) -> tuple[list[dict], list[dict]]:
+    """Split messages into (old, recent) based on count or token budget.
+
+    When *keep_recent_tokens* > 0, the split is **token-based**: walk backward
+    and keep messages until the cumulative token count exceeds the budget.
+    Otherwise, fall back to the classic ``messages[-keep_recent:]`` split.
+    """
+    if keep_recent_tokens > 0:
+        budget = keep_recent_tokens
+        split_idx = len(messages)
+        for idx in range(len(messages) - 1, -1, -1):
+            tok = estimate_tokens(messages[idx].get("content", ""))
+            if budget - tok < 0 and split_idx < len(messages):
+                break
+            budget -= tok
+            split_idx = idx
+        # Always keep at least one recent message
+        split_idx = min(split_idx, len(messages) - 1)
+        return messages[:split_idx], messages[split_idx:]
+
+    if keep_recent >= len(messages):
+        return [], messages
+    return messages[:-keep_recent], messages[-keep_recent:]
+
+
 def compact_messages(
     messages: list[dict],
     max_tokens: int = 100_000,
     keep_recent: int = 4,
+    keep_recent_tokens: int = 0,
 ) -> tuple[list[dict], Optional[CompactResult]]:
     """Compact older messages into a summary when context grows too large.
 
-    Keeps the most recent `keep_recent` messages intact and summarizes the rest.
+    When *keep_recent_tokens* > 0, uses a **token budget** to decide how many
+    recent messages to preserve (instead of fixed *keep_recent* count).
+
     Returns (new_messages, compact_result_or_none).
     """
     total_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
 
-    if total_tokens <= max_tokens or len(messages) <= keep_recent:
+    if total_tokens <= max_tokens:
         return messages, None
 
-    # Split into old (to compact) and recent (to keep)
-    old_messages = messages[:-keep_recent]
-    recent_messages = messages[-keep_recent:]
+    old_messages, recent_messages = _split_recent(
+        messages, keep_recent, keep_recent_tokens,
+    )
+
+    if not old_messages:
+        return messages, None
 
     # Build summary from old messages
     summary_parts: list[str] = []
@@ -235,16 +270,35 @@ def _summarize_message(content: str, max_len: int = 200) -> str:
 
 _SUMMARIZATION_PROMPT = """\
 You are a conversation summarizer for an AI coding assistant.
+Summarize the conversation below into the following structured sections.
+Focus on information that would be helpful for continuing the conversation.
 
-Summarize the conversation below. Preserve:
-- User goals and intent
-- Key decisions made
-- File paths and code locations mentioned
-- Tool results (especially errors and warnings)
-- Constraints or requirements stated
+## Goal
+What goal(s) is the user trying to accomplish?
 
-Format: bullet points, 300 words or fewer. Do NOT include code blocks \
-unless they contain critical one-liners.
+## Instructions
+Important user instructions, constraints, specs, or requirements stated.
+
+## Discoveries
+Notable technical findings during the conversation (errors, warnings, \
+library versions, edge cases).
+
+## Accomplished
+- What has been completed
+- What is currently in progress
+- What remains to be done
+
+## Relevant Files
+List files that were read, edited, or created. Use format: `path — brief note`.
+
+## Key Decisions
+Important design or implementation decisions made and their rationale.
+
+IMPORTANT:
+- Preserve exact names, paths, values, error messages, and version numbers verbatim
+- 400 words or fewer total
+- Do NOT include code blocks unless they contain critical one-liners
+- If a section has no content, write "None"
 """
 
 
@@ -289,6 +343,7 @@ async def compact_messages_llm(
     existing_summary: str = "",
     max_tokens: int = 100_000,
     keep_recent: int = 4,
+    keep_recent_tokens: int = 0,
     max_summary_tokens: int = 500,
 ) -> tuple[list[dict], CompactResult | None]:
     """Compact messages using an LLM agent to generate a semantic summary.
@@ -300,7 +355,8 @@ async def compact_messages_llm(
         config: Cody Config (used to resolve the summarization model).
         existing_summary: Previous compaction summary for incremental merging.
         max_tokens: Token threshold that triggers compaction.
-        keep_recent: Number of recent messages to keep intact.
+        keep_recent: Number of recent messages to keep intact (count-based).
+        keep_recent_tokens: Token budget for recent messages (0 = use count).
         max_summary_tokens: Maximum tokens for the generated summary.
 
     Returns:
@@ -308,11 +364,15 @@ async def compact_messages_llm(
     """
     total_tokens = sum(estimate_tokens(m.get("content", "")) for m in messages)
 
-    if total_tokens <= max_tokens or len(messages) <= keep_recent:
+    if total_tokens <= max_tokens:
         return messages, None
 
-    old_messages = messages[:-keep_recent]
-    recent_messages = messages[-keep_recent:]
+    old_messages, recent_messages = _split_recent(
+        messages, keep_recent, keep_recent_tokens,
+    )
+
+    if not old_messages:
+        return messages, None
 
     # Build the summarization prompt
     prompt_parts: list[str] = [_SUMMARIZATION_PROMPT]

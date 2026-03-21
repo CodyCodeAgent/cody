@@ -11,6 +11,7 @@ from cody.core.context import (
     PruneResult,
     _format_messages_for_summary,
     _resolve_compaction_model,
+    _split_recent,
     chunk_file,
     compact_messages,
     compact_messages_llm,
@@ -600,3 +601,112 @@ def test_compaction_config_prune_defaults():
     assert cc.prune_protect_tokens == 40_000
     assert cc.prune_min_saving_tokens == 20_000
     assert cc.prune_min_content_tokens == 200
+
+
+# ── Structured summarization prompt ────────────────────────────────────────
+
+
+def test_summarization_prompt_has_structured_sections():
+    """The LLM summarization prompt contains structured section headers."""
+    from cody.core.context import _SUMMARIZATION_PROMPT
+
+    for section in ["## Goal", "## Instructions", "## Discoveries",
+                     "## Accomplished", "## Relevant Files", "## Key Decisions"]:
+        assert section in _SUMMARIZATION_PROMPT, f"Missing section: {section}"
+
+
+# ── _split_recent (token-based) ────────────────────────────────────────────
+
+
+def test_split_recent_count_based():
+    """Default count-based split: last N messages."""
+    msgs = [{"role": "user", "content": f"msg{i}"} for i in range(10)]
+    old, recent = _split_recent(msgs, keep_recent=3)
+    assert len(recent) == 3
+    assert len(old) == 7
+    assert recent[-1]["content"] == "msg9"
+
+
+def test_split_recent_token_based():
+    """Token-based split: keep messages until token budget exhausted."""
+    msgs = [
+        {"role": "user", "content": "old " * 100},      # ~100 tokens
+        {"role": "assistant", "content": "old " * 100},  # ~100 tokens
+        {"role": "user", "content": "recent"},            # ~2 tokens
+        {"role": "assistant", "content": "recent"},       # ~2 tokens
+    ]
+    old, recent = _split_recent(msgs, keep_recent=1, keep_recent_tokens=50)
+    # Should keep the last 2 small messages (< 50 tokens together)
+    assert len(recent) >= 2
+    assert recent[-1]["content"] == "recent"
+
+
+def test_split_recent_token_based_keeps_at_least_one():
+    """Token-based split always keeps at least one message."""
+    msgs = [
+        {"role": "user", "content": "x" * 4000},  # ~1000 tokens
+    ]
+    old, recent = _split_recent(msgs, keep_recent=1, keep_recent_tokens=1)
+    assert len(recent) >= 1
+
+
+def test_split_recent_token_zero_falls_back_to_count():
+    """keep_recent_tokens=0 uses count-based keep_recent."""
+    msgs = [{"role": "user", "content": f"msg{i}"} for i in range(6)]
+    old, recent = _split_recent(msgs, keep_recent=2, keep_recent_tokens=0)
+    assert len(recent) == 2
+
+
+# ── compact_messages with keep_recent_tokens ───────────────────────────────
+
+
+def test_compact_messages_token_based_keep():
+    """compact_messages respects keep_recent_tokens."""
+    msgs = []
+    for i in range(20):
+        msgs.append({"role": "user", "content": f"Question {i} " * 50})
+        msgs.append({"role": "assistant", "content": f"Answer {i} " * 50})
+
+    # keep_recent_tokens=500 should keep several recent messages
+    result_msgs, compact_result = compact_messages(
+        msgs, max_tokens=1000, keep_recent_tokens=500,
+    )
+    assert compact_result is not None
+    # The last message should be preserved
+    assert result_msgs[-1]["content"] == msgs[-1]["content"]
+
+
+# ── trigger_ratio / effective_max_tokens ───────────────────────────────────
+
+
+def test_effective_max_tokens_default():
+    """Without trigger_ratio, returns max_tokens."""
+    cc = CompactionConfig(max_tokens=80_000)
+    assert cc.effective_max_tokens() == 80_000
+
+
+def test_effective_max_tokens_with_ratio():
+    """With trigger_ratio and context_window_tokens, computes product."""
+    cc = CompactionConfig(
+        trigger_ratio=0.75,
+        context_window_tokens=200_000,
+    )
+    assert cc.effective_max_tokens() == 150_000
+
+
+def test_effective_max_tokens_ratio_no_window():
+    """trigger_ratio without context_window_tokens falls back to max_tokens."""
+    cc = CompactionConfig(
+        trigger_ratio=0.75,
+        context_window_tokens=0,
+        max_tokens=100_000,
+    )
+    assert cc.effective_max_tokens() == 100_000
+
+
+def test_compaction_config_new_defaults():
+    """New config fields have correct defaults."""
+    cc = CompactionConfig()
+    assert cc.trigger_ratio == 0.0
+    assert cc.context_window_tokens == 0
+    assert cc.keep_recent_tokens == 0

@@ -72,7 +72,10 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "model": null,
     "model_base_url": null,
     "max_tokens": 100000,
+    "trigger_ratio": 0.0,
+    "context_window_tokens": 0,
     "keep_recent": 4,
+    "keep_recent_tokens": 0,
     "max_summary_tokens": 500,
     "enable_pruning": true,
     "prune_protect_tokens": 40000,
@@ -561,7 +564,23 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 **类型:** `integer`
 **默认:** `100000`
-**说明:** 触发压缩的 token 阈值。当消息总 token 数超过此值时开始压缩
+**说明:** 触发压缩的 token 阈值。当消息总 token 数超过此值时开始压缩。如果同时设置了 `trigger_ratio` 和 `context_window_tokens`，此值会被覆盖
+
+---
+
+#### `compaction.trigger_ratio`
+
+**类型:** `float`
+**默认:** `0.0`（禁用）
+**说明:** 按模型上下文窗口百分比触发压缩。设为 `0.75` 表示在 75% 容量时触发。需同时设置 `context_window_tokens`
+
+---
+
+#### `compaction.context_window_tokens`
+
+**类型:** `integer`
+**默认:** `0`
+**说明:** 模型的上下文窗口大小（token 数）。与 `trigger_ratio` 配合使用。例如 GPT-4 设为 `128000`
 
 ---
 
@@ -569,7 +588,15 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 **类型:** `integer`
 **默认:** `4`
-**说明:** 压缩时保留的最近消息数，这些消息不会被压缩
+**说明:** 压缩时保留的最近消息数（按条数）。当 `keep_recent_tokens > 0` 时，此值被覆盖
+
+---
+
+#### `compaction.keep_recent_tokens`
+
+**类型:** `integer`
+**默认:** `0`（禁用，使用 `keep_recent` 按条数）
+**说明:** 压缩时保留最近消息的 token 预算。设为如 `20000` 表示保留最近约 20k token 的消息。比按固定条数更精确
 
 ---
 
@@ -613,7 +640,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ---
 
-**完整示例：** 使用低成本模型做上下文压缩 + 选择性修剪
+**完整示例：** 按 128k 窗口 75% 触发 + token-based 保留 + LLM 摘要 + 修剪
 
 ```json
 {
@@ -621,8 +648,9 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "use_llm": true,
     "model": "gpt-4o-mini",
     "model_base_url": "https://api.openai.com/v1",
-    "max_tokens": 80000,
-    "keep_recent": 6,
+    "trigger_ratio": 0.75,
+    "context_window_tokens": 128000,
+    "keep_recent_tokens": 20000,
     "max_summary_tokens": 600,
     "enable_pruning": true,
     "prune_protect_tokens": 40000,
@@ -631,6 +659,9 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   }
 }
 ```
+
+> 上例中 `trigger_ratio=0.75 × context_window_tokens=128000 = 96000`，当 token 超 96k 时触发。
+> `keep_recent_tokens=20000` 保留最近约 20k token 的消息（代替固定 4 条）。
 
 > **注意：** `run_sync()` 同步模式下 LLM 压缩不可用，会自动降级为截断式压缩。
 > 修剪（Pruning）在同步和异步模式下均可用。

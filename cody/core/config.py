@@ -95,7 +95,14 @@ class CompactionConfig(BaseModel):
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
     max_tokens: int = 100_000
+    # Percentage-based trigger: when set > 0, max_tokens is computed as
+    # trigger_ratio × context_window_tokens.  Overrides max_tokens.
+    trigger_ratio: float = 0.0
+    context_window_tokens: int = 0
     keep_recent: int = 4
+    # Token-based recent preservation: when > 0, overrides keep_recent
+    # (count-based) with a token budget for the recent messages window.
+    keep_recent_tokens: int = 0
     max_summary_tokens: int = 500
     # Selective pruning — try to free tokens by replacing old tool outputs
     # with lightweight markers before resorting to full compaction.
@@ -103,6 +110,17 @@ class CompactionConfig(BaseModel):
     prune_protect_tokens: int = 40_000
     prune_min_saving_tokens: int = 20_000
     prune_min_content_tokens: int = 200
+
+    def effective_max_tokens(self) -> int:
+        """Compute the effective max_tokens threshold.
+
+        If ``trigger_ratio`` and ``context_window_tokens`` are both set,
+        returns ``int(trigger_ratio * context_window_tokens)``.
+        Otherwise returns ``max_tokens``.
+        """
+        if self.trigger_ratio > 0 and self.context_window_tokens > 0:
+            return int(self.trigger_ratio * self.context_window_tokens)
+        return self.max_tokens
 
 
 class InteractionConfig(BaseModel):

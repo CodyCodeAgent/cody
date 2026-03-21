@@ -13,6 +13,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **Selective Pruning（选择性修剪）**：在全量 compaction 前增加轻量级修剪阶段（灵感来自 OpenCode）。旧的大型工具输出被替换为 `[output pruned at <ts>]` 标记，保留对话结构，无需 LLM 调用。配置项：`compaction.enable_pruning`（默认开启）、`prune_protect_tokens`（保护窗口 40k）、`prune_min_saving_tokens`（最低节省阈值 20k）、`prune_min_content_tokens`（单条最小阈值 200）
 - **PruneEvent 流式事件**：`StreamEvent` 新增 `prune` 事件类型，通知消费者（CLI/TUI/Web）修剪发生的详情
 - **两阶段上下文管理**：`_compact_history_if_needed` 和 `_compact_history_sync` 现在先尝试修剪，仅在修剪不够时才执行全量压缩
+- **结构化摘要模板**：LLM 压缩的 prompt 从通用模板升级为结构化模板（Goal / Instructions / Discoveries / Accomplished / Relevant Files / Key Decisions），减少信息丢失，保留精确的名称、路径、错误信息
+- **Token-based 消息保留**：新增 `compaction.keep_recent_tokens` 配置，按 token 预算保留最近消息（代替固定条数 `keep_recent`），对长短消息混合的对话更精确
+- **百分比触发阈值**：新增 `compaction.trigger_ratio` + `context_window_tokens` 配置，支持按模型上下文窗口百分比触发压缩（如 75%），无需硬编码 token 数
 
 ---
 
