@@ -607,12 +607,20 @@ def test_compaction_config_prune_defaults():
 
 
 def test_summarization_prompt_has_structured_sections():
-    """The LLM summarization prompt contains structured section headers."""
-    from cody.core.context import _SUMMARIZATION_PROMPT
+    """The LLM summarization prompt contains structured section tags."""
+    from cody.core.context import _SUMMARIZATION_USER_PROMPT
 
-    for section in ["## Goal", "## Instructions", "## Discoveries",
-                     "## Accomplished", "## Relevant Files", "## Key Decisions"]:
-        assert section in _SUMMARIZATION_PROMPT, f"Missing section: {section}"
+    for section in ["[Goal]", "[Instructions]", "[Discoveries]",
+                     "[Progress]", "[Files]", "[Decisions]"]:
+        assert section in _SUMMARIZATION_USER_PROMPT, f"Missing section: {section}"
+
+
+def test_summarization_system_prompt_exists():
+    """A separate system prompt is defined for the summarizer agent."""
+    from cody.core.context import _SUMMARIZATION_SYSTEM_PROMPT
+
+    assert "summarizer" in _SUMMARIZATION_SYSTEM_PROMPT.lower()
+    assert len(_SUMMARIZATION_SYSTEM_PROMPT) > 20
 
 
 # ── _split_recent (token-based) ────────────────────────────────────────────

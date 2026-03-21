@@ -268,38 +268,26 @@ def _summarize_message(content: str, max_len: int = 200) -> str:
 
 # ── LLM-based compaction ────────────────────────────────────────────────────
 
-_SUMMARIZATION_PROMPT = """\
+_SUMMARIZATION_SYSTEM_PROMPT = """\
 You are a conversation summarizer for an AI coding assistant.
-Summarize the conversation below into the following structured sections.
-Focus on information that would be helpful for continuing the conversation.
+Your summaries are injected as context for continuing the conversation, \
+so focus on actionable information the assistant needs going forward."""
 
-## Goal
-What goal(s) is the user trying to accomplish?
+_SUMMARIZATION_USER_PROMPT = """\
+Summarize the conversation into these sections. \
+Omit any section that has no relevant content.
 
-## Instructions
-Important user instructions, constraints, specs, or requirements stated.
+[Goal] What the user is trying to accomplish.
+[Instructions] User-stated constraints, specs, or requirements.
+[Discoveries] Technical findings: errors, warnings, library versions, edge cases.
+[Progress] What is done, what is in progress, what remains.
+[Files] Files read/edited/created — one per line: `path — note`.
+[Decisions] Design or implementation decisions and their rationale.
 
-## Discoveries
-Notable technical findings during the conversation (errors, warnings, \
-library versions, edge cases).
-
-## Accomplished
-- What has been completed
-- What is currently in progress
-- What remains to be done
-
-## Relevant Files
-List files that were read, edited, or created. Use format: `path — brief note`.
-
-## Key Decisions
-Important design or implementation decisions made and their rationale.
-
-IMPORTANT:
-- Preserve exact names, paths, values, error messages, and version numbers verbatim
-- 400 words or fewer total
-- Do NOT include code blocks unless they contain critical one-liners
-- If a section has no content, write "None"
-"""
+Rules:
+- Preserve exact names, paths, values, error messages, and version numbers verbatim.
+- No code blocks unless they contain critical one-liners.
+- Be concise — the shorter the better, as long as nothing important is lost."""
 
 
 def _resolve_compaction_model(config: "Config"):
@@ -374,25 +362,26 @@ async def compact_messages_llm(
     if not old_messages:
         return messages, None
 
-    # Build the summarization prompt
-    prompt_parts: list[str] = [_SUMMARIZATION_PROMPT]
+    # Build the user prompt with transcript and optional prior summary
+    user_parts: list[str] = [_SUMMARIZATION_USER_PROMPT]
     if existing_summary:
-        prompt_parts.append(
-            f"Previous summary to incorporate:\n{existing_summary}\n"
+        user_parts.append(
+            "Previous summary (merge into your output, "
+            "update outdated info, deduplicate):\n" + existing_summary
         )
-    prompt_parts.append(
+    user_parts.append(
         "Conversation to summarize:\n"
         + _format_messages_for_summary(old_messages)
     )
-    prompt_text = "\n\n".join(prompt_parts)
+    user_text = "\n\n".join(user_parts)
 
     # Spawn a lightweight pydantic-ai Agent (no tools, no deps)
     from pydantic_ai import Agent
 
     model = _resolve_compaction_model(config)
-    agent = Agent(model)
+    agent = Agent(model, system_prompt=_SUMMARIZATION_SYSTEM_PROMPT)
 
-    result = await agent.run(prompt_text)
+    result = await agent.run(user_text)
     summary_text = "Previous conversation summary:\n" + result.output
 
     old_tokens = sum(
