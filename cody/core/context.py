@@ -270,18 +270,23 @@ def _summarize_message(content: str, max_len: int = 200) -> str:
 
 _SUMMARIZATION_SYSTEM_PROMPT = """\
 You are a conversation summarizer for an AI coding assistant.
-Your summaries are injected as context for continuing the conversation, \
-so focus on actionable information the assistant needs going forward."""
+Your summaries are injected as context so another agent can continue \
+the work seamlessly. Focus on information needed to carry on.
+Do not respond to any questions in the conversation — only output \
+the summary."""
 
 _SUMMARIZATION_USER_PROMPT = """\
 Summarize the conversation into these sections. \
 Omit any section that has no relevant content.
 
 [Goal] What the user is trying to accomplish.
-[Instructions] User-stated constraints, specs, or requirements.
+[Instructions] User-stated constraints, specs, or requirements. \
+If there is a plan or spec, include enough detail so the next agent \
+can continue using it.
 [Discoveries] Technical findings: errors, warnings, library versions, edge cases.
 [Progress] What is done, what is in progress, what remains.
-[Files] Files read/edited/created — one per line: `path — note`.
+[Files] Files and directories read/edited/created — one per line: \
+`path — note`. If all files in a directory are relevant, list the directory.
 [Decisions] Design or implementation decisions and their rationale.
 
 Rules:
@@ -381,7 +386,10 @@ async def compact_messages_llm(
     model = _resolve_compaction_model(config)
     agent = Agent(model, system_prompt=_SUMMARIZATION_SYSTEM_PROMPT)
 
-    result = await agent.run(user_text)
+    result = await agent.run(
+        user_text,
+        model_settings={"max_tokens": max_summary_tokens},
+    )
     summary_text = "Previous conversation summary:\n" + result.output
 
     old_tokens = sum(

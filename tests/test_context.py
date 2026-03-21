@@ -326,6 +326,38 @@ async def test_compact_llm_basic():
     assert "Previous conversation summary" in result_msgs[0]["content"]
     assert "User asked 20 questions" in result_msgs[0]["content"]
 
+    # Verify max_summary_tokens is passed through to model_settings
+    mock_agent_instance.run.assert_called_once()
+    call_kwargs = mock_agent_instance.run.call_args
+    assert call_kwargs.kwargs.get("model_settings") == {"max_tokens": 500}
+
+
+@pytest.mark.asyncio
+async def test_compact_llm_custom_max_summary_tokens():
+    """max_summary_tokens is forwarded as model_settings max_tokens."""
+    msgs = []
+    for i in range(20):
+        msgs.append({"role": "user", "content": f"Q{i} " * 50})
+        msgs.append({"role": "assistant", "content": f"A{i} " * 50})
+
+    config = _make_config()
+
+    mock_result = MagicMock()
+    mock_result.output = "Summary"
+
+    with patch("pydantic_ai.Agent") as MockAgent:
+        mock_agent_instance = AsyncMock()
+        mock_agent_instance.run = AsyncMock(return_value=mock_result)
+        MockAgent.return_value = mock_agent_instance
+
+        await compact_messages_llm(
+            msgs, config, max_tokens=1000, keep_recent=4,
+            max_summary_tokens=800,
+        )
+
+    call_kwargs = mock_agent_instance.run.call_args
+    assert call_kwargs.kwargs["model_settings"] == {"max_tokens": 800}
+
 
 @pytest.mark.asyncio
 async def test_compact_llm_incremental():
@@ -615,12 +647,35 @@ def test_summarization_prompt_has_structured_sections():
         assert section in _SUMMARIZATION_USER_PROMPT, f"Missing section: {section}"
 
 
+def test_summarization_user_prompt_plan_and_directory_guidance():
+    """User prompt guides LLM to preserve plans/specs and support directories."""
+    from cody.core.context import _SUMMARIZATION_USER_PROMPT
+
+    assert "plan" in _SUMMARIZATION_USER_PROMPT.lower()
+    assert "directory" in _SUMMARIZATION_USER_PROMPT.lower() or \
+           "directories" in _SUMMARIZATION_USER_PROMPT.lower()
+
+
 def test_summarization_system_prompt_exists():
     """A separate system prompt is defined for the summarizer agent."""
     from cody.core.context import _SUMMARIZATION_SYSTEM_PROMPT
 
     assert "summarizer" in _SUMMARIZATION_SYSTEM_PROMPT.lower()
     assert len(_SUMMARIZATION_SYSTEM_PROMPT) > 20
+
+
+def test_summarization_system_prompt_safety_instruction():
+    """System prompt prevents the summarizer from answering questions."""
+    from cody.core.context import _SUMMARIZATION_SYSTEM_PROMPT
+
+    assert "do not respond" in _SUMMARIZATION_SYSTEM_PROMPT.lower()
+
+
+def test_summarization_system_prompt_handoff_framing():
+    """System prompt frames the summary as a handoff to another agent."""
+    from cody.core.context import _SUMMARIZATION_SYSTEM_PROMPT
+
+    assert "another agent" in _SUMMARIZATION_SYSTEM_PROMPT.lower()
 
 
 # ── _split_recent (token-based) ────────────────────────────────────────────
