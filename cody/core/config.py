@@ -128,6 +128,14 @@ class InteractionConfig(BaseModel):
     enabled: bool = False
     timeout: float = 30.0  # seconds; 0 = no timeout (wait forever)
 
+class RetryConfig(BaseModel):
+    """LLM API retry configuration with exponential backoff."""
+    enabled: bool = True
+    max_retries: int = 3
+    base_delay: float = 2.0
+    max_delay: float = 30.0
+
+
 class CircuitBreakerConfig(BaseModel):
     """Circuit breaker configuration for automatic run termination."""
     enabled: bool = True
@@ -155,6 +163,7 @@ class Config(BaseModel):
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
     compaction: CompactionConfig = Field(default_factory=CompactionConfig)
     interaction: InteractionConfig = Field(default_factory=InteractionConfig)
+    retry: RetryConfig = Field(default_factory=RetryConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
 
     def is_ready(self) -> bool:

@@ -127,18 +127,13 @@ opencode 为不同模型家族维护独立的 system prompt：
 
 | 维度 | Cody | opencode |
 |------|------|----------|
-| LLM API 重试 | ❌ 无 | ✅ 指数退避（2s×2^n，最大 30s），识别 rate limit/overloaded/5xx |
+| LLM API 重试 | ~~❌ 无~~ ✅ 指数退避（2s×2^n，最大 30s），覆盖 429/5xx，`run()` + `run_sync()` | ✅ 指数退避（2s×2^n，最大 30s），识别 rate limit/overloaded/5xx |
 | Context overflow | 自动 compaction | 自动 compaction，失败则回退到重放早期消息 |
 | 工具错误恢复 | `_with_model_retry`（2 次） | `invalid` 工具 + 工具名大小写修复 |
 
-**关键差距：LLM API 重试**
+~~**关键差距：LLM API 重试**~~ ✅ **已完成**
 
-这对 SDK 生产使用至关重要。LLM 提供商经常返回 429（rate limit）或 5xx（过载），没有自动重试意味着：
-- 一个临时网络抖动就会导致整个 `run()` 失败
-- SDK 消费者必须自己包装重试逻辑
-- `CodyRateLimitError` 已定义但从未被抛出或处理
-
-**建议：** P0 优先级。在 `runner.py` 或 model 层增加指数退避重试，至少覆盖 429 和 5xx。
+实现了 `core/retry.py` 模块，`run()` 和 `run_sync()` 自动对 429/5xx 指数退避重试。对 context overflow、auth 错误等非暂态错误不重试（fail fast）。配置项：`retry.enabled`（默认开启）、`retry.max_retries`（3）、`retry.base_delay`（2.0s）、`retry.max_delay`（30s）。`run_stream()` 暂不支持自动重试（流式上下文管理器难以安全重试）。
 
 ---
 
@@ -181,11 +176,11 @@ opencode 为不同模型家族维护独立的 system prompt：
 
 **需要：** `builder.system_prompt(text)` 或 `builder.prepend_prompt()` / `builder.append_prompt()`。
 
-#### 3. 无 LLM API 重试
+#### ~~3. 无 LLM API 重试~~ ✅ 已完成
 
-一次临时 429 或 5xx 就导致整个 `run()` 失败，对生产环境不可接受。
+~~一次临时 429 或 5xx 就导致整个 `run()` 失败，对生产环境不可接受。~~
 
-**需要：** 内置指数退避重试，至少覆盖 rate limit 和 server error。
+已实现：`core/retry.py` + `Config.retry`（RetryConfig），`run()` 和 `run_sync()` 自动重试 429/5xx。
 
 ### P1：重要问题
 
@@ -246,7 +241,7 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 
 | # | 项目 | 理由 | 难度 | 状态 |
 |---|------|------|------|------|
-| 1 | **LLM API 重试** | 一个 429 就崩，生产不可用 | 低 | 待做 |
+| 1 | ~~**LLM API 重试**~~ | ~~一个 429 就崩，生产不可用~~ | ~~低~~ | ✅ 已完成 |
 | 2 | **工具输出截断** | 防止上下文爆炸，直接影响 Agent 成功率 | 低 | 待做 |
 | 3 | ~~**结构化 Compaction 模板**~~ | ~~用 Goal/Discoveries/Accomplished/Files 替代 "300 words"，保留更多关键信息~~ | ~~低~~ | ✅ 已完成 |
 | 4 | **模型特定 Prompt** | 不同模型需要不同的指导策略 | 低 | 已决定不做 |
@@ -280,7 +275,7 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 
 但从 **"让 Agent 更稳定、更有效、结果更可用"** 的目标看，最大的短板是：
 
-1. **稳定性：** 缺少 LLM API 重试 — 一个临时错误就全盘失败
+1. ~~**稳定性：** 缺少 LLM API 重试 — 一个临时错误就全盘失败~~ ✅ 已完成（`core/retry.py`，指数退避）
 2. **有效性：** 缺少工具输出截断 — 单条工具返回值可能撑爆上下文（~~结构化 Compaction~~ ✅ 已完成，~~工具输出渐进裁剪~~ ✅ 已完成）
 3. ~~**结果质量：** 缺少模型特定 Prompt — 同一套指令对不同模型效果差异大~~ **已决定不做**（框架不应硬编码模型特定 prompt）
 4. **可嵌入性：** 缺少自定义工具和 Prompt — 业务方无法让 Agent 适配自己的场景
@@ -291,10 +286,11 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 
 ## 五、具体实现方案
 
-### 方案 1：LLM API 重试（`runner.py`）
+### 方案 1：LLM API 重试（`runner.py`）✅ 已完成
 
-**现状：** `runner.py` 直接调用 `agent.run()` / `agent.run_stream()`，无任何重试。
-`CodyRateLimitError` 在 `core/__init__.py` 中定义但从未使用。
+**实现：** `core/retry.py` 新模块 + `Config.retry`（RetryConfig）。`run()` 和 `run_sync()` 通过 `with_retry()` / `with_retry_sync()` 包装，自动对 429/5xx 指数退避重试。非暂态错误（context overflow、auth 失败）立即失败。
+
+以下为原始方案设计（已实现）：
 
 **改法：** 在 `runner.py` 的 `run()` 和 `stream()` 中包装重试逻辑。
 

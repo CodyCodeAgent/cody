@@ -38,6 +38,7 @@ from pydantic_ai.messages import (
 from pydantic_graph import End
 
 from .audit import AuditLogger
+from .retry import RetryConfig as _RetryDataclass, with_retry, with_retry_sync
 from .config import Config
 from .context import (
     CompactResult,
@@ -801,6 +802,16 @@ class AgentRunner:
 
         return {"extra_body": extra_body}
 
+    def _retry_config(self) -> _RetryDataclass:
+        """Build retry dataclass from pydantic config."""
+        rc = self.config.retry
+        return _RetryDataclass(
+            max_retries=rc.max_retries,
+            base_delay=rc.base_delay,
+            max_delay=rc.max_delay,
+            enabled=rc.enabled,
+        )
+
     # ── Circuit breaker ────────────────────────────────────────────────────
 
     def _reset_circuit_breaker(self) -> None:
@@ -939,9 +950,11 @@ class AgentRunner:
         deps = self._create_deps()
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        result = await self.agent.run(  # type: ignore[call-overload]
+        result = await with_retry(
+            self.agent.run,  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
+            retry_config=self._retry_config(),
         )
         cody_result = CodyResult.from_raw(result)
         self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
@@ -1170,9 +1183,11 @@ class AgentRunner:
             )
         message_history, _compact = self._compact_history_sync(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        result = self.agent.run_sync(  # type: ignore[call-overload]
+        result = with_retry_sync(
+            self.agent.run_sync,  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
+            retry_config=self._retry_config(),
         )
         cody_result = CodyResult.from_raw(result)
         self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)

@@ -72,6 +72,8 @@ _LAZY_IMPORTS = {
     # rate_limiter
     "RateLimiter": (".rate_limiter", "RateLimiter"),
     "RateLimitResult": (".rate_limiter", "RateLimitResult"),
+    # retry
+    "RetryConfig": (".config", "RetryConfig"),
     # user_input
     "UserInputQueue": (".user_input", "UserInputQueue"),
     # deps

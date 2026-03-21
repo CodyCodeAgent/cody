@@ -67,6 +67,12 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "max_requests": 60,
     "window_seconds": 60.0
   },
+  "retry": {
+    "enabled": true,
+    "max_retries": 3,
+    "base_delay": 2.0,
+    "max_delay": 30.0
+  },
   "compaction": {
     "use_llm": false,
     "model": null,
@@ -521,6 +527,59 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 ```
 
 **示例：** 60 秒内最多 60 个请求
+
+---
+
+### LLM 重试配置 (`retry`)
+
+LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误）使用指数退避重试。对客户端错误（auth、context overflow）不重试。
+
+#### `retry.enabled`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 是否启用 LLM API 自动重试
+
+---
+
+#### `retry.max_retries`
+
+**类型:** `integer`
+**默认:** `3`
+**说明:** 最大重试次数（不含首次调用）
+
+---
+
+#### `retry.base_delay`
+
+**类型:** `number`
+**默认:** `2.0`
+**说明:** 首次重试延迟（秒）。后续按指数增长：2s → 4s → 8s
+
+---
+
+#### `retry.max_delay`
+
+**类型:** `number`
+**默认:** `30.0`
+**说明:** 最大重试延迟（秒）
+
+---
+
+**示例：** 自定义重试策略
+
+```json
+{
+  "retry": {
+    "enabled": true,
+    "max_retries": 5,
+    "base_delay": 1.0,
+    "max_delay": 60.0
+  }
+}
+```
+
+> **注意：** 重试覆盖 `run()` 和 `run_sync()`。`run_stream()` 的流式调用暂不支持自动重试。
 
 ---
 
