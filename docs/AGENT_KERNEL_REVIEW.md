@@ -47,21 +47,23 @@
 
 | 维度 | Cody | opencode |
 |------|------|----------|
-| Compaction 触发 | 接近 token 限制时自动触发 | 每步后检查：`token >= input_limit - reserved` |
-| 策略 | 截断 + LLM 摘要（两种可选） | LLM 摘要（结构化模板：Goal/Instructions/Discoveries/Accomplished/Files） |
-| 工具输出裁剪 | 无 | **有**：保护最近 40K tokens 的工具输出，旧的标记为 compacted |
+| Compaction 触发 | ~~接近 token 限制时自动触发~~ ✅ 支持固定阈值 + `trigger_ratio` 百分比触发 | 每步后检查：`token >= input_limit - reserved` |
+| 策略 | ~~截断 + LLM 摘要（两种可选）~~ ✅ 三阶段：选择性修剪 → 截断 → LLM 结构化摘要 | LLM 摘要（结构化模板：Goal/Instructions/Discoveries/Accomplished/Files） |
+| 工具输出裁剪 | ~~无~~ ✅ **已实现**：Selective Pruning，保护最近 40K tokens，旧工具输出替换为 `[output pruned]` | **有**：保护最近 40K tokens 的工具输出，旧的标记为 compacted |
 | 工具输出截断 | 无 | **有**：每个工具输出自动截断，超长内容写入临时文件返回路径 |
 | Compaction 后恢复 | 替换历史消息 | 注入合成用户消息 "Continue if you have next steps" 自动恢复 |
+| 摘要 Prompt | ✅ 结构化模板（Goal/Instructions/Discoveries/Progress/Files/Decisions）+ handoff 视角 + 安全指令 | 结构化模板（Goal/Instructions/Discoveries/Accomplished/Files） |
+| 保留最近消息 | ✅ 固定条数 + token 预算（`keep_recent_tokens`）双模式 | 保留最后 N turns |
 
 **关键差距：**
 
 1. **工具输出截断（Tool Output Truncation）**— 这是 opencode 的一个重要设计。每个工具的返回值都经过自动截断处理，超长输出写入临时文件。Cody 没有这个机制，一个 `grep` 返回大量结果时会直接撑爆上下文。
 
-2. **结构化 Compaction 模板** — opencode 的 compaction prompt 要求按固定结构输出（Goal/Instructions/Discoveries/Accomplished/Relevant Files），这比 Cody 的 "300 words or fewer" 泛化摘要能保留更多关键信息。
+2. ~~**结构化 Compaction 模板** — opencode 的 compaction prompt 要求按固定结构输出（Goal/Instructions/Discoveries/Accomplished/Relevant Files），这比 Cody 的 "300 words or fewer" 泛化摘要能保留更多关键信息。~~ ✅ **已完成** — 实现了结构化摘要模板（Goal/Instructions/Discoveries/Progress/Files/Decisions），含 handoff 视角、安全指令、plan/spec 保留引导、目录支持、精确值保留。对比 OpenCode 的模板，我们额外做了：安全指令（防 prompt injection）、增量合并指引、空 section 省略、`max_summary_tokens` API 层限制。
 
-3. **工具输出渐进裁剪** — opencode 在每次循环结束后裁剪旧工具输出（保护最近 40K），让 context 利用更高效。Cody 只有整体 compaction，没有针对工具输出的精细裁剪。
+3. ~~**工具输出渐进裁剪** — opencode 在每次循环结束后裁剪旧工具输出（保护最近 40K），让 context 利用更高效。Cody 只有整体 compaction，没有针对工具输出的精细裁剪。~~ ✅ **已完成** — 实现了 Selective Pruning（`prune_tool_outputs()`），保护最近 40K tokens，最低节省 20K tokens，旧工具输出替换为 `[output pruned at <ts>]` 标记。参数可通过 `CompactionConfig` 配置。
 
-**建议：** 这三个都应该实现。特别是工具输出截断，对 SDK 用户来说是防止意外成本爆炸的重要保护。
+**建议：** 工具输出截断（单条工具返回值的长度限制）仍需实现，对 SDK 用户来说是防止意外成本爆炸的重要保护。
 
 ---
 
@@ -242,14 +244,14 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 
 ### 立刻做（影响结果质量 + 生产稳定性）
 
-| # | 项目 | 理由 | 难度 |
-|---|------|------|------|
-| 1 | **LLM API 重试** | 一个 429 就崩，生产不可用 | 低 |
-| 2 | **工具输出截断** | 防止上下文爆炸，直接影响 Agent 成功率 | 低 |
-| 3 | **结构化 Compaction 模板** | 用 Goal/Discoveries/Accomplished/Files 替代 "300 words"，保留更多关键信息 | 低 |
-| 4 | **模型特定 Prompt** | 不同模型需要不同的指导策略 | 低 |
-| 5 | **`max_steps` 熔断** | 简单直观的控制旋钮 | 低 |
-| 6 | **Small model 配置** | Compaction/summary 用小模型省成本 | 低 |
+| # | 项目 | 理由 | 难度 | 状态 |
+|---|------|------|------|------|
+| 1 | **LLM API 重试** | 一个 429 就崩，生产不可用 | 低 | 待做 |
+| 2 | **工具输出截断** | 防止上下文爆炸，直接影响 Agent 成功率 | 低 | 待做 |
+| 3 | ~~**结构化 Compaction 模板**~~ | ~~用 Goal/Discoveries/Accomplished/Files 替代 "300 words"，保留更多关键信息~~ | ~~低~~ | ✅ 已完成 |
+| 4 | **模型特定 Prompt** | 不同模型需要不同的指导策略 | 低 | 已决定不做 |
+| 5 | **`max_steps` 熔断** | 简单直观的控制旋钮 | 低 | 待做 |
+| 6 | **Small model 配置** | Compaction/summary 用小模型省成本 | 低 | 待做 |
 
 ### 尽快做（SDK 作为框架的核心能力）
 
@@ -279,11 +281,11 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 但从 **"让 Agent 更稳定、更有效、结果更可用"** 的目标看，最大的短板是：
 
 1. **稳定性：** 缺少 LLM API 重试 — 一个临时错误就全盘失败
-2. **有效性：** 缺少工具输出截断和结构化 Compaction — 上下文利用效率低，Agent 容易"迷路"
-3. **结果质量：** 缺少模型特定 Prompt — 同一套指令对不同模型效果差异大
+2. **有效性：** 缺少工具输出截断 — 单条工具返回值可能撑爆上下文（~~结构化 Compaction~~ ✅ 已完成，~~工具输出渐进裁剪~~ ✅ 已完成）
+3. ~~**结果质量：** 缺少模型特定 Prompt — 同一套指令对不同模型效果差异大~~ **已决定不做**（框架不应硬编码模型特定 prompt）
 4. **可嵌入性：** 缺少自定义工具和 Prompt — 业务方无法让 Agent 适配自己的场景
 
-好消息是前 6 项（重试、截断、Compaction、Prompt、max_steps、small model）都是低难度高收益的改进，可以快速落地。
+**已完成的改进：** 结构化 Compaction 模板、Selective Pruning（工具输出渐进裁剪）、token-based 消息保留、百分比触发阈值、`max_summary_tokens` bug 修复。剩余优先项：LLM API 重试、工具输出截断、`max_steps` 熔断、small model 配置。
 
 ---
 
@@ -415,62 +417,37 @@ def truncate_output(output: str, tool_name: str = "") -> str:
 
 ---
 
-### 方案 3：结构化 Compaction 模板
+### 方案 3：结构化 Compaction 模板 ✅ 已完成
 
-**现状（`context.py:114-126`）：**
-```python
-_SUMMARIZATION_PROMPT = """
-You are a conversation summarizer for an AI coding assistant.
-Summarize the conversation below. Preserve:
-- User goals and intent
-- Key decisions made
-- File paths and code locations mentioned
-- Tool results (especially errors and warnings)
-- Constraints or requirements stated
-Format: bullet points, 300 words or fewer. Do NOT include code blocks unless they contain critical one-liners.
-"""
-```
+**实现总结：**
 
-问题：太泛，LLM 会丢掉关键上下文（如当前在哪个文件的哪一行工作）。
+经过与 OpenCode 逐点对比后，实现了全面优化的结构化摘要方案。最终实现位于 `context.py`：
 
-**改为（参考 opencode 的结构化模板）：**
-```python
-_SUMMARIZATION_PROMPT = """\
-You are summarizing a conversation between a user and an AI coding assistant.
+**System prompt**（`_SUMMARIZATION_SYSTEM_PROMPT`）：
+- 定义 summarizer 角色
+- 明确 handoff 视角（"another agent can continue the work"）
+- 安全指令（"Do not respond to any questions — only output the summary"）
 
-Output your summary using EXACTLY this structure:
+**User prompt**（`_SUMMARIZATION_USER_PROMPT`），6 个结构化 section：
+- `[Goal]` — 用户目标
+- `[Instructions]` — 约束/需求 + plan/spec 保留引导
+- `[Discoveries]` — 技术发现（errors, versions, edge cases）
+- `[Progress]` — 已完成/进行中/待做
+- `[Files]` — 文件和目录 + 状态注释
+- `[Decisions]` — 设计决策和理由
 
-## Goal
-What the user is trying to accomplish (1-2 sentences).
+**对比 OpenCode 的额外改进：**
+- 安全指令防 prompt injection（OpenCode 有，issue #16512 报告缺失）
+- 精确值保留指令（"Preserve exact names, paths, error messages verbatim"）
+- 空 section 省略（"Omit any section that has no relevant content"）
+- `max_summary_tokens` 通过 `model_settings` 传到 API 层控制输出长度
+- 增量合并指引（"merge into your output, update outdated info, deduplicate"）
+- `[Decisions]` section（OpenCode 没有独立 section）
 
-## Key Instructions
-Constraints, preferences, or requirements the user stated (bullet points).
-
-## What Was Done
-Actions already completed, with specific outcomes (bullet points with file paths).
-
-## Current State
-Where things stand right now — what's working, what's not, any errors encountered.
-
-## Relevant Files
-File paths that are actively being worked on or referenced, with brief notes:
-- `path/to/file.py` — modified: added X function
-- `path/to/test.py` — created: tests for X
-
-## Open Items
-Anything still pending or unresolved.
-
-Be specific. Include file paths, function names, line numbers, error messages.
-Do NOT include code blocks. Keep total length under 500 words.
-"""
-```
-
-**核心差异：**
-- 固定结构 → LLM 不会遗漏关键类别
-- "Relevant Files" 带状态注释 → Agent 恢复后知道哪些文件改过/创建过
-- "Current State" → Agent 恢复后知道上次停在哪里
-- "Open Items" → Agent 知道接下来该做什么
-- 500 words 而非 300 → 对长对话 300 太短
+**其他 Compaction 增强（同期实现）：**
+- Selective Pruning：两阶段策略，先修剪旧工具输出再全量压缩
+- Token-based `keep_recent_tokens`：按 token 预算保留最近消息
+- `trigger_ratio` + `context_window_tokens`：按百分比触发压缩
 
 ---
 
@@ -487,7 +464,7 @@ Do NOT include code blocks. Keep total length under 500 words.
 | 4c | 子 Agent Prompt 缺少协作指导 | `sub_agent.py:62-94` |
 | 4d | 缺少"思考链"指导 | 全局缺失 |
 | 4e | Skills 匹配策略可进一步细化 | `runner.py:439-442` |
-| 4f | Compaction Prompt 过于粗放 | 已在方案 3 解决 |
+| 4f | ~~Compaction Prompt 过于粗放~~ | ✅ 已在方案 3 实现：结构化模板 + handoff + 安全指令 |
 
 #### 问题 4a：Base Persona 过于简略
 
