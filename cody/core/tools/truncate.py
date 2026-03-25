@@ -62,7 +62,8 @@ def truncate_output(
     if saved_path:
         trailer += (
             f"\nFull output saved to: {saved_path}\n"
-            f"Use read_file('{saved_path}') to read specific sections."
+            f"IMPORTANT: Do NOT re-run this command. "
+            f"Use read_file('{saved_path}', offset=N, limit=M) to read remaining sections."
         )
 
     return truncated + trailer
