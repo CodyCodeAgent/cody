@@ -84,6 +84,7 @@ class CodyBuilder:
     _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
+    _custom_tools: list = field(default_factory=list)
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -255,6 +256,28 @@ class CodyBuilder:
         self._lsp_languages = languages
         return self
 
+    def tool(self, func) -> "CodyBuilder":
+        """Register a custom tool function.
+
+        The function must be an async callable with the signature::
+
+            async def my_tool(ctx: RunContext[CodyDeps], arg: str) -> str:
+                ...
+
+        Custom tools are registered alongside built-in tools and are
+        available to the agent during ``run()`` / ``stream()`` calls.
+
+        Example::
+
+            async def lookup_jira(ctx: RunContext[CodyDeps], ticket: str) -> str:
+                \"\"\"Look up a Jira ticket by ID.\"\"\"
+                return await fetch_jira(ticket)
+
+            client = Cody().tool(lookup_jira).build()
+        """
+        self._custom_tools.append(func)
+        return self
+
     def on(self, event_type: str, handler) -> "CodyBuilder":
         """Register event handler. Implicitly enables events.
 
@@ -289,7 +312,11 @@ class CodyBuilder:
         cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
-        client = AsyncCodyClient(config=cfg, auto_start_mcp=self._auto_start_mcp)
+        client = AsyncCodyClient(
+            config=cfg,
+            auto_start_mcp=self._auto_start_mcp,
+            custom_tools=self._custom_tools or None,
+        )
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
             client.on(event_type_str, handler)
@@ -340,6 +367,7 @@ class AsyncCodyClient:
         enable_metrics: bool = False,
         enable_events: bool = False,
         auto_start_mcp: bool = False,
+        custom_tools: list | None = None,
     ):
         if config:
             self._config = config
@@ -365,6 +393,9 @@ class AsyncCodyClient:
         self._runner = None
         self._session_store = None
         self._core_config = None
+
+        # Custom tools (user-defined async functions)
+        self._custom_tools: list = custom_tools or []
 
         # MCP auto-start flag
         self._auto_start_mcp = auto_start_mcp
@@ -471,7 +502,11 @@ class AsyncCodyClient:
         """
         if self._runner is None:
             from ..core.runner import AgentRunner
-            self._runner = AgentRunner(config=self._get_config(), workdir=self.workdir)
+            self._runner = AgentRunner(
+                config=self._get_config(),
+                workdir=self.workdir,
+                custom_tools=self._custom_tools or None,
+            )
         return self._runner
 
     def get_session_store(self):

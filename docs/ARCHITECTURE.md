@@ -181,7 +181,7 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 ```
 
 **Registration functions:**
-- `register_tools(agent, include_mcp=False)` — used by `AgentRunner` to register all tools
+- `register_tools(agent, include_mcp=False, custom_tools=None)` — used by `AgentRunner` to register all tools. Optional `custom_tools` list appends user-defined async tool functions alongside built-in tools.
 - `register_sub_agent_tools(agent, agent_type)` — registers a subset based on agent type (`code`, `research`, `test`, `generic`)
 
 **Backward compatibility:** `from cody.core.tools import read_file` and `from cody.core import tools; tools.read_file` both work unchanged.

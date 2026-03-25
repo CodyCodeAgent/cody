@@ -333,7 +333,13 @@ def _build_allowed_roots(workdir: Path, config_roots: list[str], extra_roots: li
 class AgentRunner:
     """Run Cody Agent with full context"""
 
-    def __init__(self, config: Config, workdir: Path, extra_roots: list[Path] | None = None):
+    def __init__(
+        self,
+        config: Config,
+        workdir: Path,
+        extra_roots: list[Path] | None = None,
+        custom_tools: list | None = None,
+    ):
         self.workdir = workdir
         self.config = config
         self.allowed_roots: list[Path] = _build_allowed_roots(
@@ -383,6 +389,9 @@ class AgentRunner:
 
         # User input queue: users can proactively send messages without AI asking.
         self._user_input_queue = UserInputQueue()
+
+        # Custom tools provided by the SDK user
+        self._custom_tools: list = custom_tools or []
 
         # Project memory
         self._memory_store: Optional[ProjectMemoryStore] = None
@@ -443,7 +452,11 @@ class AgentRunner:
             system_prompt="\n\n".join(system_parts),
         )
 
-        tools.register_tools(agent, include_mcp=bool(self._mcp_client))
+        tools.register_tools(
+            agent,
+            include_mcp=bool(self._mcp_client),
+            custom_tools=self._custom_tools or None,
+        )
 
         # Dynamic system prompt: MCP tools (evaluated at each run,
         # so it always reflects currently connected servers & tools)

@@ -56,16 +56,31 @@ SUB_AGENT_TOOLSETS = {
 }
 
 
-def register_tools(agent, *, include_mcp: bool = False) -> None:
+def register_tools(
+    agent,
+    *,
+    include_mcp: bool = False,
+    custom_tools: list | None = None,
+) -> None:
     """Register all core tools on an agent. Optionally include MCP tools.
 
     Each tool is wrapped with _with_model_retry so that ToolError exceptions
     are converted to ModelRetry, allowing the model to self-correct.
+
+    Args:
+        agent: Pydantic AI Agent instance.
+        include_mcp: Whether to include MCP tools.
+        custom_tools: Optional list of user-defined async tool functions.
+            Each function must accept ``ctx: RunContext[CodyDeps]`` as
+            its first parameter and return ``str``.
     """
     for tool_func in CORE_TOOLS:
         agent.tool(retries=2)(_with_model_retry(tool_func))
     if include_mcp:
         for tool_func in MCP_TOOLS:
+            agent.tool(retries=2)(_with_model_retry(tool_func))
+    if custom_tools:
+        for tool_func in custom_tools:
             agent.tool(retries=2)(_with_model_retry(tool_func))
 
 

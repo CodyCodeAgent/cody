@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **自定义工具注册 API**：支持通过 SDK Builder `.tool(func)` 注册自定义 async 工具函数。自定义工具与内置工具一同注册到 Agent，享有相同的错误重试（`ModelRetry`）和输出截断机制。Core 层 `register_tools()` 新增 `custom_tools` 参数，`AgentRunner` 构造函数新增 `custom_tools` 参数
 - **`max_steps` 熔断**：`CircuitBreakerConfig` 新增 `max_steps` 字段（默认 0 = 无限制），限制单次 run 的工具调用步数。超限时触发 `CircuitBreakerError("step_limit")`。SDK Builder 的 `.circuit_breaker()` 同步支持 `max_steps` 参数
 - **Small Model 配置**：`Config` 新增 `small_model` / `small_model_base_url` / `small_model_api_key` 字段，用于低成本操作（compaction、摘要等）。不配置时自动 fallback 到主模型。Compaction 的模型 fallback 链：`compaction.model → small_model → model`。支持环境变量 `CODY_SMALL_MODEL` / `CODY_SMALL_MODEL_BASE_URL` / `CODY_SMALL_MODEL_API_KEY`
 - **`read_file` 分段读取**：`read_file` 工具新增 `offset`（起始行号）和 `limit`（最大行数）参数，支持分段读取大文件和被截断的工具输出

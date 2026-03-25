@@ -155,13 +155,19 @@ opencode 为不同模型家族维护独立的 system prompt：
 
 ### P0：阻塞性问题
 
-#### 1. 无法注册自定义工具
+#### 1. ~~无法注册自定义工具~~ ✅ 已实现
 
-`core/tools/registry.py` 的 `CORE_TOOLS` 是硬编码列表。SDK 消费者想添加自己的工具（如查数据库、调内部 API）只能：
-- Fork 代码改 `CORE_TOOLS`（不可维护）
-- 搭一个 MCP Server（太重）
+`register_tools()` 新增 `custom_tools` 参数，SDK Builder 提供 `.tool(func)` 方法：
 
-**需要：** `builder.custom_tool(name, func, description)` API，让消费者用 Python 函数注册工具。
+```python
+async def lookup_jira(ctx: RunContext[CodyDeps], ticket: str) -> str:
+    """Look up a Jira ticket by ID."""
+    return await fetch_jira(ticket)
+
+client = Cody().tool(lookup_jira).build()
+```
+
+自定义工具与内置工具享有相同的 `ModelRetry` 错误重试和输出截断机制。
 
 #### 2. 无法自定义 System Prompt
 

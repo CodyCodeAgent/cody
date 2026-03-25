@@ -1495,6 +1495,7 @@ async with client:
 | `.db_path(path)` | 设置会话数据库路径 |
 | `.enable_metrics()` | 启用指标收集 |
 | `.enable_events()` | 启用事件系统 |
+| `.tool(func)` | 注册自定义工具函数（`async def f(ctx, ...) -> str`） |
 | `.on(event_type, handler)` | 注册事件处理器（自动启用 events） |
 | `.mcp_server(config)` | 添加 MCP 服务器配置（dict 或 MCPServerConfig） |
 | `.mcp_stdio_server(name, command, args=, env=)` | 添加 stdio MCP 服务器（v1.9.0+） |
