@@ -343,6 +343,8 @@ class AgentRunner:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
+        audit_logger: object | None = None,
+        file_history: object | None = None,
     ):
         self.workdir = workdir
         self.config = config
@@ -365,8 +367,8 @@ class AgentRunner:
         # LSP client
         self._lsp_client = LSPClient(workdir=self.workdir)
 
-        # Audit logger
-        self._audit_logger = AuditLogger()
+        # Audit logger (injected or default SQLite)
+        self._audit_logger = audit_logger if audit_logger is not None else AuditLogger()
 
         # Permission manager
         self._permission_manager = PermissionManager(
@@ -374,8 +376,8 @@ class AgentRunner:
             default_level=PermissionLevel(self.config.permissions.default_level),
         )
 
-        # File history
-        self._file_history = FileHistory(workdir=self.workdir)
+        # File history (injected or default in-memory)
+        self._file_history = file_history if file_history is not None else FileHistory(workdir=self.workdir)
 
         # Shared todo list for AI task tracking
         self._todo_list: list = []

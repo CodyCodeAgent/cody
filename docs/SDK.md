@@ -1506,6 +1506,9 @@ async with client:
 | `.interaction(enabled=True, timeout=30)` | 配置人工交互（仅异步模式生效） |
 | `.before_tool(hook)` | 注册 before-tool hook（`async (tool_name, args) -> args \| None`，None = 拒绝） |
 | `.after_tool(hook)` | 注册 after-tool hook（`async (tool_name, args, result) -> result`） |
+| `.session_store(store)` | 注入自定义 SessionStore（需满足 `SessionStoreProtocol`） |
+| `.audit_logger(logger)` | 注入自定义 AuditLogger（需满足 `AuditLoggerProtocol`） |
+| `.file_history(history)` | 注入自定义 FileHistory（需满足 `FileHistoryProtocol`） |
 | `.circuit_breaker(config_or_kwargs)` | 配置熔断器（支持 `CircuitBreakerConfig` 对象或关键字参数） |
 | `.lsp_languages(languages)` | 设置 LSP 语言列表 |
 | `.build()` | 构建并返回 `AsyncCodyClient` |

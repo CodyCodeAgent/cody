@@ -89,6 +89,9 @@ class CodyBuilder:
     _extra_system_prompt: str | None = None
     _before_tool_hooks: list = field(default_factory=list)
     _after_tool_hooks: list = field(default_factory=list)
+    _session_store: object | None = None
+    _audit_logger: object | None = None
+    _file_history: object | None = None
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -359,6 +362,21 @@ class CodyBuilder:
         self._after_tool_hooks.append(hook)
         return self
 
+    def session_store(self, store) -> "CodyBuilder":
+        """Inject a custom session store (must satisfy SessionStoreProtocol)."""
+        self._session_store = store
+        return self
+
+    def audit_logger(self, logger) -> "CodyBuilder":
+        """Inject a custom audit logger (must satisfy AuditLoggerProtocol)."""
+        self._audit_logger = logger
+        return self
+
+    def file_history(self, history) -> "CodyBuilder":
+        """Inject a custom file history (must satisfy FileHistoryProtocol)."""
+        self._file_history = history
+        return self
+
     def on(self, event_type: str, handler) -> "CodyBuilder":
         """Register event handler. Implicitly enables events.
 
@@ -401,6 +419,9 @@ class CodyBuilder:
             extra_system_prompt=self._extra_system_prompt,
             before_tool_hooks=self._before_tool_hooks or None,
             after_tool_hooks=self._after_tool_hooks or None,
+            session_store=self._session_store,
+            audit_logger=self._audit_logger,
+            file_history=self._file_history,
         )
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
@@ -457,6 +478,9 @@ class AsyncCodyClient:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
+        session_store: object | None = None,
+        audit_logger: object | None = None,
+        file_history: object | None = None,
     ):
         if config:
             self._config = config
@@ -493,6 +517,11 @@ class AsyncCodyClient:
         # Step hooks
         self._before_tool_hooks: list = before_tool_hooks or []
         self._after_tool_hooks: list = after_tool_hooks or []
+
+        # Storage layer injection (None = use defaults)
+        self._injected_session_store = session_store
+        self._injected_audit_logger = audit_logger
+        self._injected_file_history = file_history
 
         # MCP auto-start flag
         self._auto_start_mcp = auto_start_mcp
@@ -607,6 +636,8 @@ class AsyncCodyClient:
                 extra_system_prompt=self._extra_system_prompt,
                 before_tool_hooks=self._before_tool_hooks or None,
                 after_tool_hooks=self._after_tool_hooks or None,
+                audit_logger=self._injected_audit_logger,
+                file_history=self._injected_file_history,
             )
         return self._runner
 
@@ -615,10 +646,16 @@ class AsyncCodyClient:
 
         Power-user API for callers that need synchronous session access
         (e.g. TUI on_mount) or direct store operations.
+
+        If a custom session store was injected via the builder, it is returned
+        directly (must satisfy ``SessionStoreProtocol``).
         """
         if self._session_store is None:
-            from ..core.session import SessionStore
-            self._session_store = SessionStore(db_path=self._db_path)
+            if self._injected_session_store is not None:
+                self._session_store = self._injected_session_store
+            else:
+                from ..core.session import SessionStore
+                self._session_store = SessionStore(db_path=self._db_path)
         return self._session_store
 
     async def start_mcp(self) -> None:

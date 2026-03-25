@@ -231,11 +231,11 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 
 ✅ **已实现**：SDK Builder 新增 `.before_tool(hook)` 和 `.after_tool(hook)` 方法。`before_tool` hook 可修改参数或返回 `None` 拒绝调用（触发 `ModelRetry`）；`after_tool` hook 可转换结果。多个 hook 按注册顺序链式执行。Hook 通过 `CodyDeps` 注入，在 `_with_model_retry` 包装器中统一调用。
 
-#### 7. 存储层不可替换
+#### ~~7. 存储层不可替换~~ ✅ 已完成
 
-`SessionStore`、`AuditLogger`、`FileHistory` 都是 SQLite 具体实现，无抽象接口。在 serverless/容器环境中，SQLite 可能不可用。消费者无法用 PostgreSQL/DynamoDB 替换。
+~~`SessionStore`、`AuditLogger`、`FileHistory` 都是 SQLite 具体实现，无抽象接口。在 serverless/容器环境中，SQLite 可能不可用。消费者无法用 PostgreSQL/DynamoDB 替换。~~
 
-**需要：** 抽象接口 + 默认 SQLite 实现，允许消费者注入自己的存储。
+✅ **已实现**：新增 `core/storage.py` 定义 `SessionStoreProtocol`、`AuditLoggerProtocol`、`FileHistoryProtocol` 三个 `runtime_checkable` Protocol 接口。SDK Builder 新增 `.session_store()`、`.audit_logger()`、`.file_history()` 方法注入自定义实现。`AgentRunner` 接受 `audit_logger` 和 `file_history` 参数。不注入时自动使用默认 SQLite 实现，完全向后兼容。
 
 #### 8. 无工具输出截断
 
@@ -290,7 +290,7 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 | # | 项目 | 理由 | 难度 |
 |---|------|------|------|
 | 11 | ✅ **Step hook / 中间件** | 高级消费者需要 | 高 |
-| 12 | **存储层抽象** | serverless 部署需要 | 高 |
+| 12 | ✅ **存储层抽象** | serverless 部署需要 | 高 |
 | 13 | **子 Agent 独立模型/权限** | 精细化控制 | 中 |
 | 14 | **子 Agent 可恢复** | 长任务场景 | 中 |
 | 15 | **StreamChunk 类型重构** | 类型安全 | 中 |
