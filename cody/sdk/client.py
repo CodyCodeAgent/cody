@@ -184,6 +184,7 @@ class CodyBuilder:
         enabled: bool = True,
         max_tokens: int = 200_000,
         max_cost_usd: float = 5.0,
+        max_steps: int = 0,
         loop_detect_turns: int = 6,
         loop_similarity_threshold: float = 0.9,
         model_prices: dict[str, float] | None = None,
@@ -196,7 +197,7 @@ class CodyBuilder:
             Cody().circuit_breaker(CircuitBreakerConfig(max_cost_usd=10.0)).build()
 
             # Option B: keyword arguments
-            Cody().circuit_breaker(max_cost_usd=10.0, max_tokens=500_000).build()
+            Cody().circuit_breaker(max_cost_usd=10.0, max_steps=50).build()
         """
         if config is not None:
             self._circuit_breaker = config
@@ -205,6 +206,7 @@ class CodyBuilder:
                 enabled=enabled,
                 max_tokens=max_tokens,
                 max_cost_usd=max_cost_usd,
+                max_steps=max_steps,
                 loop_detect_turns=loop_detect_turns,
                 loop_similarity_threshold=loop_similarity_threshold,
                 model_prices=model_prices or {},

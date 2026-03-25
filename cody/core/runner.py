@@ -373,6 +373,7 @@ class AgentRunner:
         # Circuit breaker state (reset per run)
         self._cb_total_tokens: int = 0
         self._cb_estimated_cost: float = 0.0
+        self._cb_step_count: int = 0
         self._cb_recent_results: list[str] = []
 
         # Pending interaction requests (id → Future).
@@ -818,6 +819,7 @@ class AgentRunner:
         """Reset circuit breaker counters for a new run."""
         self._cb_total_tokens = 0
         self._cb_estimated_cost = 0.0
+        self._cb_step_count = 0
         self._cb_recent_results = []
 
     def _update_circuit_breaker(self, result_text: str, usage: Any) -> None:
@@ -832,6 +834,7 @@ class AgentRunner:
             self._cb_estimated_cost = self._cb_total_tokens * price
 
         if result_text:
+            self._cb_step_count += 1
             self._cb_recent_results.append(result_text)
             max_keep = self.config.circuit_breaker.loop_detect_turns + 1
             if len(self._cb_recent_results) > max_keep:
@@ -846,6 +849,8 @@ class AgentRunner:
             raise CircuitBreakerError("token_limit", self._cb_total_tokens, self._cb_estimated_cost)
         if self._cb_estimated_cost > cb.max_cost_usd:
             raise CircuitBreakerError("cost_limit", self._cb_total_tokens, self._cb_estimated_cost)
+        if cb.max_steps > 0 and self._cb_step_count > cb.max_steps:
+            raise CircuitBreakerError("step_limit", self._cb_total_tokens, self._cb_estimated_cost)
         if self._is_loop_detected():
             raise CircuitBreakerError("loop_detected", self._cb_total_tokens, self._cb_estimated_cost)
 

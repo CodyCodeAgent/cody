@@ -146,6 +146,7 @@ class CircuitBreakerConfig(BaseModel):
     enabled: bool = True
     max_tokens: int = 200_000
     max_cost_usd: float = 5.0
+    max_steps: int = 0  # Max tool call steps per run; 0 = unlimited
     loop_detect_turns: int = 6
     loop_similarity_threshold: float = 0.9
     model_prices: dict[str, float] = Field(default_factory=lambda: {
@@ -158,6 +159,9 @@ class Config(BaseModel):
     model: str = ''
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
+    small_model: Optional[str] = None
+    small_model_base_url: Optional[str] = None
+    small_model_api_key: Optional[str] = None
     enable_thinking: bool = False
     thinking_budget: Optional[int] = None
     auth: AuthConfig = Field(default_factory=AuthConfig)
@@ -269,6 +273,15 @@ class Config(BaseModel):
                     "Invalid CODY_THINKING_BUDGET value: %r, ignoring",
                     env_thinking_budget,
                 )
+        env_small_model = os.environ.get("CODY_SMALL_MODEL")
+        if env_small_model:
+            config.small_model = env_small_model
+        env_small_model_base_url = os.environ.get("CODY_SMALL_MODEL_BASE_URL")
+        if env_small_model_base_url:
+            config.small_model_base_url = env_small_model_base_url
+        env_small_model_api_key = os.environ.get("CODY_SMALL_MODEL_API_KEY")
+        if env_small_model_api_key:
+            config.small_model_api_key = env_small_model_api_key
         env_compaction_llm = os.environ.get("CODY_COMPACTION_USE_LLM")
         if env_compaction_llm:
             config.compaction.use_llm = env_compaction_llm.lower() in (
@@ -340,6 +353,7 @@ class Config(BaseModel):
         data = self.model_dump(exclude_none=True)
         # Exclude sensitive fields from persistence
         data.pop("model_api_key", None)
+        data.pop("small_model_api_key", None)
         if "compaction" in data:
             data["compaction"].pop("model_api_key", None)
         if "auth" in data:

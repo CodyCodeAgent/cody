@@ -117,9 +117,7 @@ opencode 为不同模型家族维护独立的 system prompt：
 
 **Cody 优势明显。** 熔断器（token + 成本 + 相似度）是 Cody 作为企业级 SDK 的重要安全网。opencode 在这方面相当薄弱——没有 token 限制、没有成本限制。
 
-**差距：** 缺少步数限制。对 SDK 消费者来说，`max_steps` 是一个直观的控制旋钮。
-
-**建议：** 在 `CircuitBreakerConfig` 中增加 `max_steps`。
+~~**差距：** 缺少步数限制。~~ ✅ **已完成** — `CircuitBreakerConfig.max_steps`（默认 0 = 无限制），超限触发 `CircuitBreakerError("step_limit")`。
 
 ---
 
@@ -143,13 +141,11 @@ opencode 为不同模型家族维护独立的 system prompt：
 |------|------|----------|
 | 模型解析 | `model_resolver.py` 只返回 `OpenAIChatModel` | Vercel AI SDK 支持 75+ Provider |
 | 子 Agent 模型 | 与主 Agent 相同 | 可独立配置，`title` agent 用 small model |
-| Small model | 无 | `Provider.getSmallModel()` 用于低成本操作 |
+| Small model | ~~无~~ ✅ `small_model` 配置 | `Provider.getSmallModel()` 用于低成本操作 |
 
 **差距：**
-1. **Small model** — opencode 对 title 生成、摘要等低价值操作使用小模型省成本。Cody 对所有操作用同一个模型。
-2. **子 Agent 独立模型** — opencode 允许每个 agent 配置不同模型，Cody 不支持。
-
-**建议：** 增加 `small_model` 配置，用于 compaction/summary 等内部操作。子 Agent 独立模型也应支持。
+1. ~~**Small model**~~ ✅ **已完成** — `Config.small_model` / `small_model_base_url` / `small_model_api_key`，不配置时自动 fallback 到主模型。Compaction fallback 链：`compaction.model → small_model → model`。
+2. **子 Agent 独立模型** — opencode 允许每个 agent 配置不同模型，Cody 不支持（后续可扩展）。
 
 ---
 
@@ -245,8 +241,8 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 | 2 | ~~**工具输出截断**~~ | ~~防止上下文爆炸，直接影响 Agent 成功率~~ | ~~低~~ | ✅ 已完成 |
 | 3 | ~~**结构化 Compaction 模板**~~ | ~~用 Goal/Discoveries/Accomplished/Files 替代 "300 words"，保留更多关键信息~~ | ~~低~~ | ✅ 已完成 |
 | 4 | **模型特定 Prompt** | 不同模型需要不同的指导策略 | 低 | 已决定不做 |
-| 5 | **`max_steps` 熔断** | 简单直观的控制旋钮 | 低 | 待做 |
-| 6 | **Small model 配置** | Compaction/summary 用小模型省成本 | 低 | 待做 |
+| 5 | ~~**`max_steps` 熔断**~~ | ~~简单直观的控制旋钮~~ | ~~低~~ | ✅ 已完成 |
+| 6 | ~~**Small model 配置**~~ | ~~Compaction/summary 用小模型省成本~~ | ~~低~~ | ✅ 已完成 |
 
 ### 尽快做（SDK 作为框架的核心能力）
 
@@ -280,7 +276,7 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 3. ~~**结果质量：** 缺少模型特定 Prompt — 同一套指令对不同模型效果差异大~~ **已决定不做**（框架不应硬编码模型特定 prompt）
 4. **可嵌入性：** 缺少自定义工具和 Prompt — 业务方无法让 Agent 适配自己的场景
 
-**已完成的改进：** 结构化 Compaction 模板、Selective Pruning（工具输出渐进裁剪）、token-based 消息保留、百分比触发阈值、`max_summary_tokens` bug 修复。剩余优先项：LLM API 重试、工具输出截断、`max_steps` 熔断、small model 配置。
+**已完成的改进：** 结构化 Compaction 模板、Selective Pruning（工具输出渐进裁剪）、token-based 消息保留、百分比触发阈值、`max_summary_tokens` bug 修复、LLM API 重试、工具输出截断、`max_steps` 熔断、small model 配置。**P1 优先级全部完成。**
 
 ---
 

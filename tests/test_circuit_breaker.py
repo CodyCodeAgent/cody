@@ -23,6 +23,7 @@ class TestCircuitBreakerConfig:
         assert cb.enabled is True
         assert cb.max_tokens == 200_000
         assert cb.max_cost_usd == 5.0
+        assert cb.max_steps == 0
         assert cb.loop_detect_turns == 6
         assert cb.loop_similarity_threshold == 0.9
         assert "default" in cb.model_prices
@@ -32,12 +33,14 @@ class TestCircuitBreakerConfig:
             enabled=False,
             max_tokens=100_000,
             max_cost_usd=1.0,
+            max_steps=50,
             loop_detect_turns=3,
             loop_similarity_threshold=0.8,
         )
         assert cb.enabled is False
         assert cb.max_tokens == 100_000
         assert cb.max_cost_usd == 1.0
+        assert cb.max_steps == 50
         assert cb.loop_detect_turns == 3
 
     def test_config_has_circuit_breaker(self):
@@ -50,12 +53,14 @@ class TestCircuitBreakerConfig:
         config = Config()
         config.circuit_breaker.max_tokens = 50_000
         config.circuit_breaker.max_cost_usd = 2.5
+        config.circuit_breaker.max_steps = 30
         path = tmp_path / "config.json"
         config.save(path)
 
         loaded = Config.load(path)
         assert loaded.circuit_breaker.max_tokens == 50_000
         assert loaded.circuit_breaker.max_cost_usd == 2.5
+        assert loaded.circuit_breaker.max_steps == 30
 
 
 # ── CircuitBreakerError ──────────────────────────────────────────────────────
@@ -77,6 +82,12 @@ class TestCircuitBreakerError:
         err = CircuitBreakerError("loop_detected", 50_000)
         assert err.reason == "loop_detected"
         assert err.cost_usd == 0.0
+
+    def test_step_limit(self):
+        err = CircuitBreakerError("step_limit", 80_000, 0.24)
+        assert err.reason == "step_limit"
+        assert err.tokens_used == 80_000
+        assert err.cost_usd == 0.24
 
 
 # ── CircuitBreakerEvent ──────────────────────────────────────────────────────

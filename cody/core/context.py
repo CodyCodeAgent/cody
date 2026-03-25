@@ -301,9 +301,9 @@ def _resolve_compaction_model(config: "Config"):
     from pydantic_ai.providers.openai import OpenAIProvider
 
     cc = config.compaction
-    model_name = cc.model or config.model
-    base_url = cc.model_base_url or config.model_base_url
-    api_key = cc.model_api_key or config.model_api_key
+    model_name = cc.model or config.small_model or config.model
+    base_url = cc.model_base_url or config.small_model_base_url or config.model_base_url
+    api_key = cc.model_api_key or config.small_model_api_key or config.model_api_key
 
     if not base_url:
         raise ValueError(

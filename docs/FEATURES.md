@@ -508,6 +508,7 @@ cody tui --session <id>      # 恢复指定会话
     "enabled": true,
     "max_tokens": 200000,
     "max_cost_usd": 5.0,
+    "max_steps": 0,
     "loop_detect_turns": 6,
     "loop_similarity_threshold": 0.9
   }

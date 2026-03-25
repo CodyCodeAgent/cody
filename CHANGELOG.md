@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **`max_steps` 熔断**：`CircuitBreakerConfig` 新增 `max_steps` 字段（默认 0 = 无限制），限制单次 run 的工具调用步数。超限时触发 `CircuitBreakerError("step_limit")`。SDK Builder 的 `.circuit_breaker()` 同步支持 `max_steps` 参数
+- **Small Model 配置**：`Config` 新增 `small_model` / `small_model_base_url` / `small_model_api_key` 字段，用于低成本操作（compaction、摘要等）。不配置时自动 fallback 到主模型。Compaction 的模型 fallback 链：`compaction.model → small_model → model`。支持环境变量 `CODY_SMALL_MODEL` / `CODY_SMALL_MODEL_BASE_URL` / `CODY_SMALL_MODEL_API_KEY`
+- **`read_file` 分段读取**：`read_file` 工具新增 `offset`（起始行号）和 `limit`（最大行数）参数，支持分段读取大文件和被截断的工具输出
 - **工具输出截断**：所有工具输出在返回 LLM 前自动截断（默认 120K 字符 ≈ 30K tokens）。超长输出保存到临时文件，模型可通过 `read_file()` 按需读取。防止单个工具输出撑爆上下文窗口。配置项：`truncation.enabled`（默认开启）、`truncation.max_output_chars`（120000）
 - **LLM API 重试**：`run()` 和 `run_sync()` 自动对 429（rate limit）和 5xx（服务端错误）使用指数退避重试（默认 3 次，2s → 4s → 8s）。对 context overflow、auth 错误等不重试。配置项：`retry.enabled`（默认开启）、`retry.max_retries`（3）、`retry.base_delay`（2.0s）、`retry.max_delay`（30s）
 - **Selective Pruning（选择性修剪）**：在全量 compaction 前增加轻量级修剪阶段（灵感来自 OpenCode）。旧的大型工具输出被替换为 `[output pruned at <ts>]` 标记，保留对话结构，无需 LLM 调用。配置项：`compaction.enable_pruning`（默认开启）、`prune_protect_tokens`（保护窗口 40k）、`prune_min_saving_tokens`（最低节省阈值 20k）、`prune_min_content_tokens`（单条最小阈值 200）

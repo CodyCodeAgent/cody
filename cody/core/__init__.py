@@ -83,6 +83,7 @@ _LAZY_IMPORTS = {
     "setup_logging": (".log", "setup_logging"),
     # model_resolver
     "resolve_model": (".model_resolver", "resolve_model"),
+    "resolve_small_model": (".model_resolver", "resolve_small_model"),
     # project_instructions
     "CODY_MD_FILENAME": (".project_instructions", "CODY_MD_FILENAME"),
     "CODY_MD_TEMPLATE": (".project_instructions", "CODY_MD_TEMPLATE"),
