@@ -664,12 +664,14 @@ class AsyncCodyClient:
     async def run(
         self, prompt, *, session_id: Optional[str] = None, stream: Literal[False] = False,
         include_tools: list[str] | None = None, exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> RunResult: ...
 
     @overload
     async def run(
         self, prompt, *, session_id: Optional[str] = None, stream: Literal[True],
         include_tools: list[str] | None = None, exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[StreamChunk]: ...
 
     async def run(
@@ -680,6 +682,7 @@ class AsyncCodyClient:
         stream: bool = False,
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> RunResult | AsyncIterator[StreamChunk]:
         """Run agent with prompt.
 
@@ -689,6 +692,9 @@ class AsyncCodyClient:
             stream: If True, return async iterator of StreamChunk.
             include_tools: If set, only these tools are available for this run.
             exclude_tools: If set, these tools are excluded for this run.
+            cancel_event: If set and triggered, cancels the run.
+                Non-streaming: returns ``RunResult(output="(cancelled)")``.
+                Streaming: yields a ``cancelled`` chunk.
 
         Returns:
             RunResult if stream=False, else AsyncIterator[StreamChunk].
@@ -720,6 +726,7 @@ class AsyncCodyClient:
                 return self._stream_run(
                     prompt, session_id,
                     include_tools=include_tools, exclude_tools=exclude_tools,
+                    cancel_event=cancel_event,
                 )
 
             # Emit MODEL_REQUEST before calling the model
@@ -735,6 +742,7 @@ class AsyncCodyClient:
             result, sid = await runner.run_with_session(
                 prompt, store, session_id,
                 include_tools=include_tools, exclude_tools=exclude_tools,
+                cancel_event=cancel_event,
             )
 
             run_result = RunResult(
@@ -847,6 +855,7 @@ class AsyncCodyClient:
         self, prompt, session_id: Optional[str] = None,
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ):
         """Internal streaming run (called when run(stream=True))."""
         in_thinking = False
@@ -854,6 +863,7 @@ class AsyncCodyClient:
         async for chunk in self.stream(
             prompt, session_id=session_id,
             include_tools=include_tools, exclude_tools=exclude_tools,
+            cancel_event=cancel_event,
         ):
             if self._events:
                 # Emit STREAM_START on first non-session_start chunk

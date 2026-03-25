@@ -197,9 +197,16 @@ client = (
 
 ### P1：重要问题
 
-#### 4. 非流式 `run()` 不可取消
+#### 4. ~~非流式 `run()` 不可取消~~ ✅ 已实现
 
-`client.py:589` 的 `run()` 没有 `cancel_event` 参数。一旦调用，无法中断。对生产系统来说，一个不可中断的 LLM 调用可能阻塞几分钟。
+`run()` 新增 `cancel_event` 参数，与 `stream()` 一致：
+
+```python
+cancel = asyncio.Event()
+result = await client.run("Long task", cancel_event=cancel)
+# 从另一个协程调用 cancel.set() 可取消运行
+# 取消后 result.output == "(cancelled)"
+```
 
 #### 5. ~~无 per-run 工具选择~~ ✅ 已实现
 

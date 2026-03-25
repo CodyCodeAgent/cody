@@ -1006,6 +1006,7 @@ class AgentRunner:
         message_history: Optional[list[ModelMessage]] = None,
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history.
 
@@ -1014,18 +1015,37 @@ class AgentRunner:
             message_history: Prior conversation messages.
             include_tools: If set, only these tools are available for this run.
             exclude_tools: If set, these tools are excluded for this run.
+            cancel_event: If set and triggered, the run is cancelled and
+                a ``CodyResult`` with output ``"(cancelled)"`` is returned.
         """
         self._reset_circuit_breaker()
         deps = self._create_deps()
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
         agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
-        result = await with_retry(
+
+        run_coro = with_retry(
             agent.run,  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
             retry_config=self._retry_config(),
         )
+
+        if cancel_event is not None:
+            run_task = asyncio.ensure_future(run_coro)
+            cancel_task = asyncio.ensure_future(cancel_event.wait())
+            done, pending = await asyncio.wait(
+                {run_task, cancel_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in pending:
+                t.cancel()
+            if cancel_task in done:
+                return CodyResult(output="(cancelled)")
+            result = run_task.result()
+        else:
+            result = await run_coro
+
         cody_result = CodyResult.from_raw(result)
         self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
         self._check_circuit_breaker()
@@ -1302,6 +1322,7 @@ class AgentRunner:
         session_id: Optional[str] = None,
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> tuple[CodyResult, str]:
         """Run agent with automatic session persistence.
 
@@ -1319,6 +1340,7 @@ class AgentRunner:
         result = await self.run(
             prompt, message_history=history,
             include_tools=include_tools, exclude_tools=exclude_tools,
+            cancel_event=cancel_event,
         )
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
         store.add_message(sid, "assistant", result.output)
