@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Awaitable
+    from collections.abc import Awaitable, Callable
     from .interaction import InteractionRequest, InteractionResponse
 
 from .audit import AuditLogger
@@ -19,6 +19,12 @@ from .memory import ProjectMemoryStore
 from .permissions import PermissionManager
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
+
+# Hook type aliases (runtime-safe, no TYPE_CHECKING guard needed)
+# BeforeToolHook: async (tool_name, args_dict) -> modified_args | None (None = skip)
+# AfterToolHook: async (tool_name, args_dict, result) -> modified_result
+BeforeToolHook = Any  # Callable[[str, dict], Awaitable[dict | None]]
+AfterToolHook = Any   # Callable[[str, dict, str], Awaitable[str]]
 
 
 class ToolContext:
@@ -44,3 +50,5 @@ class CodyDeps:
     todo_list: Optional[list] = None
     memory_store: Optional[ProjectMemoryStore] = None
     interaction_handler: Optional[Callable[[InteractionRequest], Awaitable[InteractionResponse]]] = None
+    before_tool_hooks: list[BeforeToolHook] = field(default_factory=list)
+    after_tool_hooks: list[AfterToolHook] = field(default_factory=list)

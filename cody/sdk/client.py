@@ -87,6 +87,8 @@ class CodyBuilder:
     _custom_tools: list = field(default_factory=list)
     _system_prompt: str | None = None
     _extra_system_prompt: str | None = None
+    _before_tool_hooks: list = field(default_factory=list)
+    _after_tool_hooks: list = field(default_factory=list)
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -315,6 +317,48 @@ class CodyBuilder:
         self._extra_system_prompt = text
         return self
 
+    def before_tool(self, hook) -> "CodyBuilder":
+        """Register a before-tool hook.
+
+        The hook is called before every tool execution with the signature::
+
+            async def my_hook(tool_name: str, args: dict) -> dict | None:
+                ...
+
+        Return the (possibly modified) args dict to proceed, or ``None``
+        to reject the call (the model will see a retry message).
+
+        Example::
+
+            async def log_calls(tool_name, args):
+                print(f"Calling {tool_name}")
+                return args  # proceed unchanged
+
+            client = Cody().before_tool(log_calls).build()
+        """
+        self._before_tool_hooks.append(hook)
+        return self
+
+    def after_tool(self, hook) -> "CodyBuilder":
+        """Register an after-tool hook.
+
+        The hook is called after every tool execution with the signature::
+
+            async def my_hook(tool_name: str, args: dict, result: str) -> str:
+                ...
+
+        Return the (possibly modified) result string.
+
+        Example::
+
+            async def redact_secrets(tool_name, args, result):
+                return result.replace(os.environ["SECRET"], "***")
+
+            client = Cody().after_tool(redact_secrets).build()
+        """
+        self._after_tool_hooks.append(hook)
+        return self
+
     def on(self, event_type: str, handler) -> "CodyBuilder":
         """Register event handler. Implicitly enables events.
 
@@ -355,6 +399,8 @@ class CodyBuilder:
             custom_tools=self._custom_tools or None,
             system_prompt=self._system_prompt,
             extra_system_prompt=self._extra_system_prompt,
+            before_tool_hooks=self._before_tool_hooks or None,
+            after_tool_hooks=self._after_tool_hooks or None,
         )
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
@@ -409,6 +455,8 @@ class AsyncCodyClient:
         custom_tools: list | None = None,
         system_prompt: str | None = None,
         extra_system_prompt: str | None = None,
+        before_tool_hooks: list | None = None,
+        after_tool_hooks: list | None = None,
     ):
         if config:
             self._config = config
@@ -441,6 +489,10 @@ class AsyncCodyClient:
         # Custom system prompt overrides
         self._system_prompt: str | None = system_prompt
         self._extra_system_prompt: str | None = extra_system_prompt
+
+        # Step hooks
+        self._before_tool_hooks: list = before_tool_hooks or []
+        self._after_tool_hooks: list = after_tool_hooks or []
 
         # MCP auto-start flag
         self._auto_start_mcp = auto_start_mcp
@@ -553,6 +605,8 @@ class AsyncCodyClient:
                 custom_tools=self._custom_tools or None,
                 system_prompt=self._system_prompt,
                 extra_system_prompt=self._extra_system_prompt,
+                before_tool_hooks=self._before_tool_hooks or None,
+                after_tool_hooks=self._after_tool_hooks or None,
             )
         return self._runner
 

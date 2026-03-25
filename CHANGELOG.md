@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **System Prompt 自定义**：SDK Builder 新增 `.system_prompt(text)` 替换默认 persona，`.extra_system_prompt(text)` 在所有内置 prompt 后追加自定义指令。两者可组合使用。CODY.md、项目记忆、Skills 等内置 prompt 部分不受 `system_prompt` 替换影响
 - **Per-run 工具选择**：`run()` / `stream()` 新增 `include_tools` 和 `exclude_tools` 参数，支持每次运行指定可用工具集。`include_tools=["read_file", "grep"]` 只启用指定工具，`exclude_tools=["exec_command"]` 排除指定工具。同时新增 `list_tool_names()` 辅助函数用于工具名称发现
 - **非流式 `run()` 可取消**：`run()` 新增 `cancel_event: asyncio.Event` 参数。设置后，`run()` 与 cancel event 竞速，被取消时返回 `output="(cancelled)"` 的结果。从 core `AgentRunner.run()` 到 SDK `AsyncCodyClient.run()` 全链路支持
+- **Step hook / 中间件**：SDK Builder 新增 `.before_tool(hook)` 和 `.after_tool(hook)` 方法，支持在工具调用前后注入自定义逻辑。`before_tool` hook 接收 `(tool_name, args_dict)` 可修改参数或返回 `None` 拒绝调用；`after_tool` hook 接收 `(tool_name, args_dict, result)` 可转换结果。多个 hook 按注册顺序链式执行。Hook 通过 `CodyDeps` 注入，在 `_with_model_retry` 包装器中统一调用
 - **`max_steps` 熔断**：`CircuitBreakerConfig` 新增 `max_steps` 字段（默认 0 = 无限制），限制单次 run 的工具调用步数。超限时触发 `CircuitBreakerError("step_limit")`。SDK Builder 的 `.circuit_breaker()` 同步支持 `max_steps` 参数
 - **Small Model 配置**：`Config` 新增 `small_model` / `small_model_base_url` / `small_model_api_key` 字段，用于低成本操作（compaction、摘要等）。不配置时自动 fallback 到主模型。Compaction 的模型 fallback 链：`compaction.model → small_model → model`。支持环境变量 `CODY_SMALL_MODEL` / `CODY_SMALL_MODEL_BASE_URL` / `CODY_SMALL_MODEL_API_KEY`
 - **`read_file` 分段读取**：`read_file` 工具新增 `offset`（起始行号）和 `limit`（最大行数）参数，支持分段读取大文件和被截断的工具输出

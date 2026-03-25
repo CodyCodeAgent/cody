@@ -1504,6 +1504,8 @@ async with client:
 | `.mcp_http_server(name, url, headers=)` | 添加 HTTP MCP 服务器（v1.9.0+） |
 | `.auto_start_mcp(enabled)` | 首次 run() 自动启动 MCP（默认 False，v1.9.0+） |
 | `.interaction(enabled=True, timeout=30)` | 配置人工交互（仅异步模式生效） |
+| `.before_tool(hook)` | 注册 before-tool hook（`async (tool_name, args) -> args \| None`，None = 拒绝） |
+| `.after_tool(hook)` | 注册 after-tool hook（`async (tool_name, args, result) -> result`） |
 | `.circuit_breaker(config_or_kwargs)` | 配置熔断器（支持 `CircuitBreakerConfig` 对象或关键字参数） |
 | `.lsp_languages(languages)` | 设置 LSP 语言列表 |
 | `.build()` | 构建并返回 `AsyncCodyClient` |

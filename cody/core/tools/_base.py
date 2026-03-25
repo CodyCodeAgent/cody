@@ -120,17 +120,43 @@ def _with_model_retry(func):
     sent back to the model so it can correct its parameters and try again.
 
     Also logs elapsed time for every tool call at DEBUG level.
+
+    Step hooks (before_tool / after_tool) are called if registered in
+    ``ctx.deps``.  ``before_tool`` can modify args or reject a call;
+    ``after_tool`` can transform the result string.
     """
     tool_name = func.__name__
 
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         start = time.perf_counter()
+
+        # Extract ctx (first positional arg) for hook access
+        ctx = args[0] if args else None
+        deps = getattr(ctx, "deps", None) if ctx else None
+
+        # ── before_tool hooks ──
+        if deps and getattr(deps, "before_tool_hooks", None):
+            for hook in deps.before_tool_hooks:
+                hook_result = await hook(tool_name, dict(kwargs))
+                if hook_result is None:
+                    _tool_logger.debug("tool.%s skipped by before_tool hook", tool_name)
+                    raise ModelRetry(
+                        f"Tool '{tool_name}' was rejected by a before_tool hook."
+                    )
+                kwargs = hook_result
+
         try:
             result = await func(*args, **kwargs)
             # Apply output truncation if configured.
             if isinstance(result, str):
                 result = _maybe_truncate(result, tool_name, args, kwargs)
+
+            # ── after_tool hooks ──
+            if deps and getattr(deps, "after_tool_hooks", None) and isinstance(result, str):
+                for hook in deps.after_tool_hooks:
+                    result = await hook(tool_name, dict(kwargs), result)
+
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)
             return result

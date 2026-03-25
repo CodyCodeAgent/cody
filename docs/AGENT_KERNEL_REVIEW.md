@@ -222,14 +222,14 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 
 工具名称可通过 `list_tool_names()` 发现。
 
-#### 6. 无 step hook / 中间件
+#### ~~6. 无 step hook / 中间件~~ ✅ 已完成
 
-SDK 事件是 fire-and-forget 的观察机制。消费者无法：
-- 在工具调用前审批/修改参数
-- 在模型调用前修改 prompt
-- 在工具返回后转换结果
+~~SDK 事件是 fire-and-forget 的观察机制。消费者无法：~~
+~~- 在工具调用前审批/修改参数~~
+~~- 在模型调用前修改 prompt~~
+~~- 在工具返回后转换结果~~
 
-**需要：** 拦截器模式——`builder.before_tool(callback)` / `builder.after_tool(callback)`。
+✅ **已实现**：SDK Builder 新增 `.before_tool(hook)` 和 `.after_tool(hook)` 方法。`before_tool` hook 可修改参数或返回 `None` 拒绝调用（触发 `ModelRetry`）；`after_tool` hook 可转换结果。多个 hook 按注册顺序链式执行。Hook 通过 `CodyDeps` 注入，在 `_with_model_retry` 包装器中统一调用。
 
 #### 7. 存储层不可替换
 
@@ -289,7 +289,7 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 
 | # | 项目 | 理由 | 难度 |
 |---|------|------|------|
-| 11 | **Step hook / 中间件** | 高级消费者需要 | 高 |
+| 11 | ✅ **Step hook / 中间件** | 高级消费者需要 | 高 |
 | 12 | **存储层抽象** | serverless 部署需要 | 高 |
 | 13 | **子 Agent 独立模型/权限** | 精细化控制 | 中 |
 | 14 | **子 Agent 可恢复** | 长任务场景 | 中 |

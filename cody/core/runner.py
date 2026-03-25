@@ -341,6 +341,8 @@ class AgentRunner:
         custom_tools: list | None = None,
         system_prompt: str | None = None,
         extra_system_prompt: str | None = None,
+        before_tool_hooks: list | None = None,
+        after_tool_hooks: list | None = None,
     ):
         self.workdir = workdir
         self.config = config
@@ -398,6 +400,10 @@ class AgentRunner:
         # Custom system prompt overrides
         self._system_prompt_override: str | None = system_prompt
         self._extra_system_prompt: str | None = extra_system_prompt
+
+        # Step hooks (before/after tool execution)
+        self._before_tool_hooks: list = before_tool_hooks or []
+        self._after_tool_hooks: list = after_tool_hooks or []
 
         # Project memory
         self._memory_store: Optional[ProjectMemoryStore] = None
@@ -550,6 +556,8 @@ class AgentRunner:
             todo_list=self._todo_list,
             memory_store=self._memory_store,
             interaction_handler=interaction_handler or self._auto_approve_handler,
+            before_tool_hooks=self._before_tool_hooks,
+            after_tool_hooks=self._after_tool_hooks,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
