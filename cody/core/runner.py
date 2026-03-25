@@ -339,6 +339,8 @@ class AgentRunner:
         workdir: Path,
         extra_roots: list[Path] | None = None,
         custom_tools: list | None = None,
+        system_prompt: str | None = None,
+        extra_system_prompt: str | None = None,
     ):
         self.workdir = workdir
         self.config = config
@@ -393,6 +395,10 @@ class AgentRunner:
         # Custom tools provided by the SDK user
         self._custom_tools: list = custom_tools or []
 
+        # Custom system prompt overrides
+        self._system_prompt_override: str | None = system_prompt
+        self._extra_system_prompt: str | None = extra_system_prompt
+
         # Project memory
         self._memory_store: Optional[ProjectMemoryStore] = None
         try:
@@ -418,15 +424,18 @@ class AgentRunner:
         see tools.py CORE_TOOLS / MCP_TOOLS for the full list.
 
         System prompt order:
-          1. Base persona
+          1. Base persona (or user-provided system_prompt override)
           2. CODY.md project instructions (global ~/.cody/CODY.md + project CODY.md)
           3. Project memory (cross-session learnings)
           4. Available skills XML (Agent Skills standard)
+          5. extra_system_prompt (user-provided, appended last)
         """
-        # 1. Base persona (from core/prompts.py)
-        from .prompts import build_system_prompt
-
-        system_parts = [build_system_prompt()]
+        # 1. Base persona (from core/prompts.py), or custom override
+        if self._system_prompt_override is not None:
+            system_parts = [self._system_prompt_override]
+        else:
+            from .prompts import build_system_prompt
+            system_parts = [build_system_prompt()]
 
         # 2. CODY.md project instructions (global + project, merged)
         project_instructions = load_project_instructions(self.workdir)
@@ -445,6 +454,10 @@ class AgentRunner:
         skills_xml = self.skill_manager.to_prompt_xml()
         if skills_xml:
             system_parts.append(skills_xml)
+
+        # 5. Extra system prompt (user-provided, appended last)
+        if self._extra_system_prompt:
+            system_parts.append(self._extra_system_prompt)
 
         agent = Agent(
             self._resolve_model(),

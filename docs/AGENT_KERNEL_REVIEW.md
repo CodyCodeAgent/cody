@@ -169,14 +169,25 @@ client = Cody().tool(lookup_jira).build()
 
 自定义工具与内置工具享有相同的 `ModelRetry` 错误重试和输出截断机制。
 
-#### 2. 无法自定义 System Prompt
+#### 2. ~~无法自定义 System Prompt~~ ✅ 已实现
 
-`runner.py:401-424` 的 persona 是硬编码字符串。SDK 消费者无法：
-- 注入业务特定指令（"你是一个代码审查 Agent，只关注安全问题"）
-- 替换默认 persona
-- 在 prompt 中添加业务上下文
+SDK Builder 提供两个方法：
 
-**需要：** `builder.system_prompt(text)` 或 `builder.prepend_prompt()` / `builder.append_prompt()`。
+```python
+# 替换默认 persona（CODY.md/记忆/Skills 仍保留）
+client = Cody().system_prompt("You are a security-focused code review agent.").build()
+
+# 追加自定义指令（不替换默认 persona）
+client = Cody().extra_system_prompt("Always respond in Chinese.").build()
+
+# 组合使用
+client = (
+    Cody()
+    .system_prompt("You are a code reviewer.")
+    .extra_system_prompt("Focus on security issues only.")
+    .build()
+)
+```
 
 #### ~~3. 无 LLM API 重试~~ ✅ 已完成
 

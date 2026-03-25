@@ -85,6 +85,8 @@ class CodyBuilder:
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
     _custom_tools: list = field(default_factory=list)
+    _system_prompt: str | None = None
+    _extra_system_prompt: str | None = None
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -278,6 +280,41 @@ class CodyBuilder:
         self._custom_tools.append(func)
         return self
 
+    def system_prompt(self, text: str) -> "CodyBuilder":
+        """Replace the default base persona with a custom system prompt.
+
+        The custom prompt replaces only the base persona. CODY.md project
+        instructions, project memory, and skills are still appended.
+
+        Example::
+
+            client = (
+                Cody()
+                .system_prompt("You are a security-focused code review agent.")
+                .build()
+            )
+        """
+        self._system_prompt = text
+        return self
+
+    def extra_system_prompt(self, text: str) -> "CodyBuilder":
+        """Append additional instructions after all built-in system prompt parts.
+
+        Unlike ``system_prompt()``, this does not replace the default persona
+        — it adds to it.  Use this for injecting business context or
+        run-specific instructions.
+
+        Example::
+
+            client = (
+                Cody()
+                .extra_system_prompt("Always respond in Chinese.")
+                .build()
+            )
+        """
+        self._extra_system_prompt = text
+        return self
+
     def on(self, event_type: str, handler) -> "CodyBuilder":
         """Register event handler. Implicitly enables events.
 
@@ -316,6 +353,8 @@ class CodyBuilder:
             config=cfg,
             auto_start_mcp=self._auto_start_mcp,
             custom_tools=self._custom_tools or None,
+            system_prompt=self._system_prompt,
+            extra_system_prompt=self._extra_system_prompt,
         )
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
@@ -368,6 +407,8 @@ class AsyncCodyClient:
         enable_events: bool = False,
         auto_start_mcp: bool = False,
         custom_tools: list | None = None,
+        system_prompt: str | None = None,
+        extra_system_prompt: str | None = None,
     ):
         if config:
             self._config = config
@@ -396,6 +437,10 @@ class AsyncCodyClient:
 
         # Custom tools (user-defined async functions)
         self._custom_tools: list = custom_tools or []
+
+        # Custom system prompt overrides
+        self._system_prompt: str | None = system_prompt
+        self._extra_system_prompt: str | None = extra_system_prompt
 
         # MCP auto-start flag
         self._auto_start_mcp = auto_start_mcp
@@ -506,6 +551,8 @@ class AsyncCodyClient:
                 config=self._get_config(),
                 workdir=self.workdir,
                 custom_tools=self._custom_tools or None,
+                system_prompt=self._system_prompt,
+                extra_system_prompt=self._extra_system_prompt,
             )
         return self._runner
 
