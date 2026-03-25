@@ -101,6 +101,19 @@ from .types import (
     StreamChunk,
     ToolResult,
     Usage,
+    # Typed chunk classes for isinstance() narrowing
+    SessionStartChunk,
+    TextDeltaChunk,
+    ThinkingChunk,
+    ToolCallChunk,
+    ToolResultChunk,
+    CompactChunk,
+    DoneChunk,
+    CancelledChunk,
+    CircuitBreakerChunk,
+    InteractionRequestChunk,
+    UserInputReceivedChunk,
+    UnknownChunk,
 )
 
 # Events
@@ -182,4 +195,17 @@ __all__ = [
     "StreamChunk",
     "ToolResult",
     "Usage",
+    # Typed chunk classes
+    "SessionStartChunk",
+    "TextDeltaChunk",
+    "ThinkingChunk",
+    "ToolCallChunk",
+    "ToolResultChunk",
+    "CompactChunk",
+    "DoneChunk",
+    "CancelledChunk",
+    "CircuitBreakerChunk",
+    "InteractionRequestChunk",
+    "UserInputReceivedChunk",
+    "UnknownChunk",
 ]

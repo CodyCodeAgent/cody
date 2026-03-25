@@ -3,6 +3,11 @@
 These data classes are the public response types returned by CodyClient /
 AsyncCodyClient.  The two helper functions convert core-layer objects into
 SDK-layer objects.
+
+StreamChunk is a discriminated union of typed chunk dataclasses.  Each chunk
+type carries only the fields relevant to it.  Consumers can use isinstance()
+for type-safe narrowing or check ``chunk.type`` for compatibility with
+existing code.
 """
 
 from dataclasses import dataclass, field
@@ -45,11 +50,22 @@ class RunResult:
     metadata: Optional[TaskMetadata] = None
 
 
+# ── StreamChunk base class + typed subclasses ────────────────────────────────
+#
+# ``StreamChunk`` is the base dataclass (backward compatible — can be
+# constructed directly).  Typed subclasses allow ``isinstance()`` narrowing
+# for type-safe consumers.
+
+
 @dataclass
 class StreamChunk:
-    type: str  # "session_start", "text_delta", "thinking", "tool_call", "tool_result", "done",
-    #            "compact", "cancelled", "circuit_breaker", "interaction_request",
-    #            "user_input_received"
+    """A single chunk from a streaming response.
+
+    This is the base class that carries all possible fields.  For type-safe
+    code, use ``isinstance()`` with the specific chunk subclasses (e.g.
+    ``TextDeltaChunk``, ``ToolCallChunk``).
+    """
+    type: str
     content: str = ""
     session_id: Optional[str] = None
     # Tool call details (populated when type="tool_call")
@@ -70,6 +86,84 @@ class StreamChunk:
     request_id: Optional[str] = None
     interaction_kind: Optional[str] = None
     options: Optional[list[str]] = None
+
+
+# ── Typed subclasses for isinstance() narrowing ─────────────────────────────
+
+
+@dataclass
+class SessionStartChunk(StreamChunk):
+    """Emitted at the start of a stream with the session ID."""
+    type: str = "session_start"
+
+
+@dataclass
+class TextDeltaChunk(StreamChunk):
+    """Incremental text from the model."""
+    type: str = "text_delta"
+
+
+@dataclass
+class ThinkingChunk(StreamChunk):
+    """Model thinking/reasoning content."""
+    type: str = "thinking"
+
+
+@dataclass
+class ToolCallChunk(StreamChunk):
+    """A tool invocation by the model."""
+    type: str = "tool_call"
+
+
+@dataclass
+class ToolResultChunk(StreamChunk):
+    """Result from a tool execution."""
+    type: str = "tool_result"
+
+
+@dataclass
+class CompactChunk(StreamChunk):
+    """Context compaction event."""
+    type: str = "compact"
+
+
+@dataclass
+class DoneChunk(StreamChunk):
+    """Stream completion with final output and usage."""
+    type: str = "done"
+
+
+@dataclass
+class CancelledChunk(StreamChunk):
+    """Stream was cancelled."""
+    type: str = "cancelled"
+
+
+@dataclass
+class CircuitBreakerChunk(StreamChunk):
+    """Circuit breaker triggered."""
+    type: str = "circuit_breaker"
+
+
+@dataclass
+class InteractionRequestChunk(StreamChunk):
+    """The model is requesting human input."""
+    type: str = "interaction_request"
+
+
+@dataclass
+class UserInputReceivedChunk(StreamChunk):
+    """User input was received during interaction."""
+    type: str = "user_input_received"
+
+
+@dataclass
+class UnknownChunk(StreamChunk):
+    """Fallback for unrecognized event types."""
+    type: str = "unknown"
+
+
+# ── Other response types ────────────────────────────────────────────────────
 
 
 @dataclass
@@ -101,48 +195,46 @@ def _event_to_chunk(
 ) -> StreamChunk:
     """Convert a core StreamEvent to an SDK StreamChunk."""
     if isinstance(event, TextDeltaEvent):
-        return StreamChunk(type="text_delta", content=event.content, session_id=session_id)
+        return TextDeltaChunk(content=event.content, session_id=session_id)
     elif isinstance(event, ThinkingEvent):
-        return StreamChunk(type="thinking", content=event.content, session_id=session_id)
+        return ThinkingChunk(content=event.content, session_id=session_id)
     elif isinstance(event, ToolCallEvent):
-        return StreamChunk(
-            type="tool_call", content=event.tool_name, session_id=session_id,
+        return ToolCallChunk(
+            content=event.tool_name, session_id=session_id,
             tool_name=event.tool_name, args=event.args,
             tool_call_id=event.tool_call_id,
         )
     elif isinstance(event, ToolResultEvent):
-        return StreamChunk(
-            type="tool_result", content=event.result, session_id=session_id,
+        return ToolResultChunk(
+            content=event.result, session_id=session_id,
             tool_name=event.tool_name,
             tool_call_id=event.tool_call_id,
         )
     elif isinstance(event, CompactEvent):
-        return StreamChunk(
-            type="compact", session_id=session_id,
+        return CompactChunk(
+            session_id=session_id,
             original_messages=event.original_messages,
             compacted_messages=event.compacted_messages,
             estimated_tokens_saved=event.estimated_tokens_saved,
             used_llm=event.used_llm,
         )
     elif isinstance(event, DoneEvent):
-        return StreamChunk(
-            type="done", content=event.result.output, session_id=session_id,
+        return DoneChunk(
+            content=event.result.output, session_id=session_id,
             usage=_usage_from_result(event.result),
             message_history=event.result.all_messages(),
         )
     elif isinstance(event, CancelledEvent):
-        return StreamChunk(type="cancelled", session_id=session_id)
+        return CancelledChunk(session_id=session_id)
     elif isinstance(event, SessionStartEvent):
-        return StreamChunk(type="session_start", session_id=session_id)
+        return SessionStartChunk(session_id=session_id)
     elif isinstance(event, CircuitBreakerEvent):
-        return StreamChunk(
-            type="circuit_breaker",
+        return CircuitBreakerChunk(
             content=f"Circuit breaker: {event.reason} (tokens={event.tokens_used}, cost=${event.cost_usd:.4f})",
             session_id=session_id,
         )
     elif isinstance(event, InteractionRequestEvent):
-        return StreamChunk(
-            type="interaction_request",
+        return InteractionRequestChunk(
             content=event.request.prompt,
             session_id=session_id,
             request_id=event.request.id,
@@ -150,12 +242,11 @@ def _event_to_chunk(
             options=event.request.options or None,
         )
     elif isinstance(event, UserInputReceivedEvent):
-        return StreamChunk(
-            type="user_input_received",
+        return UserInputReceivedChunk(
             content=event.content,
             session_id=session_id,
         )
-    return StreamChunk(type="unknown", session_id=session_id)
+    return UnknownChunk(session_id=session_id)
 
 
 def _usage_from_result(result: CodyResult) -> Usage:

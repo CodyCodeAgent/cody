@@ -245,9 +245,11 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 
 ### P2：改进项
 
-#### 9. `StreamChunk` 类型设计
+#### ~~9. `StreamChunk` 类型设计~~ ✅ 已完成
 
-当前是 flat 结构 + `type: str` 判别符。SDK 消费者需要写 `if chunk.type == "tool_call"` 这样的代码，类型安全差。应该用 discriminated union。
+~~当前是 flat 结构 + `type: str` 判别符。SDK 消费者需要写 `if chunk.type == "tool_call"` 这样的代码，类型安全差。应该用 discriminated union。~~
+
+✅ **已实现**：`StreamChunk` 重构为继承体系，新增 12 个类型化子类（`TextDeltaChunk`、`ToolCallChunk`、`DoneChunk` 等）。消费者可用 `isinstance(chunk, TextDeltaChunk)` 进行类型安全匹配。基类 `StreamChunk` 保留所有字段，`StreamChunk(type=...)` 直接构造和 `chunk.type == "..."` 完全向后兼容。
 
 #### 10. Metrics 无界增长
 
@@ -293,7 +295,7 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 | 12 | ✅ **存储层抽象** | serverless 部署需要 | 高 |
 | 13 | **子 Agent 独立模型/权限** | 精细化控制 | 中 |
 | 14 | ✅ **子 Agent 可恢复** | 长任务场景 | 中 |
-| 15 | **StreamChunk 类型重构** | 类型安全 | 中 |
+| 15 | ✅ **StreamChunk 类型重构** | 类型安全 | 中 |
 
 ---
 
