@@ -128,6 +128,11 @@ class InteractionConfig(BaseModel):
     enabled: bool = False
     timeout: float = 30.0  # seconds; 0 = no timeout (wait forever)
 
+class TruncationConfig(BaseModel):
+    """Tool output truncation configuration."""
+    enabled: bool = True
+    max_output_chars: int = 120_000  # ~30K tokens
+
 class RetryConfig(BaseModel):
     """LLM API retry configuration with exponential backoff."""
     enabled: bool = True
@@ -161,6 +166,7 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
+    truncation: TruncationConfig = Field(default_factory=TruncationConfig)
     compaction: CompactionConfig = Field(default_factory=CompactionConfig)
     interaction: InteractionConfig = Field(default_factory=InteractionConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)

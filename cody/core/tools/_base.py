@@ -13,6 +13,7 @@ from pathlib import Path
 from ..errors import ToolError, ToolPathDenied
 from ..interaction import InteractionRequest
 from ..permissions import PermissionDeniedError, PermissionLevel
+from .truncate import truncate_output
 
 if TYPE_CHECKING:
     from ..deps import CodyDeps
@@ -87,6 +88,29 @@ def _resolve_and_check(
     )
 
 
+def _maybe_truncate(result: str, tool_name: str, args: tuple, kwargs: dict) -> str:
+    """Apply output truncation using config from RunContext if available."""
+    # First positional arg is ctx: RunContext[CodyDeps]
+    ctx = args[0] if args else None
+    if ctx is None:
+        return result
+    deps = getattr(ctx, "deps", None)
+    if deps is None:
+        return result
+    config = getattr(deps, "config", None)
+    if config is None:
+        return result
+    trunc = getattr(config, "truncation", None)
+    if trunc is None or not trunc.enabled:
+        return result
+    workdir = getattr(deps, "workdir", None)
+    return truncate_output(
+        result, tool_name,
+        max_chars=trunc.max_output_chars,
+        workdir=workdir,
+    )
+
+
 def _with_model_retry(func):
     """Wrap a tool function so ToolError is converted to ModelRetry.
 
@@ -104,6 +128,9 @@ def _with_model_retry(func):
         start = time.perf_counter()
         try:
             result = await func(*args, **kwargs)
+            # Apply output truncation if configured.
+            if isinstance(result, str):
+                result = _maybe_truncate(result, tool_name, args, kwargs)
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)
             return result

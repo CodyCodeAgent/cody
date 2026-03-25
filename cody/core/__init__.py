@@ -33,6 +33,7 @@ _LAZY_IMPORTS = {
     "CircuitBreakerError": (".errors", "CircuitBreakerError"),
     # config
     "CircuitBreakerConfig": (".config", "CircuitBreakerConfig"),
+    "TruncationConfig": (".config", "TruncationConfig"),
     # session
     "SessionStore": (".session", "SessionStore"),
     # skill_manager

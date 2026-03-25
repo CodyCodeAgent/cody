@@ -67,6 +67,10 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "max_requests": 60,
     "window_seconds": 60.0
   },
+  "truncation": {
+    "enabled": true,
+    "max_output_chars": 120000
+  },
   "retry": {
     "enabled": true,
     "max_retries": 3,
@@ -527,6 +531,39 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 ```
 
 **示例：** 60 秒内最多 60 个请求
+
+---
+
+### 工具输出截断配置 (`truncation`)
+
+防止单个工具输出过大撑爆上下文窗口。超长输出自动截断，完整内容保存到临时文件供模型按需读取。
+
+#### `truncation.enabled`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 是否启用工具输出自动截断
+
+---
+
+#### `truncation.max_output_chars`
+
+**类型:** `integer`
+**默认:** `120000`
+**说明:** 单个工具输出的最大字符数（约 30K tokens）。超出部分截断，完整内容保存到临时文件。
+
+**示例：**
+
+```json
+{
+  "truncation": {
+    "enabled": true,
+    "max_output_chars": 80000
+  }
+}
+```
+
+> **注意：** 截断在 `_with_model_retry` 包装层统一执行，所有注册工具自动生效，无需逐工具修改。
 
 ---
 

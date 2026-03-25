@@ -242,7 +242,7 @@ SDK 事件是 fire-and-forget 的观察机制。消费者无法：
 | # | 项目 | 理由 | 难度 | 状态 |
 |---|------|------|------|------|
 | 1 | ~~**LLM API 重试**~~ | ~~一个 429 就崩，生产不可用~~ | ~~低~~ | ✅ 已完成 |
-| 2 | **工具输出截断** | 防止上下文爆炸，直接影响 Agent 成功率 | 低 | 待做 |
+| 2 | ~~**工具输出截断**~~ | ~~防止上下文爆炸，直接影响 Agent 成功率~~ | ~~低~~ | ✅ 已完成 |
 | 3 | ~~**结构化 Compaction 模板**~~ | ~~用 Goal/Discoveries/Accomplished/Files 替代 "300 words"，保留更多关键信息~~ | ~~低~~ | ✅ 已完成 |
 | 4 | **模型特定 Prompt** | 不同模型需要不同的指导策略 | 低 | 已决定不做 |
 | 5 | **`max_steps` 熔断** | 简单直观的控制旋钮 | 低 | 待做 |
@@ -365,11 +365,11 @@ result = await with_retry(agent.run, prompt, message_history=history, deps=deps)
 
 ---
 
-### 方案 2：工具输出截断（`core/tools/` 装饰器）
+### 方案 2：工具输出截断（`core/tools/` 装饰器）✅ 已完成
 
-**现状：** 每个工具直接返回 `str`，无长度限制。`grep` 虽有 `max_matches=200`，但 200 个匹配行仍可能很长。`read_file` 没有上限。`exec_command` 返回完整 stdout。
+**实现：** `core/tools/truncate.py` + `Config.truncation`（TruncationConfig）。在 `_with_model_retry` 包装层统一截断，所有注册工具自动生效。超长输出保存到临时文件，模型可通过 `read_file()` 按需读取。
 
-**改法：** 在工具注册层统一截断。
+以下为原始方案设计（已实现）：
 
 ```python
 # core/tools/truncate.py（新文件）

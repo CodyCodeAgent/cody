@@ -10,6 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **工具输出截断**：所有工具输出在返回 LLM 前自动截断（默认 120K 字符 ≈ 30K tokens）。超长输出保存到临时文件，模型可通过 `read_file()` 按需读取。防止单个工具输出撑爆上下文窗口。配置项：`truncation.enabled`（默认开启）、`truncation.max_output_chars`（120000）
 - **LLM API 重试**：`run()` 和 `run_sync()` 自动对 429（rate limit）和 5xx（服务端错误）使用指数退避重试（默认 3 次，2s → 4s → 8s）。对 context overflow、auth 错误等不重试。配置项：`retry.enabled`（默认开启）、`retry.max_retries`（3）、`retry.base_delay`（2.0s）、`retry.max_delay`（30s）
 - **Selective Pruning（选择性修剪）**：在全量 compaction 前增加轻量级修剪阶段（灵感来自 OpenCode）。旧的大型工具输出被替换为 `[output pruned at <ts>]` 标记，保留对话结构，无需 LLM 调用。配置项：`compaction.enable_pruning`（默认开启）、`prune_protect_tokens`（保护窗口 40k）、`prune_min_saving_tokens`（最低节省阈值 20k）、`prune_min_content_tokens`（单条最小阈值 200）
 - **PruneEvent 流式事件**：`StreamEvent` 新增 `prune` 事件类型，通知消费者（CLI/TUI/Web）修剪发生的详情
