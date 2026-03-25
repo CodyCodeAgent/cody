@@ -201,11 +201,19 @@ client = (
 
 `client.py:589` 的 `run()` 没有 `cancel_event` 参数。一旦调用，无法中断。对生产系统来说，一个不可中断的 LLM 调用可能阻塞几分钟。
 
-#### 5. 无 per-run 工具选择
+#### 5. ~~无 per-run 工具选择~~ ✅ 已实现
 
-Agent 在 `__init__` 时注册所有工具，之后无法变更。SDK 消费者无法说"这次 run 只允许读文件，不许执行命令"。
+`run()` / `stream()` 新增 `include_tools` 和 `exclude_tools` 参数：
 
-**需要：** `client.run(prompt, tools=["read_file", "grep"])` 或 `client.run(prompt, disabled_tools=["exec_command"])`。
+```python
+# 只允许读文件和搜索
+result = await client.run("Review code", include_tools=["read_file", "grep"])
+
+# 禁止执行命令
+result = await client.run("Fix bug", exclude_tools=["exec_command"])
+```
+
+工具名称可通过 `list_tool_names()` 发现。
 
 #### 6. 无 step hook / 中间件
 

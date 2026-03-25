@@ -663,11 +663,13 @@ class AsyncCodyClient:
     @overload
     async def run(
         self, prompt, *, session_id: Optional[str] = None, stream: Literal[False] = False,
+        include_tools: list[str] | None = None, exclude_tools: list[str] | None = None,
     ) -> RunResult: ...
 
     @overload
     async def run(
         self, prompt, *, session_id: Optional[str] = None, stream: Literal[True],
+        include_tools: list[str] | None = None, exclude_tools: list[str] | None = None,
     ) -> AsyncIterator[StreamChunk]: ...
 
     async def run(
@@ -676,6 +678,8 @@ class AsyncCodyClient:
         *,
         session_id: Optional[str] = None,
         stream: bool = False,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> RunResult | AsyncIterator[StreamChunk]:
         """Run agent with prompt.
 
@@ -683,6 +687,8 @@ class AsyncCodyClient:
             prompt: Task description (str or Prompt).
             session_id: Optional session ID for multi-turn.
             stream: If True, return async iterator of StreamChunk.
+            include_tools: If set, only these tools are available for this run.
+            exclude_tools: If set, these tools are excluded for this run.
 
         Returns:
             RunResult if stream=False, else AsyncIterator[StreamChunk].
@@ -711,7 +717,10 @@ class AsyncCodyClient:
 
         try:
             if stream:
-                return self._stream_run(prompt, session_id)
+                return self._stream_run(
+                    prompt, session_id,
+                    include_tools=include_tools, exclude_tools=exclude_tools,
+                )
 
             # Emit MODEL_REQUEST before calling the model
             if self._events:
@@ -723,7 +732,10 @@ class AsyncCodyClient:
             runner = self.get_runner()
             # Always use session to enable multi-turn by default
             store = self.get_session_store()
-            result, sid = await runner.run_with_session(prompt, store, session_id)
+            result, sid = await runner.run_with_session(
+                prompt, store, session_id,
+                include_tools=include_tools, exclude_tools=exclude_tools,
+            )
 
             run_result = RunResult(
                 output=result.output,
@@ -802,6 +814,8 @@ class AsyncCodyClient:
         *,
         session_id: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects.
 
@@ -822,17 +836,25 @@ class AsyncCodyClient:
 
         async for event, sid in runner.run_stream_with_session(
             prompt, store, session_id, cancel_event=cancel_event,
+            include_tools=include_tools, exclude_tools=exclude_tools,
         ):
             yield _event_to_chunk(event, sid)
 
     # Alias for stream() — matches the name used in demos/docs
     run_stream = stream
 
-    async def _stream_run(self, prompt, session_id: Optional[str] = None):
+    async def _stream_run(
+        self, prompt, session_id: Optional[str] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+    ):
         """Internal streaming run (called when run(stream=True))."""
         in_thinking = False
         stream_started = False
-        async for chunk in self.stream(prompt, session_id=session_id):
+        async for chunk in self.stream(
+            prompt, session_id=session_id,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+        ):
             if self._events:
                 # Emit STREAM_START on first non-session_start chunk
                 if not stream_started and chunk.type != "session_start":

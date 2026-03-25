@@ -1512,8 +1512,8 @@ async with client:
 
 | 方法 | 说明 |
 |------|------|
-| `client.run(prompt, session_id=)` | 执行任务，返回 `RunResult` |
-| `client.stream(prompt, session_id=, cancel_event=)` | 流式执行，yield `StreamChunk`（`cancel_event` v1.10.3+） |
+| `client.run(prompt, session_id=, include_tools=, exclude_tools=)` | 执行任务，返回 `RunResult`。`include_tools` / `exclude_tools` 控制本次可用工具 |
+| `client.stream(prompt, session_id=, cancel_event=, include_tools=, exclude_tools=)` | 流式执行，yield `StreamChunk`（`cancel_event` v1.10.3+） |
 | `client.run_stream(prompt, session_id=, cancel_event=)` | `stream()` 的别名 |
 | `client.tool(name, params)` | 直接调用内置工具，返回 `ToolResult` |
 

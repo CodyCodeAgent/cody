@@ -417,7 +417,12 @@ class AgentRunner:
         """
         return resolve_model(self.config)
 
-    def _create_agent(self) -> Agent:
+    def _create_agent(
+        self,
+        *,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+    ) -> Agent:
         """Create Pydantic AI Agent with tools.
 
         Tools are registered declaratively via tools.register_tools() —
@@ -429,6 +434,10 @@ class AgentRunner:
           3. Project memory (cross-session learnings)
           4. Available skills XML (Agent Skills standard)
           5. extra_system_prompt (user-provided, appended last)
+
+        Args:
+            include_tools: If set, only register tools with these names.
+            exclude_tools: If set, skip tools with these names.
         """
         # 1. Base persona (from core/prompts.py), or custom override
         if self._system_prompt_override is not None:
@@ -469,6 +478,8 @@ class AgentRunner:
             agent,
             include_mcp=bool(self._mcp_client),
             custom_tools=self._custom_tools or None,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
         )
 
         # Dynamic system prompt: MCP tools (evaluated at each run,
@@ -499,6 +510,24 @@ class AgentRunner:
                 return "\n".join(lines)
 
         return agent  # type: ignore[return-value]
+
+    def _get_agent(
+        self,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+    ) -> Agent:
+        """Return the agent to use for a run.
+
+        If *include_tools* or *exclude_tools* is specified, a new agent is
+        created with filtered tools (one-off, not cached).  Otherwise,
+        the default agent (``self.agent``) is returned.
+        """
+        if include_tools is not None or exclude_tools is not None:
+            return self._create_agent(
+                include_tools=include_tools,
+                exclude_tools=exclude_tools,
+            )
+        return self.agent
 
     def _create_deps(self, interaction_handler=None) -> CodyDeps:
         """Create dependencies.
@@ -975,14 +1004,24 @@ class AgentRunner:
         self,
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> CodyResult:
-        """Run agent with prompt, optionally continuing from history"""
+        """Run agent with prompt, optionally continuing from history.
+
+        Args:
+            prompt: Task description.
+            message_history: Prior conversation messages.
+            include_tools: If set, only these tools are available for this run.
+            exclude_tools: If set, these tools are excluded for this run.
+        """
         self._reset_circuit_breaker()
         deps = self._create_deps()
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
+        agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
         result = await with_retry(
-            self.agent.run,  # type: ignore[call-overload]
+            agent.run,  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
             retry_config=self._retry_config(),
@@ -998,11 +1037,20 @@ class AgentRunner:
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """Run agent with streaming, yielding structured StreamEvent objects.
 
         Uses pydantic-ai's ``agent.iter()`` API for node-level control,
         which enables proactive user input injection between nodes.
+
+        Args:
+            prompt: Task description.
+            message_history: Prior conversation messages.
+            cancel_event: Set to cancel the run.
+            include_tools: If set, only these tools are available for this run.
+            exclude_tools: If set, these tools are excluded for this run.
 
         Events:
           - CompactEvent: context was auto-compacted (first event if applicable)
@@ -1055,8 +1103,10 @@ class AgentRunner:
         # Drain any stale user input from a previous run.
         self._user_input_queue.drain_all()
 
+        agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
+
         try:
-            async with self.agent.iter(  # type: ignore[call-overload]
+            async with agent.iter(  # type: ignore[call-overload]
                 pydantic_prompt, deps=deps, message_history=message_history,
                 model_settings=self._build_model_settings(),
             ) as agent_run:
@@ -1068,7 +1118,7 @@ class AgentRunner:
                     # UserPromptNode is handled automatically by iter().
                     # We only need to stream ModelRequestNode and CallToolsNode.
 
-                    if self.agent.is_model_request_node(node):
+                    if agent.is_model_request_node(node):
                         # Stream LLM response: thinking + text deltas
                         async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
                             async for event in stream:
@@ -1089,7 +1139,7 @@ class AgentRunner:
                                         if content:
                                             yield TextDeltaEvent(content=content)
 
-                    elif self.agent.is_call_tools_node(node):
+                    elif agent.is_call_tools_node(node):
                         # Inject proactive user input alongside tool results.
                         # node.user_prompt is appended after tool return parts
                         # as a UserPromptPart, so the LLM sees it on the next turn.
@@ -1250,6 +1300,8 @@ class AgentRunner:
         prompt: Prompt,
         store: SessionStore,
         session_id: Optional[str] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> tuple[CodyResult, str]:
         """Run agent with automatic session persistence.
 
@@ -1264,7 +1316,10 @@ class AgentRunner:
         if compact_result is not None:
             self._save_compaction_checkpoint(store, sid, compact_result)
 
-        result = await self.run(prompt, message_history=history)
+        result = await self.run(
+            prompt, message_history=history,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+        )
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
         store.add_message(sid, "assistant", result.output)
         return result, sid
@@ -1276,6 +1331,8 @@ class AgentRunner:
         store: SessionStore,
         session_id: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> AsyncGenerator[tuple[StreamEvent, str], None]:
         """Stream agent with automatic session persistence.
 
@@ -1303,7 +1360,10 @@ class AgentRunner:
 
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
-        async for event in self.run_stream(prompt, message_history=history, cancel_event=cancel_event):
+        async for event in self.run_stream(
+            prompt, message_history=history, cancel_event=cancel_event,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+        ):
             if isinstance(event, DoneEvent):
                 store.add_message(sid, "assistant", event.result.output)
             elif isinstance(event, CancelledEvent):

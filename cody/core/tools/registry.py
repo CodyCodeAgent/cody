@@ -56,11 +56,27 @@ SUB_AGENT_TOOLSETS = {
 }
 
 
+def _should_include(
+    func,
+    include_tools: set[str] | None,
+    exclude_tools: set[str] | None,
+) -> bool:
+    """Check whether a tool function passes the include/exclude filter."""
+    name = func.__name__
+    if include_tools is not None:
+        return name in include_tools
+    if exclude_tools is not None:
+        return name not in exclude_tools
+    return True
+
+
 def register_tools(
     agent,
     *,
     include_mcp: bool = False,
     custom_tools: list | None = None,
+    include_tools: list[str] | None = None,
+    exclude_tools: list[str] | None = None,
 ) -> None:
     """Register all core tools on an agent. Optionally include MCP tools.
 
@@ -73,15 +89,31 @@ def register_tools(
         custom_tools: Optional list of user-defined async tool functions.
             Each function must accept ``ctx: RunContext[CodyDeps]`` as
             its first parameter and return ``str``.
+        include_tools: If set, only register tools whose ``__name__`` is
+            in this list.  Mutually exclusive with *exclude_tools*.
+        exclude_tools: If set, skip tools whose ``__name__`` is in this list.
     """
+    inc = set(include_tools) if include_tools is not None else None
+    exc = set(exclude_tools) if exclude_tools is not None else None
     for tool_func in CORE_TOOLS:
-        agent.tool(retries=2)(_with_model_retry(tool_func))
+        if _should_include(tool_func, inc, exc):
+            agent.tool(retries=2)(_with_model_retry(tool_func))
     if include_mcp:
         for tool_func in MCP_TOOLS:
-            agent.tool(retries=2)(_with_model_retry(tool_func))
+            if _should_include(tool_func, inc, exc):
+                agent.tool(retries=2)(_with_model_retry(tool_func))
     if custom_tools:
         for tool_func in custom_tools:
-            agent.tool(retries=2)(_with_model_retry(tool_func))
+            if _should_include(tool_func, inc, exc):
+                agent.tool(retries=2)(_with_model_retry(tool_func))
+
+
+def list_tool_names(include_mcp: bool = False) -> list[str]:
+    """Return names of all available tools (for discovery / validation)."""
+    names = [f.__name__ for f in CORE_TOOLS]
+    if include_mcp:
+        names.extend(f.__name__ for f in MCP_TOOLS)
+    return names
 
 
 def register_sub_agent_tools(agent, agent_type: str) -> None:
