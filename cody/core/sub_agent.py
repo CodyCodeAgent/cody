@@ -56,6 +56,8 @@ class SubAgentResult:
     error: Optional[str] = None
     created_at: str = ""
     completed_at: Optional[str] = None
+    task: str = ""
+    agent_type: str = "generic"
 
 
 # System prompts per agent type
@@ -229,6 +231,8 @@ class SubAgentManager:
             agent_id=agent_id,
             status=AgentStatus.PENDING,
             created_at=now,
+            task=task,
+            agent_type=atype.value,
         )
 
         effective_timeout = timeout or self.default_timeout
@@ -285,6 +289,51 @@ class SubAgentManager:
     def list_agents(self) -> list[SubAgentResult]:
         """List all agents (active and completed)."""
         return list(self._agents.values())
+
+    async def resume(
+        self,
+        agent_id: str,
+        timeout: Optional[float] = None,
+    ) -> str:
+        """Resume a completed/failed/timed-out sub-agent.
+
+        Re-spawns a new agent with the original task plus the previous
+        output/error as context, so the model can continue where it left off.
+
+        Returns the new agent_id.
+        """
+        prev = self._agents.get(agent_id)
+        if prev is None:
+            raise ValueError(f"Unknown agent: {agent_id}")
+        if prev.status in (AgentStatus.PENDING, AgentStatus.RUNNING):
+            raise RuntimeError(
+                f"Agent {agent_id} is still {prev.status.value}. "
+                "Wait for it to finish or kill it first."
+            )
+
+        # Build resume prompt with previous context
+        parts = [
+            "## Resumed Task\n",
+            "You are continuing a previous sub-agent's work. "
+            "Here is the original task and what happened:\n",
+            f"### Original Task\n{prev.task}\n",
+        ]
+        if prev.output:
+            parts.append(f"### Previous Output\n{prev.output}\n")
+        if prev.error:
+            parts.append(f"### Previous Error\n{prev.error}\n")
+        parts.append(
+            "### Instructions\n"
+            "Continue from where the previous agent left off. "
+            "Do not repeat work that was already completed successfully."
+        )
+        resume_task = "\n".join(parts)
+
+        return await self.spawn(
+            task=resume_task,
+            agent_type=prev.agent_type,
+            timeout=timeout,
+        )
 
     # ── Internal ─────────────────────────────────────────────────────────────
 

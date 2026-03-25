@@ -15,7 +15,7 @@ from .file_ops import read_file, write_file, edit_file, list_directory
 from .search import grep, glob, patch, search_files
 from .command import exec_command
 from .skills import list_skills, read_skill
-from .agents import spawn_agent, get_agent_status, kill_agent
+from .agents import spawn_agent, get_agent_status, kill_agent, resume_agent
 from .mcp import mcp_list_tools, mcp_call
 from .web import webfetch, websearch
 from .lsp import lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
@@ -28,7 +28,7 @@ FILE_TOOLS = [read_file, write_file, edit_file, list_directory]
 SEARCH_TOOLS = [grep, glob, patch, search_files]
 COMMAND_TOOLS = [exec_command]
 SKILL_TOOLS = [list_skills, read_skill]
-SUB_AGENT_TOOLS = [spawn_agent, get_agent_status, kill_agent]
+SUB_AGENT_TOOLS = [spawn_agent, get_agent_status, kill_agent, resume_agent]
 MCP_TOOLS = [mcp_call, mcp_list_tools]
 WEB_TOOLS = [webfetch, websearch]
 LSP_TOOLS = [lsp_diagnostics, lsp_definition, lsp_references, lsp_hover]

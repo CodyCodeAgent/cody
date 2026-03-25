@@ -85,6 +85,34 @@ async def get_agent_status(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
     return "\n".join(lines)
 
 
+async def resume_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
+    """Resume a completed/failed/timed-out sub-agent.
+
+    Re-spawns a new agent with the original task plus previous output/error
+    as context, so the model can continue where the previous agent left off.
+
+    Use this when a sub-agent timed out, failed with a recoverable error,
+    or completed partially and you need it to continue.
+
+    Args:
+        agent_id: ID of the sub-agent to resume
+    """
+    await _check_permission(ctx, "resume_agent")
+    manager = ctx.deps.sub_agent_manager
+    if manager is None:
+        return "[ERROR] Sub-agent system not available"
+
+    try:
+        new_id = await manager.resume(agent_id)
+        prev = manager.get_status(agent_id)
+        return (
+            f"Resumed agent {agent_id} → new agent {new_id}\n"
+            f"Previous status: {prev.status if prev else 'unknown'}"
+        )
+    except (ValueError, RuntimeError) as e:
+        return f"[ERROR] {e}"
+
+
 async def kill_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
     """Kill a running sub-agent
 

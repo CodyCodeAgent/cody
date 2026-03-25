@@ -36,10 +36,10 @@
 - `get_agent_status()` / `kill_agent()` 提供了子 Agent 生命周期控制
 
 **差距：**
-- opencode 的子 session 可以**恢复**（通过 `task_id`），Cody 的子 Agent 是一次性的
+- ~~opencode 的子 session 可以**恢复**（通过 `task_id`），Cody 的子 Agent 是一次性的~~ ✅ **已实现**：`SubAgentManager.resume(agent_id)` 支持恢复已完成/失败/超时的子 Agent，自动构建包含原始任务和前次输出/错误的上下文 prompt。新增 `resume_agent` 工具函数。
 - opencode 子 Agent 权限可**独立配置**（deny todowrite 避免与父冲突），Cody 的子 Agent 继承父配置
 
-**建议：** 子 Agent 可恢复能力对长任务很有价值，考虑支持。子 Agent 独立权限配置也应增加。
+**建议：** ~~子 Agent 可恢复能力对长任务很有价值，考虑支持。~~ 子 Agent 独立权限配置也应增加。
 
 ---
 
@@ -292,7 +292,7 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 | 11 | ✅ **Step hook / 中间件** | 高级消费者需要 | 高 |
 | 12 | ✅ **存储层抽象** | serverless 部署需要 | 高 |
 | 13 | **子 Agent 独立模型/权限** | 精细化控制 | 中 |
-| 14 | **子 Agent 可恢复** | 长任务场景 | 中 |
+| 14 | ✅ **子 Agent 可恢复** | 长任务场景 | 中 |
 | 15 | **StreamChunk 类型重构** | 类型安全 | 中 |
 
 ---
