@@ -48,7 +48,13 @@ from .types import (
 )
 
 
-from ..core.deps import UNSET
+from ..core.deps import UNSET, _UnsetType
+from ..core.storage import (
+    AuditLoggerProtocol,
+    FileHistoryProtocol,
+    MemoryStoreProtocol,
+    SessionStoreProtocol,
+)
 
 
 # ── Builder Pattern ─────────────────────────────────────────────────────────
@@ -92,10 +98,10 @@ class CodyBuilder:
     _extra_system_prompt: str | None = None
     _before_tool_hooks: list = field(default_factory=list)
     _after_tool_hooks: list = field(default_factory=list)
-    _session_store: object | None = UNSET
-    _audit_logger: object | None = UNSET
-    _file_history: object | None = UNSET
-    _memory_store: object | None = UNSET
+    _session_store: SessionStoreProtocol | _UnsetType | None = UNSET
+    _audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET
+    _file_history: FileHistoryProtocol | _UnsetType | None = UNSET
+    _memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET
     _stateless: bool = False
 
     def workdir(self, path: str) -> "CodyBuilder":
@@ -518,10 +524,10 @@ class AsyncCodyClient:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
-        session_store: object | None = UNSET,
-        audit_logger: object | None = UNSET,
-        file_history: object | None = UNSET,
-        memory_store: object | None = UNSET,
+        session_store: SessionStoreProtocol | _UnsetType | None = UNSET,
+        audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET,
+        file_history: FileHistoryProtocol | _UnsetType | None = UNSET,
+        memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET,
     ):
         if config:
             self._config = config
@@ -1144,15 +1150,18 @@ class AsyncCodyClient:
         effective_workdir = Path(workdir) if workdir else self.workdir
         cfg = self._get_config()
         sm = SkillManager(config=cfg, workdir=effective_workdir)
-        runner = self.get_runner()
+        # Build deps directly from client state — no need to create an
+        # AgentRunner (which requires model_base_url) just to call a tool.
+        fh = self._injected_file_history if not isinstance(self._injected_file_history, _UnsetType) else None
+        al = self._injected_audit_logger if not isinstance(self._injected_audit_logger, _UnsetType) else None
         deps = CodyDeps(
             config=cfg,
             workdir=effective_workdir,
             skill_manager=sm,
             allowed_roots=[effective_workdir],
             strict_read_boundary=cfg.security.strict_read_boundary,
-            file_history=runner._file_history if hasattr(runner, '_file_history') else None,
-            audit_logger=runner._audit_logger if hasattr(runner, '_audit_logger') else None,
+            file_history=fh,
+            audit_logger=al,
         )
 
         start_time = time.time()
