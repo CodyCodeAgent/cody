@@ -63,7 +63,7 @@
 
 3. ~~**工具输出渐进裁剪** — opencode 在每次循环结束后裁剪旧工具输出（保护最近 40K），让 context 利用更高效。Cody 只有整体 compaction，没有针对工具输出的精细裁剪。~~ ✅ **已完成** — 实现了 Selective Pruning（`prune_tool_outputs()`），保护最近 40K tokens，最低节省 20K tokens，旧工具输出替换为 `[output pruned at <ts>]` 标记。参数可通过 `CompactionConfig` 配置。
 
-**建议：** 工具输出截断（单条工具返回值的长度限制）仍需实现，对 SDK 用户来说是防止意外成本爆炸的重要保护。
+~~**建议：** 工具输出截断（单条工具返回值的长度限制）仍需实现，对 SDK 用户来说是防止意外成本爆炸的重要保护。~~ ✅ 已完成
 
 ---
 
@@ -235,13 +235,15 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 
 ~~`SessionStore`、`AuditLogger`、`FileHistory` 都是 SQLite 具体实现，无抽象接口。在 serverless/容器环境中，SQLite 可能不可用。消费者无法用 PostgreSQL/DynamoDB 替换。~~
 
-✅ **已实现**：新增 `core/storage.py` 定义 `SessionStoreProtocol`、`AuditLoggerProtocol`、`FileHistoryProtocol` 三个 `runtime_checkable` Protocol 接口。SDK Builder 新增 `.session_store()`、`.audit_logger()`、`.file_history()` 方法注入自定义实现。`AgentRunner` 接受 `audit_logger` 和 `file_history` 参数。不注入时自动使用默认 SQLite 实现，完全向后兼容。
+✅ **已实现**：新增 `core/storage.py` 定义 `SessionStoreProtocol`、`AuditLoggerProtocol`、`FileHistoryProtocol`、`MemoryStoreProtocol` 四个 `runtime_checkable` Protocol 接口。SDK Builder 新增 `.session_store()`、`.audit_logger()`、`.file_history()`、`.memory_store()` 方法注入自定义实现。`AgentRunner` 接受 `audit_logger`、`file_history`、`memory_store` 参数。不注入时自动使用默认 SQLite 实现，完全向后兼容。同时提供 Null 实现（`NullSessionStore`、`NullAuditLogger`、`NullFileHistory`、`NullMemoryStore`）支持 stateless 模式。
 
-#### 8. 无工具输出截断
+#### ~~8. 无工具输出截断~~ ✅ 已完成
 
-一个 `grep` 返回 10 万行结果会直接撑满上下文窗口，导致后续调用失败或成本暴涨。
+~~一个 `grep` 返回 10 万行结果会直接撑满上下文窗口，导致后续调用失败或成本暴涨。~~
 
-**需要：** 自动截断 + 超长内容写入文件（参考 opencode 的 `Truncate.output()`）。
+~~**需要：** 自动截断 + 超长内容写入文件（参考 opencode 的 `Truncate.output()`）。~~
+
+✅ **已实现**：`core/tools/truncate.py` + `Config.truncation`（TruncationConfig）。在 `_with_model_retry` 包装层统一截断，所有注册工具自动生效。超长输出保存到临时文件，模型可通过 `read_file()` 按需读取。
 
 ### P2：改进项
 
@@ -251,17 +253,23 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 
 ✅ **已实现**：`StreamChunk` 重构为继承体系，新增 12 个类型化子类（`TextDeltaChunk`、`ToolCallChunk`、`DoneChunk` 等）。消费者可用 `isinstance(chunk, TextDeltaChunk)` 进行类型安全匹配。基类 `StreamChunk` 保留所有字段，`StreamChunk(type=...)` 直接构造和 `chunk.type == "..."` 完全向后兼容。
 
-#### 10. Metrics 无界增长
+#### ~~10. Metrics 无界增长~~ ✅ 已完成
 
-`MetricsCollector._runs` 是无界列表。长时间运行的服务会内存泄漏。
+~~`MetricsCollector._runs` 是无界列表。长时间运行的服务会内存泄漏。~~
 
-#### 11. 无 stateless 模式
+✅ **已实现**：`MetricsCollector` 新增 `max_runs` 参数（默认 1000），`_runs` 列表超限时自动淘汰最旧记录。
 
-每次 `run()` 都创建 session 并持久化。对"发一个 prompt 拿结果就走"的场景是不必要的开销。
+#### ~~11. 无 stateless 模式~~ ✅ 已完成
 
-#### 12. `stream()` 不触发 SDK 事件
+~~每次 `run()` 都创建 session 并持久化。对"发一个 prompt 拿结果就走"的场景是不必要的开销。~~
 
-直接调 `stream()` 不会触发 `STREAM_START`/`TOOL_CALL` 等事件，只有 `run(stream=True)` 才会。这是 API 不一致。
+✅ **已实现**：Null Object 模式 — `NullSessionStore`、`NullAuditLogger`、`NullFileHistory`、`NullMemoryStore` 四个无状态实现，满足各 Protocol 接口。SDK Builder 新增 `.stateless()` 方法，自动将所有存储切换为 Null 实现。`AgentRunner` 新增 `memory_store` 参数支持注入。
+
+#### ~~12. `stream()` 不触发 SDK 事件~~ ✅ 已完成
+
+~~直接调 `stream()` 不会触发 `STREAM_START`/`TOOL_CALL` 等事件，只有 `run(stream=True)` 才会。这是 API 不一致。~~
+
+✅ **已实现**：将事件分发逻辑从 `_stream_run()` 移入 `stream()`，两者现在触发完全一致的 SDK 事件。`_stream_run()` 简化为 `stream()` 的薄包装。
 
 ---
 
@@ -280,22 +288,22 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 
 ### 尽快做（SDK 作为框架的核心能力）
 
-| # | 项目 | 理由 | 难度 |
-|---|------|------|------|
-| 7 | **自定义工具注册 API** | 框架的核心价值——可扩展 | 中 |
-| 8 | **System prompt 自定义** | 业务方必须能定制 Agent 行为 | 中 |
-| 9 | **Per-run 工具选择** | 不同场景需要不同工具集 | 中 |
-| 10 | **非流式 `run()` 可取消** | 生产环境必备 | 低 |
+| # | 项目 | 理由 | 难度 | 状态 |
+|---|------|------|------|------|
+| 7 | ~~**自定义工具注册 API**~~ | ~~框架的核心价值——可扩展~~ | ~~中~~ | ✅ 已完成 |
+| 8 | ~~**System prompt 自定义**~~ | ~~业务方必须能定制 Agent 行为~~ | ~~中~~ | ✅ 已完成 |
+| 9 | ~~**Per-run 工具选择**~~ | ~~不同场景需要不同工具集~~ | ~~中~~ | ✅ 已完成 |
+| 10 | ~~**非流式 `run()` 可取消**~~ | ~~生产环境必备~~ | ~~低~~ | ✅ 已完成 |
 
 ### 后续做（SDK 成熟度）
 
-| # | 项目 | 理由 | 难度 |
-|---|------|------|------|
-| 11 | ✅ **Step hook / 中间件** | 高级消费者需要 | 高 |
-| 12 | ✅ **存储层抽象** | serverless 部署需要 | 高 |
-| 13 | **子 Agent 独立模型/权限** | 精细化控制 | 中 |
-| 14 | ✅ **子 Agent 可恢复** | 长任务场景 | 中 |
-| 15 | ✅ **StreamChunk 类型重构** | 类型安全 | 中 |
+| # | 项目 | 理由 | 难度 | 状态 |
+|---|------|------|------|------|
+| 11 | ~~**Step hook / 中间件**~~ | ~~高级消费者需要~~ | ~~高~~ | ✅ 已完成 |
+| 12 | ~~**存储层抽象**~~ | ~~serverless 部署需要~~ | ~~高~~ | ✅ 已完成 |
+| 13 | **子 Agent 独立模型/权限** | 精细化控制 | 中 | 未开始 |
+| 14 | ~~**子 Agent 可恢复**~~ | ~~长任务场景~~ | ~~中~~ | ✅ 已完成 |
+| 15 | ~~**StreamChunk 类型重构**~~ | ~~类型安全~~ | ~~中~~ | ✅ 已完成 |
 
 ---
 
@@ -306,11 +314,11 @@ result = await client.run("Fix bug", exclude_tools=["exec_command"])
 但从 **"让 Agent 更稳定、更有效、结果更可用"** 的目标看，最大的短板是：
 
 1. ~~**稳定性：** 缺少 LLM API 重试 — 一个临时错误就全盘失败~~ ✅ 已完成（`core/retry.py`，指数退避）
-2. **有效性：** 缺少工具输出截断 — 单条工具返回值可能撑爆上下文（~~结构化 Compaction~~ ✅ 已完成，~~工具输出渐进裁剪~~ ✅ 已完成）
+2. ~~**有效性：** 缺少工具输出截断 — 单条工具返回值可能撑爆上下文~~ ✅ 已完成（工具输出截断、~~结构化 Compaction~~ ✅ 已完成、~~工具输出渐进裁剪~~ ✅ 已完成）
 3. ~~**结果质量：** 缺少模型特定 Prompt — 同一套指令对不同模型效果差异大~~ **已决定不做**（框架不应硬编码模型特定 prompt）
-4. **可嵌入性：** 缺少自定义工具和 Prompt — 业务方无法让 Agent 适配自己的场景
+4. ~~**可嵌入性：** 缺少自定义工具和 Prompt — 业务方无法让 Agent 适配自己的场景~~ ✅ 已完成（自定义工具注册、System prompt 自定义、Per-run 工具选择）
 
-**已完成的改进：** 结构化 Compaction 模板、Selective Pruning（工具输出渐进裁剪）、token-based 消息保留、百分比触发阈值、`max_summary_tokens` bug 修复、LLM API 重试、工具输出截断、`max_steps` 熔断、small model 配置。**P1 优先级全部完成。**
+**已完成的改进：** 结构化 Compaction 模板、Selective Pruning（工具输出渐进裁剪）、token-based 消息保留、百分比触发阈值、`max_summary_tokens` bug 修复、LLM API 重试、工具输出截断、`max_steps` 熔断、small model 配置、自定义工具注册、System prompt 自定义、Per-run 工具选择、`run()` 可取消、Step hook/中间件、存储层抽象（含 MemoryStoreProtocol）、子 Agent 可恢复、StreamChunk 类型重构、Metrics 有界增长、Stateless 模式、`stream()` 事件一致性。**P0/P1/P2 优先级全部完成，仅剩子 Agent 独立模型/权限（#13）未实现。**
 
 ---
 
