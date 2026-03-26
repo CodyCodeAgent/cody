@@ -434,7 +434,7 @@ class AgentRunner:
             try:
                 self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
             except Exception:
-                logger.debug("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
+                logger.warning("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
         else:
             self._memory_store = memory_store
 
