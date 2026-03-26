@@ -45,8 +45,12 @@ _NON_RETRYABLE_KEYWORDS = (
 
 
 @dataclass
-class RetryConfig:
-    """Configuration for LLM API retry behaviour."""
+class RetryParams:
+    """Runtime parameters for LLM API retry behaviour.
+
+    Separate from ``config.RetryConfig`` (Pydantic model for YAML/JSON config).
+    ``AgentRunner._retry_config()`` converts one to the other.
+    """
     max_retries: int = 3
     base_delay: float = 2.0
     max_delay: float = 30.0
@@ -78,7 +82,7 @@ def is_retryable(exc: Exception) -> bool:
 async def with_retry(
     fn,
     *args,
-    retry_config: RetryConfig | None = None,
+    retry_config: RetryParams | None = None,
     **kwargs,
 ):
     """Call *fn* with exponential backoff on transient LLM errors.
@@ -86,7 +90,7 @@ async def with_retry(
     Only retries when :func:`is_retryable` returns ``True``.
     Raises the original exception immediately for non-retryable errors.
     """
-    cfg = retry_config or RetryConfig()
+    cfg = retry_config or RetryParams()
     if not cfg.enabled:
         return await fn(*args, **kwargs)
 
@@ -110,7 +114,7 @@ async def with_retry(
 def with_retry_sync(
     fn,
     *args,
-    retry_config: RetryConfig | None = None,
+    retry_config: RetryParams | None = None,
     **kwargs,
 ):
     """Synchronous version of :func:`with_retry`.
@@ -119,7 +123,7 @@ def with_retry_sync(
     """
     import time
 
-    cfg = retry_config or RetryConfig()
+    cfg = retry_config or RetryParams()
     if not cfg.enabled:
         return fn(*args, **kwargs)
 

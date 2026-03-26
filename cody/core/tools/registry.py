@@ -108,11 +108,16 @@ def register_tools(
                 agent.tool(retries=2)(_with_model_retry(tool_func))
 
 
-def list_tool_names(include_mcp: bool = False) -> list[str]:
+def list_tool_names(
+    include_mcp: bool = False,
+    custom_tools: list | None = None,
+) -> list[str]:
     """Return names of all available tools (for discovery / validation)."""
     names = [f.__name__ for f in CORE_TOOLS]
     if include_mcp:
         names.extend(f.__name__ for f in MCP_TOOLS)
+    if custom_tools:
+        names.extend(f.__name__ for f in custom_tools)
     return names
 
 

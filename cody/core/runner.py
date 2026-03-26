@@ -38,7 +38,7 @@ from pydantic_ai.messages import (
 from pydantic_graph import End
 
 from .audit import AuditLogger
-from .retry import RetryConfig as _RetryDataclass, with_retry, with_retry_sync
+from .retry import RetryParams as _RetryDataclass, with_retry, with_retry_sync
 from .config import Config
 from .context import (
     CompactResult,
@@ -436,6 +436,11 @@ class AgentRunner:
         # Create agent
         self.agent = self._create_agent()
 
+    @property
+    def memory_store(self) -> Optional["MemoryStoreProtocol"]:
+        """Public access to the project memory store (may be ``None``)."""
+        return self._memory_store
+
     def _resolve_model(self):
         """Resolve model to a Pydantic AI model instance.
 
@@ -672,8 +677,8 @@ class AgentRunner:
 
     # ── Context compaction ────────────────────────────────────────────────────
 
+    @staticmethod
     def _history_to_dicts(
-        self,
         history: list[ModelMessage],
     ) -> list[dict]:
         """Convert ModelMessage list → dict list for compaction/pruning."""
@@ -938,18 +943,38 @@ class AgentRunner:
             raise CircuitBreakerError("loop_detected", s.total_tokens, s.estimated_cost)
 
     def _is_loop_detected(self) -> bool:
-        """Check if recent tool results indicate a loop."""
+        """Check if recent tool results indicate a loop.
+
+        Detects two patterns:
+        1. Repetition: all N results are similar to each other (A-A-A-A)
+        2. Alternating: consecutive pairs repeat (A-B-A-B with N >= 4)
+        """
         n = self.config.circuit_breaker.loop_detect_turns
         if len(self._cb.recent_results) < n:
             return False
         recent = self._cb.recent_results[-n:]
         threshold = self.config.circuit_breaker.loop_similarity_threshold
-        # All recent results must be similar to each other
+
+        # Pattern 1: all similar to first (A-A-A-A)
         first = recent[0]
-        return all(
+        if all(
             SequenceMatcher(None, first, r).ratio() >= threshold
             for r in recent[1:]
-        )
+        ):
+            return True
+
+        # Pattern 2: alternating loop (A-B-A-B) — check consecutive pairs repeat
+        if n >= 4:
+            period = 2
+            is_alternating = True
+            for i in range(period, n):
+                if SequenceMatcher(None, recent[i], recent[i - period]).ratio() < threshold:
+                    is_alternating = False
+                    break
+            if is_alternating:
+                return True
+
+        return False
 
     # ── Interaction (human-in-the-loop) ──────────────────────────────────
 
@@ -1068,6 +1093,10 @@ class AgentRunner:
             )
             for t in pending:
                 t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
             if cancel_task in done:
                 return CodyResult(output="(cancelled)")
             result = run_task.result()

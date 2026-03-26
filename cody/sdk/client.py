@@ -92,9 +92,9 @@ class CodyBuilder:
     _extra_system_prompt: str | None = None
     _before_tool_hooks: list = field(default_factory=list)
     _after_tool_hooks: list = field(default_factory=list)
-    _session_store: object | None = None
-    _audit_logger: object | None = None
-    _file_history: object | None = None
+    _session_store: object | None = UNSET
+    _audit_logger: object | None = UNSET
+    _file_history: object | None = UNSET
     _memory_store: object | None = UNSET
     _stateless: bool = False
 
@@ -441,11 +441,11 @@ class CodyBuilder:
                 NullSessionStore, NullAuditLogger,
                 NullFileHistory, NullMemoryStore,
             )
-            if session_store is None:
+            if session_store is UNSET:
                 session_store = NullSessionStore()
-            if audit_logger is None:
+            if audit_logger is UNSET:
                 audit_logger = NullAuditLogger()
-            if file_history is None:
+            if file_history is UNSET:
                 file_history = NullFileHistory()
             if memory_store is UNSET:
                 memory_store = NullMemoryStore()
@@ -671,6 +671,9 @@ class AsyncCodyClient:
         """
         if self._runner is None:
             from ..core.runner import AgentRunner
+            # Convert UNSET → None for runner (runner uses None = "use default")
+            al = None if self._injected_audit_logger is UNSET else self._injected_audit_logger
+            fh = None if self._injected_file_history is UNSET else self._injected_file_history
             self._runner = AgentRunner(
                 config=self._get_config(),
                 workdir=self.workdir,
@@ -679,8 +682,8 @@ class AsyncCodyClient:
                 extra_system_prompt=self._extra_system_prompt,
                 before_tool_hooks=self._before_tool_hooks or None,
                 after_tool_hooks=self._after_tool_hooks or None,
-                audit_logger=self._injected_audit_logger,
-                file_history=self._injected_file_history,
+                audit_logger=al,
+                file_history=fh,
                 memory_store=self._injected_memory_store,
             )
         return self._runner
@@ -695,9 +698,12 @@ class AsyncCodyClient:
         directly (must satisfy ``SessionStoreProtocol``).
         """
         if self._session_store is None:
-            if self._injected_session_store is not None:
-                self._session_store = self._injected_session_store
+            injected = self._injected_session_store
+            if injected is not UNSET and injected is not None:
+                # Custom store injected via builder
+                self._session_store = injected
             else:
+                # UNSET or None — use default SQLite store
                 from ..core.session import SessionStore
                 self._session_store = SessionStore(db_path=self._db_path)
         return self._session_store
@@ -1530,7 +1536,7 @@ class AsyncCodyClient:
         """
         from ..core.memory import MemoryEntry
         runner = self.get_runner()
-        if not runner._memory_store:
+        if not runner.memory_store:
             return
         entry = MemoryEntry(
             content=content,
@@ -1539,14 +1545,14 @@ class AsyncCodyClient:
             confidence=confidence,
             tags=tags or [],
         )
-        await runner._memory_store.add_entries(category, [entry])
+        await runner.memory_store.add_entries(category, [entry])
 
     async def get_memory(self) -> dict[str, list[dict]]:
         """Get all project memory entries grouped by category."""
         runner = self.get_runner()
-        if not runner._memory_store:
+        if not runner.memory_store:
             return {}
-        all_entries = runner._memory_store.get_all_entries()
+        all_entries = runner.memory_store.get_all_entries()
         return {
             cat: [
                 {
@@ -1564,8 +1570,8 @@ class AsyncCodyClient:
     async def clear_memory(self) -> None:
         """Clear all project memory."""
         runner = self.get_runner()
-        if runner._memory_store:
-            runner._memory_store.clear()
+        if runner.memory_store:
+            runner.memory_store.clear()
 
     # ── Event Methods ────────────────────────────────────────────────────
 

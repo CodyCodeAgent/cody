@@ -6,7 +6,7 @@ import pytest
 
 from cody.core.config import RetryConfig as RetryConfigPydantic
 from cody.core.retry import (
-    RetryConfig,
+    RetryParams as RetryConfig,
     is_retryable,
     with_retry,
     with_retry_sync,

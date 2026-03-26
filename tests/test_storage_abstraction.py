@@ -176,15 +176,16 @@ class TestBuilderInjection:
             assert kwargs["audit_logger"] is mock_logger
             assert kwargs["file_history"] is mock_history
 
-    def test_builder_passes_none_when_not_set(self):
+    def test_builder_passes_unset_when_not_set(self):
+        from cody.core.deps import UNSET
         from cody.sdk.client import Cody, AsyncCodyClient
 
         with patch.object(AsyncCodyClient, "__init__", return_value=None) as mock_init:
             Cody().build()
             _, kwargs = mock_init.call_args
-            assert kwargs["session_store"] is None
-            assert kwargs["audit_logger"] is None
-            assert kwargs["file_history"] is None
+            assert kwargs["session_store"] is UNSET
+            assert kwargs["audit_logger"] is UNSET
+            assert kwargs["file_history"] is UNSET
 
 
 # ── Client uses injected session store ──────────────────────────────────────
