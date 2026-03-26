@@ -19,10 +19,7 @@ async def webfetch(ctx: RunContext['CodyDeps'], url: str) -> str:
     if not url.startswith(("http://", "https://")):
         return "[ERROR] URL must start with http:// or https://"
 
-    try:
-        return await _webfetch(url)
-    except Exception as e:
-        return f"[ERROR] Failed to fetch {url}: {e}"
+    return await _webfetch(url)
 
 
 async def websearch(ctx: RunContext['CodyDeps'], query: str) -> str:
@@ -33,7 +30,4 @@ async def websearch(ctx: RunContext['CodyDeps'], query: str) -> str:
     """
     from ..web import websearch as _websearch
 
-    try:
-        return await _websearch(query)
-    except Exception as e:
-        return f"[ERROR] Web search failed: {e}"
+    return await _websearch(query)

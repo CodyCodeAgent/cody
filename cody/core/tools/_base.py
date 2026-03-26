@@ -200,6 +200,16 @@ def _with_model_retry(func):
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s failed in %.3fs: %s", tool_name, elapsed, e)
             raise ModelRetry(str(e)) from e
+        except Exception as e:
+            # Catch-all for unhandled tool errors — return a formatted error
+            # string to the model instead of crashing the agent run.
+            # Individual tools no longer need their own try/except wrappers.
+            elapsed = time.perf_counter() - start
+            _tool_logger.warning(
+                "tool.%s raised %s in %.3fs: %s",
+                tool_name, type(e).__name__, elapsed, e,
+            )
+            return f"[ERROR] {tool_name} failed: {e}"
 
     return wrapper
 

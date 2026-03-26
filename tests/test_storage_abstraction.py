@@ -85,6 +85,8 @@ class TestCustomImplementation:
             def list_changes(self, limit=20): return []
             def can_undo(self): return False
             def can_redo(self): return False
+            @property
+            def redo_count(self): return 0
             def close(self): pass
 
         assert isinstance(MyFileHistory(), FileHistoryProtocol)

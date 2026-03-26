@@ -216,8 +216,9 @@ class TestResumeAgentTool:
         ctx.deps.sub_agent_manager = SubAgentManager(
             config=Config(), workdir=MagicMock()
         )
-        result = await resume_agent(ctx, "nonexistent")
-        assert "[ERROR]" in result
+        # resume_agent now lets ValueError propagate (caught by wrapper in production).
+        with pytest.raises(ValueError, match="Unknown agent"):
+            await resume_agent(ctx, "nonexistent")
 
     @pytest.mark.asyncio
     async def test_resume_tool_no_manager(self):

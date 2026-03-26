@@ -27,6 +27,7 @@ from pydantic_ai import Agent
 
 from .config import Config
 from .model_resolver import resolve_model
+from .storage import AuditLoggerProtocol, FileHistoryProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +171,8 @@ class SubAgentManager:
         workdir: Path,
         max_concurrent: int = MAX_CONCURRENT_AGENTS,
         default_timeout: float = DEFAULT_AGENT_TIMEOUT,
-        audit_logger: object | None = None,
-        file_history: object | None = None,
+        audit_logger: AuditLoggerProtocol | None = None,
+        file_history: FileHistoryProtocol | None = None,
     ):
         self.config = config
         self.workdir = workdir

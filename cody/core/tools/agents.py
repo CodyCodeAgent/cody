@@ -50,11 +50,8 @@ async def spawn_agent(
     if manager is None:
         return "[ERROR] Sub-agent system not available"
 
-    try:
-        agent_id = await manager.spawn(task, agent_type)
-        return f"Sub-agent spawned: {agent_id} (type={agent_type})"
-    except RuntimeError as e:
-        return f"[ERROR] {e}"
+    agent_id = await manager.spawn(task, agent_type)
+    return f"Sub-agent spawned: {agent_id} (type={agent_type})"
 
 
 async def get_agent_status(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
@@ -102,15 +99,12 @@ async def resume_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:
     if manager is None:
         return "[ERROR] Sub-agent system not available"
 
-    try:
-        new_id = await manager.resume(agent_id)
-        prev = manager.get_status(agent_id)
-        return (
-            f"Resumed agent {agent_id} → new agent {new_id}\n"
-            f"Previous status: {prev.status if prev else 'unknown'}"
-        )
-    except (ValueError, RuntimeError) as e:
-        return f"[ERROR] {e}"
+    new_id = await manager.resume(agent_id)
+    prev = manager.get_status(agent_id)
+    return (
+        f"Resumed agent {agent_id} → new agent {new_id}\n"
+        f"Previous status: {prev.status if prev else 'unknown'}"
+    )
 
 
 async def kill_agent(ctx: RunContext['CodyDeps'], agent_id: str) -> str:

@@ -118,6 +118,9 @@ class FileHistoryProtocol(Protocol):
 
     def can_redo(self) -> bool: ...
 
+    @property
+    def redo_count(self) -> int: ...
+
     def close(self) -> None: ...
 
 
@@ -240,6 +243,10 @@ class NullFileHistory:
 
     def can_redo(self):
         return False
+
+    @property
+    def redo_count(self) -> int:
+        return 0
 
     def close(self) -> None:
         pass

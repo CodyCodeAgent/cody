@@ -47,7 +47,7 @@ from .context import (
     estimate_tokens,
     prune_tool_outputs,
 )
-from .deps import CodyDeps, UNSET
+from .deps import CodyDeps, UNSET, _UnsetType
 from .errors import CircuitBreakerError, InteractionTimeoutError
 from .file_history import FileHistory
 from .interaction import InteractionRequest, InteractionResponse
@@ -131,12 +131,7 @@ class CodyResult:
                     if part.part_kind == "thinking" and part.content:
                         thinking_parts.append(part.content)
                     elif part.part_kind == "tool-call":
-                        args = part.args if isinstance(part.args, dict) else {}
-                        if isinstance(part.args, str):
-                            try:
-                                args = json.loads(part.args)
-                            except (json.JSONDecodeError, TypeError):
-                                args = {"raw": part.args}
+                        args = _parse_tool_args(part.args)
                         trace = ToolTrace(
                             tool_name=part.tool_name,
                             args=args,
@@ -279,12 +274,24 @@ class UserInputReceivedEvent:
 StreamEvent = Union[
     SessionStartEvent, PruneEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
-    CancelledEvent, CircuitBreakerEvent, InteractionRequestEvent,
+    CancelledEvent, CircuitBreakerEvent, RetryEvent, InteractionRequestEvent,
     UserInputReceivedEvent,
 ]
 
 
 # ── Metadata extraction helpers ──────────────────────────────────────────
+
+def _parse_tool_args(raw_args) -> dict[str, Any]:
+    """Parse tool call args from pydantic-ai (may be dict or JSON string)."""
+    if isinstance(raw_args, dict):
+        return raw_args
+    if isinstance(raw_args, str):
+        try:
+            return json.loads(raw_args)
+        except (json.JSONDecodeError, TypeError):
+            return {"raw": raw_args}
+    return {}
+
 
 _CONFIDENCE_RE = re.compile(r"<confidence>\s*([\d.]+)\s*</confidence>")
 
@@ -370,9 +377,9 @@ class AgentRunner:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
-        audit_logger: AuditLoggerProtocol | None = UNSET,
-        file_history: FileHistoryProtocol | None = UNSET,
-        memory_store: MemoryStoreProtocol | None = UNSET,
+        audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET,
+        file_history: FileHistoryProtocol | _UnsetType | None = UNSET,
+        memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET,
     ):
         self.workdir = workdir
         self.config = config
@@ -387,13 +394,13 @@ class AgentRunner:
             self._mcp_client = MCPClient(self.config.mcp)
 
         # Audit logger (injected or default SQLite)
-        if audit_logger is UNSET or audit_logger is None:
+        if isinstance(audit_logger, _UnsetType) or audit_logger is None:
             self._audit_logger: AuditLoggerProtocol = AuditLogger()
         else:
             self._audit_logger = audit_logger
 
         # File history (injected or default in-memory)
-        if file_history is UNSET or file_history is None:
+        if isinstance(file_history, _UnsetType) or file_history is None:
             self._file_history: FileHistoryProtocol = FileHistory(workdir=self.workdir)
         else:
             self._file_history = file_history
@@ -442,7 +449,7 @@ class AgentRunner:
         self._after_tool_hooks: list = after_tool_hooks or []
 
         # Project memory (injected or default file-backed)
-        if memory_store is UNSET:
+        if isinstance(memory_store, _UnsetType):
             self._memory_store: Optional[MemoryStoreProtocol] = None
             try:
                 self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
@@ -1179,12 +1186,7 @@ class AgentRunner:
                 event = item
                 if isinstance(event, FunctionToolCallEvent):
                     part = event.part
-                    args = part.args if isinstance(part.args, dict) else {}
-                    if isinstance(part.args, str):
-                        try:
-                            args = json.loads(part.args)
-                        except (json.JSONDecodeError, TypeError):
-                            args = {"raw": part.args}
+                    args = _parse_tool_args(part.args)
                     yield ToolCallEvent(
                         tool_name=part.tool_name,
                         args=args,

@@ -737,7 +737,8 @@ async def test_stream_interaction_handler_timeout():
     out_q: asyncio.Queue = asyncio.Queue()
     handler = runner._build_stream_interaction_handler(out_q)
 
-    request = InteractionRequest(kind="confirm", prompt="Delete file?")
+    # Use "question" kind — "confirm" requests wait indefinitely by design
+    request = InteractionRequest(kind="question", prompt="What is the target?")
 
     with pytest.raises(InteractionTimeoutError) as exc_info:
         await handler(request)
