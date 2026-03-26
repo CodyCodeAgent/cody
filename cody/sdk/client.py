@@ -48,6 +48,15 @@ from .types import (
 )
 
 
+from ..core.deps import UNSET, _UnsetType
+from ..core.storage import (
+    AuditLoggerProtocol,
+    FileHistoryProtocol,
+    MemoryStoreProtocol,
+    SessionStoreProtocol,
+)
+
+
 # ── Builder Pattern ─────────────────────────────────────────────────────────
 
 
@@ -84,6 +93,16 @@ class CodyBuilder:
     _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
+    _custom_tools: list = field(default_factory=list)
+    _system_prompt: str | None = None
+    _extra_system_prompt: str | None = None
+    _before_tool_hooks: list = field(default_factory=list)
+    _after_tool_hooks: list = field(default_factory=list)
+    _session_store: SessionStoreProtocol | _UnsetType | None = UNSET
+    _audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET
+    _file_history: FileHistoryProtocol | _UnsetType | None = UNSET
+    _memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET
+    _stateless: bool = False
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -108,7 +127,7 @@ class CodyBuilder:
     def thinking(self, enabled: bool = True, budget: Optional[int] = None) -> "CodyBuilder":
         """Enable thinking mode with optional token budget."""
         self._enable_thinking = enabled
-        if budget:
+        if budget is not None:
             self._thinking_budget = budget
         return self
 
@@ -184,6 +203,7 @@ class CodyBuilder:
         enabled: bool = True,
         max_tokens: int = 200_000,
         max_cost_usd: float = 5.0,
+        max_steps: int = 0,
         loop_detect_turns: int = 6,
         loop_similarity_threshold: float = 0.9,
         model_prices: dict[str, float] | None = None,
@@ -196,7 +216,7 @@ class CodyBuilder:
             Cody().circuit_breaker(CircuitBreakerConfig(max_cost_usd=10.0)).build()
 
             # Option B: keyword arguments
-            Cody().circuit_breaker(max_cost_usd=10.0, max_tokens=500_000).build()
+            Cody().circuit_breaker(max_cost_usd=10.0, max_steps=50).build()
         """
         if config is not None:
             self._circuit_breaker = config
@@ -205,6 +225,7 @@ class CodyBuilder:
                 enabled=enabled,
                 max_tokens=max_tokens,
                 max_cost_usd=max_cost_usd,
+                max_steps=max_steps,
                 loop_detect_turns=loop_detect_turns,
                 loop_similarity_threshold=loop_similarity_threshold,
                 model_prices=model_prices or {},
@@ -253,6 +274,135 @@ class CodyBuilder:
         self._lsp_languages = languages
         return self
 
+    def tool(self, func) -> "CodyBuilder":
+        """Register a custom tool function.
+
+        The function must be an async callable with the signature::
+
+            async def my_tool(ctx: RunContext[CodyDeps], arg: str) -> str:
+                ...
+
+        Custom tools are registered alongside built-in tools and are
+        available to the agent during ``run()`` / ``stream()`` calls.
+
+        Example::
+
+            async def lookup_jira(ctx: RunContext[CodyDeps], ticket: str) -> str:
+                \"\"\"Look up a Jira ticket by ID.\"\"\"
+                return await fetch_jira(ticket)
+
+            client = Cody().tool(lookup_jira).build()
+        """
+        self._custom_tools.append(func)
+        return self
+
+    def system_prompt(self, text: str) -> "CodyBuilder":
+        """Replace the default base persona with a custom system prompt.
+
+        The custom prompt replaces only the base persona. CODY.md project
+        instructions, project memory, and skills are still appended.
+
+        Example::
+
+            client = (
+                Cody()
+                .system_prompt("You are a security-focused code review agent.")
+                .build()
+            )
+        """
+        self._system_prompt = text
+        return self
+
+    def extra_system_prompt(self, text: str) -> "CodyBuilder":
+        """Append additional instructions after all built-in system prompt parts.
+
+        Unlike ``system_prompt()``, this does not replace the default persona
+        — it adds to it.  Use this for injecting business context or
+        run-specific instructions.
+
+        Example::
+
+            client = (
+                Cody()
+                .extra_system_prompt("Always respond in Chinese.")
+                .build()
+            )
+        """
+        self._extra_system_prompt = text
+        return self
+
+    def before_tool(self, hook) -> "CodyBuilder":
+        """Register a before-tool hook.
+
+        The hook is called before every tool execution with the signature::
+
+            async def my_hook(tool_name: str, args: dict) -> dict | None:
+                ...
+
+        Return the (possibly modified) args dict to proceed, or ``None``
+        to reject the call (the model will see a retry message).
+
+        Example::
+
+            async def log_calls(tool_name, args):
+                print(f"Calling {tool_name}")
+                return args  # proceed unchanged
+
+            client = Cody().before_tool(log_calls).build()
+        """
+        self._before_tool_hooks.append(hook)
+        return self
+
+    def after_tool(self, hook) -> "CodyBuilder":
+        """Register an after-tool hook.
+
+        The hook is called after every tool execution with the signature::
+
+            async def my_hook(tool_name: str, args: dict, result: str) -> str:
+                ...
+
+        Return the (possibly modified) result string.
+
+        Example::
+
+            async def redact_secrets(tool_name, args, result):
+                return result.replace(os.environ["SECRET"], "***")
+
+            client = Cody().after_tool(redact_secrets).build()
+        """
+        self._after_tool_hooks.append(hook)
+        return self
+
+    def session_store(self, store) -> "CodyBuilder":
+        """Inject a custom session store (must satisfy SessionStoreProtocol)."""
+        self._session_store = store
+        return self
+
+    def audit_logger(self, logger) -> "CodyBuilder":
+        """Inject a custom audit logger (must satisfy AuditLoggerProtocol)."""
+        self._audit_logger = logger
+        return self
+
+    def file_history(self, history) -> "CodyBuilder":
+        """Inject a custom file history (must satisfy FileHistoryProtocol)."""
+        self._file_history = history
+        return self
+
+    def memory_store(self, store) -> "CodyBuilder":
+        """Inject a custom memory store (must satisfy MemoryStoreProtocol)."""
+        self._memory_store = store
+        return self
+
+    def stateless(self) -> "CodyBuilder":
+        """Enable stateless mode — no persistence (session, audit, file history, memory).
+
+        Uses null storage implementations so the code path stays the same
+        but nothing is written to disk. Individual storage can still be
+        overridden after calling stateless() (e.g. ``.stateless().audit_logger(real_logger)``).
+        """
+        self._stateless = True
+        return self
+
     def on(self, event_type: str, handler) -> "CodyBuilder":
         """Register event handler. Implicitly enables events.
 
@@ -287,7 +437,38 @@ class CodyBuilder:
         cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
-        client = AsyncCodyClient(config=cfg, auto_start_mcp=self._auto_start_mcp)
+        # Apply stateless defaults for any storage not explicitly set
+        session_store = self._session_store
+        audit_logger = self._audit_logger
+        file_history = self._file_history
+        memory_store = self._memory_store
+        if self._stateless:
+            from ..core.storage import (
+                NullSessionStore, NullAuditLogger,
+                NullFileHistory, NullMemoryStore,
+            )
+            if session_store is UNSET:
+                session_store = NullSessionStore()
+            if audit_logger is UNSET:
+                audit_logger = NullAuditLogger()
+            if file_history is UNSET:
+                file_history = NullFileHistory()
+            if memory_store is UNSET:
+                memory_store = NullMemoryStore()
+
+        client = AsyncCodyClient(
+            config=cfg,
+            auto_start_mcp=self._auto_start_mcp,
+            custom_tools=self._custom_tools or None,
+            system_prompt=self._system_prompt,
+            extra_system_prompt=self._extra_system_prompt,
+            before_tool_hooks=self._before_tool_hooks or None,
+            after_tool_hooks=self._after_tool_hooks or None,
+            session_store=session_store,
+            audit_logger=audit_logger,
+            file_history=file_history,
+            memory_store=memory_store,
+        )
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
             client.on(event_type_str, handler)
@@ -338,6 +519,15 @@ class AsyncCodyClient:
         enable_metrics: bool = False,
         enable_events: bool = False,
         auto_start_mcp: bool = False,
+        custom_tools: list | None = None,
+        system_prompt: str | None = None,
+        extra_system_prompt: str | None = None,
+        before_tool_hooks: list | None = None,
+        after_tool_hooks: list | None = None,
+        session_store: SessionStoreProtocol | _UnsetType | None = UNSET,
+        audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET,
+        file_history: FileHistoryProtocol | _UnsetType | None = UNSET,
+        memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET,
     ):
         if config:
             self._config = config
@@ -363,6 +553,23 @@ class AsyncCodyClient:
         self._runner = None
         self._session_store = None
         self._core_config = None
+
+        # Custom tools (user-defined async functions)
+        self._custom_tools: list = custom_tools or []
+
+        # Custom system prompt overrides
+        self._system_prompt: str | None = system_prompt
+        self._extra_system_prompt: str | None = extra_system_prompt
+
+        # Step hooks
+        self._before_tool_hooks: list = before_tool_hooks or []
+        self._after_tool_hooks: list = after_tool_hooks or []
+
+        # Storage layer injection (None = disable, UNSET = use defaults)
+        self._injected_session_store = session_store
+        self._injected_audit_logger = audit_logger
+        self._injected_file_history = file_history
+        self._injected_memory_store = memory_store
 
         # MCP auto-start flag
         self._auto_start_mcp = auto_start_mcp
@@ -432,6 +639,7 @@ class AsyncCodyClient:
             if (sdk_cb.enabled != defaults.enabled
                     or sdk_cb.max_tokens != defaults.max_tokens
                     or sdk_cb.max_cost_usd != defaults.max_cost_usd
+                    or sdk_cb.max_steps != defaults.max_steps
                     or sdk_cb.loop_detect_turns != defaults.loop_detect_turns
                     or sdk_cb.loop_similarity_threshold != defaults.loop_similarity_threshold
                     or sdk_cb.model_prices):
@@ -469,7 +677,18 @@ class AsyncCodyClient:
         """
         if self._runner is None:
             from ..core.runner import AgentRunner
-            self._runner = AgentRunner(config=self._get_config(), workdir=self.workdir)
+            self._runner = AgentRunner(
+                config=self._get_config(),
+                workdir=self.workdir,
+                custom_tools=self._custom_tools or None,
+                system_prompt=self._system_prompt,
+                extra_system_prompt=self._extra_system_prompt,
+                before_tool_hooks=self._before_tool_hooks or None,
+                after_tool_hooks=self._after_tool_hooks or None,
+                audit_logger=self._injected_audit_logger,
+                file_history=self._injected_file_history,
+                memory_store=self._injected_memory_store,
+            )
         return self._runner
 
     def get_session_store(self):
@@ -477,10 +696,19 @@ class AsyncCodyClient:
 
         Power-user API for callers that need synchronous session access
         (e.g. TUI on_mount) or direct store operations.
+
+        If a custom session store was injected via the builder, it is returned
+        directly (must satisfy ``SessionStoreProtocol``).
         """
         if self._session_store is None:
-            from ..core.session import SessionStore
-            self._session_store = SessionStore(db_path=self._db_path)
+            injected = self._injected_session_store
+            if injected is not UNSET and injected is not None:
+                # Custom store injected via builder
+                self._session_store = injected
+            else:
+                # UNSET or None — use default SQLite store
+                from ..core.session import SessionStore
+                self._session_store = SessionStore(db_path=self._db_path)
         return self._session_store
 
     async def start_mcp(self) -> None:
@@ -579,11 +807,15 @@ class AsyncCodyClient:
     @overload
     async def run(
         self, prompt, *, session_id: Optional[str] = None, stream: Literal[False] = False,
+        include_tools: list[str] | None = None, exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> RunResult: ...
 
     @overload
     async def run(
         self, prompt, *, session_id: Optional[str] = None, stream: Literal[True],
+        include_tools: list[str] | None = None, exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[StreamChunk]: ...
 
     async def run(
@@ -592,6 +824,9 @@ class AsyncCodyClient:
         *,
         session_id: Optional[str] = None,
         stream: bool = False,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> RunResult | AsyncIterator[StreamChunk]:
         """Run agent with prompt.
 
@@ -599,6 +834,11 @@ class AsyncCodyClient:
             prompt: Task description (str or Prompt).
             session_id: Optional session ID for multi-turn.
             stream: If True, return async iterator of StreamChunk.
+            include_tools: If set, only these tools are available for this run.
+            exclude_tools: If set, these tools are excluded for this run.
+            cancel_event: If set and triggered, cancels the run.
+                Non-streaming: returns ``RunResult(output="(cancelled)")``.
+                Streaming: yields a ``cancelled`` chunk.
 
         Returns:
             RunResult if stream=False, else AsyncIterator[StreamChunk].
@@ -619,15 +859,19 @@ class AsyncCodyClient:
                 session_id=session_id,
             ))
 
-        # Start metrics
-        if self._metrics:
-            self._metrics.start_run(
-                str(prompt), session_id, self._config.model.enable_thinking
-            )
-
         try:
             if stream:
-                return self._stream_run(prompt, session_id)
+                return self._stream_run(
+                    prompt, session_id,
+                    include_tools=include_tools, exclude_tools=exclude_tools,
+                    cancel_event=cancel_event,
+                )
+
+            # Start metrics (non-streaming only; streaming handles its own)
+            if self._metrics:
+                self._metrics.start_run(
+                    str(prompt), session_id, self._config.model.enable_thinking
+                )
 
             # Emit MODEL_REQUEST before calling the model
             if self._events:
@@ -639,7 +883,11 @@ class AsyncCodyClient:
             runner = self.get_runner()
             # Always use session to enable multi-turn by default
             store = self.get_session_store()
-            result, sid = await runner.run_with_session(prompt, store, session_id)
+            result, sid = await runner.run_with_session(
+                prompt, store, session_id,
+                include_tools=include_tools, exclude_tools=exclude_tools,
+                cancel_event=cancel_event,
+            )
 
             run_result = RunResult(
                 output=result.output,
@@ -718,12 +966,14 @@ class AsyncCodyClient:
         *,
         session_id: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects.
 
-        Note: SDK EventType events (STREAM_START/END, THINKING_START/END, etc.)
-        are only dispatched in ``run(stream=True)`` which uses ``_stream_run()``.
-        Calling ``stream()`` directly yields raw StreamChunks without event dispatch.
+        SDK EventType events (STREAM_START/END, THINKING_START/END, TOOL_CALL,
+        TOOL_RESULT, etc.) are dispatched automatically when an EventManager
+        is configured.
         """
         # Auto-start MCP servers on first stream (if enabled)
         if self._auto_start_mcp and not self._mcp_started:
@@ -736,19 +986,16 @@ class AsyncCodyClient:
         runner = self.get_runner()
         store = self.get_session_store()
 
-        async for event, sid in runner.run_stream_with_session(
-            prompt, store, session_id, cancel_event=cancel_event,
-        ):
-            yield _event_to_chunk(event, sid)
-
-    # Alias for stream() — matches the name used in demos/docs
-    run_stream = stream
-
-    async def _stream_run(self, prompt, session_id: Optional[str] = None):
-        """Internal streaming run (called when run(stream=True))."""
         in_thinking = False
         stream_started = False
-        async for chunk in self.stream(prompt, session_id=session_id):
+
+        async for event, sid in runner.run_stream_with_session(
+            prompt, store, session_id, cancel_event=cancel_event,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+        ):
+            chunk = _event_to_chunk(event, sid)
+
+            # ── SDK event dispatch ──
             if self._events:
                 # Emit STREAM_START on first non-session_start chunk
                 if not stream_started and chunk.type != "session_start":
@@ -806,7 +1053,6 @@ class AsyncCodyClient:
                             tokens_saved=chunk.estimated_tokens_saved,
                         ))
                     elif chunk.type == "done":
-                        # Emit MODEL_RESPONSE with usage info
                         usage = chunk.usage
                         await self._events.dispatch_async(ModelEvent(
                             event_type=EventType.MODEL_RESPONSE,
@@ -828,7 +1074,50 @@ class AsyncCodyClient:
                         event_type=EventType.STREAM_END,
                         chunk_type="stream_end",
                     ))
+
             yield chunk
+
+    # Alias for stream() — matches the name used in demos/docs
+    run_stream = stream
+
+    async def _stream_run(
+        self, prompt, session_id: Optional[str] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
+    ):
+        """Internal streaming run (called when run(stream=True)).
+
+        Wraps stream() with metrics tracking so that run(stream=True)
+        properly closes the metrics run when the stream completes.
+        """
+        if self._metrics:
+            self._metrics.start_run(
+                str(prompt), session_id, self._config.model.enable_thinking
+            )
+        try:
+            last_chunk = None
+            async for chunk in self.stream(
+                prompt, session_id=session_id,
+                include_tools=include_tools, exclude_tools=exclude_tools,
+                cancel_event=cancel_event,
+            ):
+                last_chunk = chunk
+                yield chunk
+        finally:
+            if self._metrics and self._metrics._current_run is not None:
+                # Extract usage from the final done chunk if available
+                usage = TokenUsage(0, 0, 0)
+                if last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage:
+                    usage = TokenUsage(
+                        input_tokens=last_chunk.usage.input_tokens,
+                        output_tokens=last_chunk.usage.output_tokens,
+                        total_tokens=last_chunk.usage.total_tokens,
+                    )
+                output = ""
+                if last_chunk and hasattr(last_chunk, 'content'):
+                    output = last_chunk.content or ""
+                self._metrics.end_run(output, usage)
 
     # ── Tool ──────────────────────────────────────────────────────────────
 
@@ -861,12 +1150,18 @@ class AsyncCodyClient:
         effective_workdir = Path(workdir) if workdir else self.workdir
         cfg = self._get_config()
         sm = SkillManager(config=cfg, workdir=effective_workdir)
+        # Build deps directly from client state — no need to create an
+        # AgentRunner (which requires model_base_url) just to call a tool.
+        fh = self._injected_file_history if not isinstance(self._injected_file_history, _UnsetType) else None
+        al = self._injected_audit_logger if not isinstance(self._injected_audit_logger, _UnsetType) else None
         deps = CodyDeps(
             config=cfg,
             workdir=effective_workdir,
             skill_manager=sm,
             allowed_roots=[effective_workdir],
             strict_read_boundary=cfg.security.strict_read_boundary,
+            file_history=fh,
+            audit_logger=al,
         )
 
         start_time = time.time()
@@ -1250,7 +1545,7 @@ class AsyncCodyClient:
         """
         from ..core.memory import MemoryEntry
         runner = self.get_runner()
-        if not runner._memory_store:
+        if not runner.memory_store:
             return
         entry = MemoryEntry(
             content=content,
@@ -1259,14 +1554,14 @@ class AsyncCodyClient:
             confidence=confidence,
             tags=tags or [],
         )
-        await runner._memory_store.add_entries(category, [entry])
+        await runner.memory_store.add_entries(category, [entry])
 
     async def get_memory(self) -> dict[str, list[dict]]:
         """Get all project memory entries grouped by category."""
         runner = self.get_runner()
-        if not runner._memory_store:
+        if not runner.memory_store:
             return {}
-        all_entries = runner._memory_store.get_all_entries()
+        all_entries = runner.memory_store.get_all_entries()
         return {
             cat: [
                 {
@@ -1284,8 +1579,8 @@ class AsyncCodyClient:
     async def clear_memory(self) -> None:
         """Clear all project memory."""
         runner = self.get_runner()
-        if runner._memory_store:
-            runner._memory_store.clear()
+        if runner.memory_store:
+            runner.memory_store.clear()
 
     # ── Event Methods ────────────────────────────────────────────────────
 

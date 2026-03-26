@@ -27,6 +27,7 @@ from pydantic_ai import Agent
 
 from .config import Config
 from .model_resolver import resolve_model
+from .storage import AuditLoggerProtocol, FileHistoryProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,8 @@ class SubAgentResult:
     error: Optional[str] = None
     created_at: str = ""
     completed_at: Optional[str] = None
+    task: str = ""
+    agent_type: str = "generic"
 
 
 # System prompts per agent type
@@ -63,33 +66,86 @@ _AGENT_PROMPTS = {
     AgentType.CODE: (
         "You are a coding sub-agent spawned to handle a specific task. "
         "You have access to: file read/write/edit, directory listing, "
-        "grep/glob/search, and shell command execution. "
-        "Focus exclusively on the task described in the prompt. "
-        "Be precise — only modify files directly related to the task. "
-        "When done, provide a clear summary of what you changed and why."
+        "grep/glob/search, and shell command execution.\n\n"
+
+        "## Rules\n"
+        "- Focus exclusively on the task described in the prompt.\n"
+        "- Only modify files directly related to the task — do not touch unrelated code.\n"
+        "- Stay within the directories/files specified. If the task says 'in src/auth/', "
+        "do not modify files outside that path.\n"
+        "- Read files before editing to understand existing code.\n\n"
+
+        "## Error Handling\n"
+        "- If you encounter a blocking error you cannot resolve after 2 attempts, "
+        "stop and report the error clearly instead of retrying indefinitely.\n"
+        "- Include the error message and what you tried.\n\n"
+
+        "## Output Format\n"
+        "When done, provide a structured summary:\n"
+        "- **Changed files**: list of files modified/created with one-line descriptions\n"
+        "- **What was done**: brief description of the changes\n"
+        "- **Verification**: test results or how to verify the changes\n"
+        "- **Issues**: any problems encountered or remaining concerns"
     ),
     AgentType.RESEARCH: (
         "You are a research sub-agent spawned to analyze code. "
         "You have access to: file reading, directory listing, and "
-        "grep/glob/search. You CANNOT modify files or run commands. "
-        "Provide thorough, structured analysis with specific file paths "
-        "and line references. When done, summarize your key findings."
+        "grep/glob/search. You CANNOT modify files or run commands.\n\n"
+
+        "## Rules\n"
+        "- Provide thorough, structured analysis with specific file paths "
+        "and line references.\n"
+        "- Stay focused on the research question — do not go on tangents.\n\n"
+
+        "## Error Handling\n"
+        "- If a file or pattern is not found, note it and try alternative approaches "
+        "(different search terms, related filenames) before giving up.\n\n"
+
+        "## Output Format\n"
+        "When done, provide a structured summary:\n"
+        "- **Key findings**: bullet points with file:line references\n"
+        "- **Architecture/patterns observed**: relevant design patterns found\n"
+        "- **Relevant files**: list of files examined, with brief role descriptions\n"
+        "- **Unanswered questions**: anything you could not determine"
     ),
     AgentType.TEST: (
         "You are a testing sub-agent spawned to write and run tests. "
         "You have access to: file read/write/edit, directory listing, "
-        "grep/glob, and shell command execution. "
-        "Write focused tests for the specified functionality. "
-        "Run the tests and report results including any failures. "
-        "When done, summarize: tests written, pass/fail counts, "
-        "and any issues found."
+        "grep/glob, and shell command execution.\n\n"
+
+        "## Rules\n"
+        "- Write focused tests for the specified functionality.\n"
+        "- Follow existing test patterns in the project (framework, naming, structure).\n"
+        "- Run the tests after writing them.\n\n"
+
+        "## Error Handling\n"
+        "- If tests fail, attempt to fix them (up to 2 iterations).\n"
+        "- If you cannot make tests pass, report the failures clearly.\n\n"
+
+        "## Output Format\n"
+        "When done, provide a structured summary:\n"
+        "- **Tests written**: list of test files/functions created\n"
+        "- **Results**: pass/fail counts with details on any failures\n"
+        "- **Coverage**: what scenarios are covered and what is not\n"
+        "- **Issues**: any problems encountered"
     ),
     AgentType.GENERIC: (
         "You are a sub-agent spawned to handle a specific task. "
         "You have access to: file read/write/edit, directory listing, "
-        "grep/glob/search, and shell command execution. "
-        "Focus exclusively on the task described in the prompt. "
-        "When done, provide a clear summary of what you accomplished."
+        "grep/glob/search, and shell command execution.\n\n"
+
+        "## Rules\n"
+        "- Focus exclusively on the task described in the prompt.\n"
+        "- Stay within scope — do not modify unrelated files.\n\n"
+
+        "## Error Handling\n"
+        "- If you encounter a blocking error after 2 attempts, stop and report.\n\n"
+
+        "## Output Format\n"
+        "When done, provide a structured summary:\n"
+        "- **What was done**: brief description\n"
+        "- **Files affected**: list with one-line descriptions\n"
+        "- **Issues**: any problems or remaining concerns"
     ),
 }
 
@@ -115,11 +171,15 @@ class SubAgentManager:
         workdir: Path,
         max_concurrent: int = MAX_CONCURRENT_AGENTS,
         default_timeout: float = DEFAULT_AGENT_TIMEOUT,
+        audit_logger: AuditLoggerProtocol | None = None,
+        file_history: FileHistoryProtocol | None = None,
     ):
         self.config = config
         self.workdir = workdir
         self.max_concurrent = max_concurrent
         self.default_timeout = default_timeout
+        self._injected_audit_logger = audit_logger
+        self._injected_file_history = file_history
 
         self._agents: dict[str, SubAgentResult] = {}
         self._tasks: dict[str, asyncio.Task] = {}
@@ -176,6 +236,8 @@ class SubAgentManager:
             agent_id=agent_id,
             status=AgentStatus.PENDING,
             created_at=now,
+            task=task,
+            agent_type=atype.value,
         )
 
         effective_timeout = timeout or self.default_timeout
@@ -232,6 +294,64 @@ class SubAgentManager:
     def list_agents(self) -> list[SubAgentResult]:
         """List all agents (active and completed)."""
         return list(self._agents.values())
+
+    async def resume(
+        self,
+        agent_id: str,
+        timeout: Optional[float] = None,
+    ) -> str:
+        """Resume a completed/failed/timed-out sub-agent.
+
+        Re-spawns a new agent with the original task plus the previous
+        output/error as context, so the model can continue where it left off.
+
+        Returns the new agent_id.
+        """
+        prev = self._agents.get(agent_id)
+        if prev is None:
+            raise ValueError(f"Unknown agent: {agent_id}")
+        if prev.status in (AgentStatus.PENDING, AgentStatus.RUNNING):
+            raise RuntimeError(
+                f"Agent {agent_id} is still {prev.status.value}. "
+                "Wait for it to finish or kill it first."
+            )
+        if prev.status == AgentStatus.KILLED:
+            raise RuntimeError(
+                f"Agent {agent_id} was killed and cannot be resumed."
+            )
+
+        # Build resume prompt with previous context.
+        # Truncate previous output/error to avoid exponential context bloat
+        # from nested resumes.
+        _MAX_PREV_CONTEXT = 2000
+        parts = [
+            "## Resumed Task\n",
+            "You are continuing a previous sub-agent's work. "
+            "Here is the original task and what happened:\n",
+            f"### Original Task\n{prev.task}\n",
+        ]
+        if prev.output:
+            output_text = prev.output[:_MAX_PREV_CONTEXT]
+            if len(prev.output) > _MAX_PREV_CONTEXT:
+                output_text += "\n... (truncated)"
+            parts.append(f"### Previous Output\n{output_text}\n")
+        if prev.error:
+            error_text = prev.error[:_MAX_PREV_CONTEXT]
+            if len(prev.error) > _MAX_PREV_CONTEXT:
+                error_text += "\n... (truncated)"
+            parts.append(f"### Previous Error\n{error_text}\n")
+        parts.append(
+            "### Instructions\n"
+            "Continue from where the previous agent left off. "
+            "Do not repeat work that was already completed successfully."
+        )
+        resume_task = "\n".join(parts)
+
+        return await self.spawn(
+            task=resume_task,
+            agent_type=prev.agent_type,
+            timeout=timeout,
+        )
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
@@ -319,16 +439,19 @@ class SubAgentManager:
 
         tools.register_sub_agent_tools(agent, agent_type.value)
 
+        audit = self._injected_audit_logger if self._injected_audit_logger is not None else AuditLogger()
+        fh = self._injected_file_history if self._injected_file_history is not None else FileHistory(workdir=self.workdir)
+
         deps = CodyDeps(
             config=self.config,
             workdir=self.workdir,
             skill_manager=SkillManager(self.config, workdir=self.workdir),
-            audit_logger=AuditLogger(),
+            audit_logger=audit,
             permission_manager=PermissionManager(
                 overrides=self.config.permissions.overrides,
                 default_level=PermissionLevel(self.config.permissions.default_level),
             ),
-            file_history=FileHistory(workdir=self.workdir),
+            file_history=fh,
         )
 
         result = await agent.run(task, deps=deps)

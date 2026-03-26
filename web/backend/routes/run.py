@@ -20,6 +20,7 @@ from cody.core.errors import (
 from ..helpers import build_prompt, config_from_run_request, raise_structured, serialize_stream_event
 from ..models import RunRequest, RunResponse, ToolTraceResponse
 from ..state import session_store_dep
+from .metrics import record_run
 
 logger = logging.getLogger("cody.web.run")
 
@@ -55,12 +56,18 @@ async def run_agent(
         images_raw = [img.model_dump() for img in request.images] if request.images else None
         prompt = build_prompt(request.prompt, images_raw)
 
+        inc_tools = request.include_tools
+        exc_tools = request.exclude_tools
+
         if request.session_id is not None:
             result, sid = await runner.run_with_session(
-                prompt, store, request.session_id
+                prompt, store, request.session_id,
+                include_tools=inc_tools, exclude_tools=exc_tools,
             )
         else:
-            result = await runner.run(prompt)
+            result = await runner.run(
+                prompt, include_tools=inc_tools, exclude_tools=exc_tools,
+            )
             sid = None
 
         traces = None
@@ -89,6 +96,14 @@ async def run_agent(
             len(result.tool_traces or []),
             usage_data.get("total_tokens") if usage_data else "N/A",
         )
+
+        # Record metrics
+        if usage_data:
+            record_run(
+                input_tokens=usage_data.get("input_tokens", 0),
+                output_tokens=usage_data.get("output_tokens", 0),
+                total_tokens=usage_data.get("total_tokens", 0),
+            )
 
         return RunResponse(
             output=result.output,
@@ -155,13 +170,19 @@ async def run_agent_stream(
             images_raw = [img.model_dump() for img in request.images] if request.images else None
             prompt = build_prompt(request.prompt, images_raw)
 
+            inc_tools = request.include_tools
+            exc_tools = request.exclude_tools
+
             if request.session_id is not None:
                 async for event, sid in runner.run_stream_with_session(
-                    prompt, store, request.session_id
+                    prompt, store, request.session_id,
+                    include_tools=inc_tools, exclude_tools=exc_tools,
                 ):
                     yield f"data: {json.dumps(serialize_stream_event(event, session_id=sid))}\n\n"
             else:
-                async for event in runner.run_stream(prompt):
+                async for event in runner.run_stream(
+                    prompt, include_tools=inc_tools, exclude_tools=exc_tools,
+                ):
                     yield f"data: {json.dumps(serialize_stream_event(event))}\n\n"
 
         except Exception as e:

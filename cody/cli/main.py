@@ -16,7 +16,7 @@ from .utils import (
     _handle_command,
 )
 from .rendering import _render_stream
-from ..shared import auto_title
+from ..shared import auto_title, build_multimodal_prompt
 from .commands.sessions import sessions
 from .commands.skills import skills
 from .commands.config import config
@@ -53,13 +53,25 @@ main.add_command(init)
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose, session_id, continue_last):
+@click.option('--image', 'images', multiple=True, type=click.Path(exists=True),
+              help='Attach an image file (repeatable)')
+@click.option('--max-tokens', type=int, default=None, help='Circuit breaker: max tokens per run')
+@click.option('--max-cost', type=float, default=None, help='Circuit breaker: max cost in USD')
+@click.option('--max-steps', type=int, default=None, help='Circuit breaker: max tool call steps')
+@click.option('--include-tools', default=None, help='Only allow these tools (comma-separated)')
+@click.option('--exclude-tools', default=None, help='Exclude these tools (comma-separated)')
+def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
+        session_id, continue_last, images, max_tokens, max_cost, max_steps,
+        include_tools, exclude_tools):
     """Run a single task with Cody
 
     Examples:
         cody run "create a hello.py file"
         cody run "refactor main.py to use async"
         cody run --model qwen3.5 "写个排序算法"
+        cody run --image screenshot.png "fix the bug shown here"
+        cody run --max-tokens 50000 --max-cost 1.0 "refactor main.py"
+        cody run --include-tools grep,read_file "search for TODO comments"
         cody run --workdir /proj/frontend --allow-root /proj/backend "sync configs"
         cody run --session abc123 "continue the refactor"
         cody run --continue "fix the remaining issues"
@@ -81,6 +93,18 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
         extra_roots=list(extra_roots) or None,
     )
 
+    # Apply circuit breaker overrides
+    if max_tokens is not None:
+        cfg.circuit_breaker.max_tokens = max_tokens
+    if max_cost is not None:
+        cfg.circuit_breaker.max_cost_usd = max_cost
+    if max_steps is not None:
+        cfg.circuit_breaker.max_steps = max_steps
+
+    # Parse tool filters
+    inc_tools = [t.strip() for t in include_tools.split(",")] if include_tools else None
+    exc_tools = [t.strip() for t in exclude_tools.split(",")] if exclude_tools else None
+
     client = AsyncCodyClient(
         workdir=str(workdir_path),
         model=cfg.model,
@@ -88,6 +112,9 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
         base_url=cfg.model_base_url,
     )
     client.set_config(cfg)
+
+    # Build prompt (text or multimodal with images)
+    run_prompt = build_multimodal_prompt(prompt, list(images))
 
     # Resolve or create session
     store = client.get_session_store()
@@ -124,6 +151,12 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
         if cfg.enable_thinking:
             budget = f" (budget: {cfg.thinking_budget})" if cfg.thinking_budget else ""
             console.print(f"[dim]Thinking: enabled{budget}[/dim]")
+        if images:
+            console.print(f"[dim]Images: {len(images)} attached[/dim]")
+        if inc_tools:
+            console.print(f"[dim]Include tools: {', '.join(inc_tools)}[/dim]")
+        if exc_tools:
+            console.print(f"[dim]Exclude tools: {', '.join(exc_tools)}[/dim]")
 
     # Enable interaction so the AI can ask questions via the question tool
     runner = client.get_runner()
@@ -133,7 +166,10 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
         await client.start_mcp()
         try:
             done_chunk = await _render_stream(
-                client.stream(prompt, session_id=resolved_session_id),
+                client.stream(
+                    run_prompt, session_id=resolved_session_id,
+                    include_tools=inc_tools, exclude_tools=exc_tools,
+                ),
                 verbose=verbose,
                 client=client,
             )
@@ -158,7 +194,13 @@ def run(prompt, model, thinking, thinking_budget, workdir, extra_roots, verbose,
               help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
+@click.option('--max-tokens', type=int, default=None, help='Circuit breaker: max tokens per run')
+@click.option('--max-cost', type=float, default=None, help='Circuit breaker: max cost in USD')
+@click.option('--max-steps', type=int, default=None, help='Circuit breaker: max tool call steps')
+@click.option('--include-tools', default=None, help='Only allow these tools (comma-separated)')
+@click.option('--exclude-tools', default=None, help='Exclude these tools (comma-separated)')
+def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last,
+         max_tokens, max_cost, max_steps, include_tools, exclude_tools):
     """Interactive chat with Cody
 
     Start an interactive session where you can have a multi-turn conversation.
@@ -168,6 +210,7 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         cody chat --model claude-sonnet-4-0
         cody chat --continue
         cody chat --session abc123
+        cody chat --max-tokens 50000 --max-cost 1.0
         cody chat --workdir /proj/frontend --allow-root /proj/backend
     """
     setup_logging()
@@ -182,6 +225,18 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
         thinking_budget=thinking_budget,
         extra_roots=list(extra_roots) or None,
     )
+
+    # Apply circuit breaker overrides
+    if max_tokens is not None:
+        cfg.circuit_breaker.max_tokens = max_tokens
+    if max_cost is not None:
+        cfg.circuit_breaker.max_cost_usd = max_cost
+    if max_steps is not None:
+        cfg.circuit_breaker.max_steps = max_steps
+
+    # Parse tool filters
+    inc_tools = [t.strip() for t in include_tools.split(",")] if include_tools else None
+    exc_tools = [t.strip() for t in exclude_tools.split(",")] if exclude_tools else None
 
     client = AsyncCodyClient(
         workdir=str(workdir_path),
@@ -262,7 +317,10 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
                 # Run agent with streaming — SDK auto-saves messages via session
                 try:
                     await _render_stream(
-                        client.stream(user_input, session_id=session.id),
+                        client.stream(
+                            user_input, session_id=session.id,
+                            include_tools=inc_tools, exclude_tools=exc_tools,
+                        ),
                         client=client,
                     )
                 except Exception as e:
@@ -290,7 +348,11 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
               help='Additional directory to allow file access (repeatable)')
 @click.option('--session', 'session_id', default=None, help='Resume a session by ID')
 @click.option('--continue', 'continue_last', is_flag=True, help='Continue last session')
-def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last):
+@click.option('--max-tokens', type=int, default=None, help='Circuit breaker: max tokens per run')
+@click.option('--max-cost', type=float, default=None, help='Circuit breaker: max cost in USD')
+@click.option('--max-steps', type=int, default=None, help='Circuit breaker: max tool call steps')
+def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, continue_last,
+        max_tokens, max_cost, max_steps):
     """Launch interactive Terminal UI
 
     Full-screen terminal interface with streaming, session management, and keyboard shortcuts.
@@ -299,6 +361,7 @@ def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, cont
         cody tui
         cody tui --model claude-sonnet-4-0
         cody tui --continue
+        cody tui --max-tokens 50000 --max-cost 1.0
         cody tui --workdir /proj/frontend --allow-root /proj/backend
     """
     setup_logging()
@@ -317,6 +380,9 @@ def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, cont
         extra_roots=list(extra_roots) or None,
         session_id=session_id,
         continue_last=continue_last,
+        max_tokens=max_tokens,
+        max_cost=max_cost,
+        max_steps=max_steps,
     )
 
 

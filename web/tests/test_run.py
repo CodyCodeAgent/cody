@@ -126,7 +126,7 @@ def test_run_without_session_id():
 
 def test_run_stream():
     """POST /run/stream returns SSE stream with structured events."""
-    async def fake_stream(prompt, message_history=None):
+    async def fake_stream(prompt, message_history=None, **kwargs):
         yield TextDeltaEvent(content="Hello")
         yield TextDeltaEvent(content=" World")
         yield DoneEvent(result=CodyResult(output="Hello World"))
@@ -150,7 +150,7 @@ def test_run_stream():
 
 def test_run_stream_error():
     """POST /run/stream handles errors in SSE."""
-    async def failing_stream(prompt, message_history=None):
+    async def failing_stream(prompt, message_history=None, **kwargs):
         raise RuntimeError("stream broke")
         yield  # noqa: F841 — make it a generator
 

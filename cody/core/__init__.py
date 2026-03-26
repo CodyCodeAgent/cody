@@ -9,6 +9,7 @@ _LAZY_IMPORTS = {
     "CodyResult": (".runner", "CodyResult"),
     "ToolTrace": (".runner", "ToolTrace"),
     "StreamEvent": (".runner", "StreamEvent"),
+    "PruneEvent": (".runner", "PruneEvent"),
     "CompactEvent": (".runner", "CompactEvent"),
     "ThinkingEvent": (".runner", "ThinkingEvent"),
     "TextDeltaEvent": (".runner", "TextDeltaEvent"),
@@ -32,6 +33,7 @@ _LAZY_IMPORTS = {
     "CircuitBreakerError": (".errors", "CircuitBreakerError"),
     # config
     "CircuitBreakerConfig": (".config", "CircuitBreakerConfig"),
+    "TruncationConfig": (".config", "TruncationConfig"),
     # session
     "SessionStore": (".session", "SessionStore"),
     # skill_manager
@@ -47,6 +49,8 @@ _LAZY_IMPORTS = {
     "SubAgentManager": (".sub_agent", "SubAgentManager"),
     # context
     "CompactResult": (".context", "CompactResult"),
+    "PruneResult": (".context", "PruneResult"),
+    "prune_tool_outputs": (".context", "prune_tool_outputs"),
     "FileChunk": (".context", "FileChunk"),
     "chunk_file": (".context", "chunk_file"),
     "compact_messages": (".context", "compact_messages"),
@@ -69,6 +73,8 @@ _LAZY_IMPORTS = {
     # rate_limiter
     "RateLimiter": (".rate_limiter", "RateLimiter"),
     "RateLimitResult": (".rate_limiter", "RateLimitResult"),
+    # retry
+    "RetryConfig": (".config", "RetryConfig"),
     # user_input
     "UserInputQueue": (".user_input", "UserInputQueue"),
     # deps
@@ -77,6 +83,7 @@ _LAZY_IMPORTS = {
     "setup_logging": (".log", "setup_logging"),
     # model_resolver
     "resolve_model": (".model_resolver", "resolve_model"),
+    "resolve_small_model": (".model_resolver", "resolve_small_model"),
     # project_instructions
     "CODY_MD_FILENAME": (".project_instructions", "CODY_MD_FILENAME"),
     "CODY_MD_TEMPLATE": (".project_instructions", "CODY_MD_TEMPLATE"),

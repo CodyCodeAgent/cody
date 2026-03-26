@@ -18,6 +18,8 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+
+from ._process import cancel_task_silently, terminate_process
 from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
@@ -337,12 +339,7 @@ class _LSPServer:
         await self._initialize()
 
     async def stop(self) -> None:
-        if self._reader_task and not self._reader_task.done():
-            self._reader_task.cancel()
-            try:
-                await self._reader_task
-            except asyncio.CancelledError:
-                pass
+        await cancel_task_silently(self._reader_task)
 
         if self._process and self._process.returncode is None:
             try:
@@ -350,12 +347,7 @@ class _LSPServer:
                 self._send_notification("exit", {})
                 await asyncio.wait_for(self._process.wait(), timeout=3.0)
             except Exception:
-                self._process.terminate()
-                try:
-                    await asyncio.wait_for(self._process.wait(), timeout=3.0)
-                except asyncio.TimeoutError:
-                    self._process.kill()
-                    await self._process.wait()
+                await terminate_process(self._process, timeout=3.0)
 
     # ── JSON-RPC ─────────────────────────────────────────────────────────────
 

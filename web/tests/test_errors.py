@@ -71,7 +71,7 @@ def test_run_error_structured():
 
 
 def test_stream_error_structured(test_client):
-    async def failing_stream(prompt, message_history=None):
+    async def failing_stream(prompt, message_history=None, **kwargs):
         raise RuntimeError("stream broke")
         yield  # make it a generator
 

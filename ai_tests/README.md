@@ -17,7 +17,7 @@
 ai_tests/
 ├── README.md              # 本文件 — 总指南
 ├── setup.md               # 环境准备（安装、配置、前置检查）
-├── security.md            # 安全策略测试（命令阻断、路径限制）
+├── security.md            # 安全策略测试（命令阻断、路径限制、strict_read_boundary）
 ├── cli/
 │   ├── run.md             # cody run 命令测试
 │   ├── chat.md            # cody chat 命令测试（非交互验证）
@@ -25,23 +25,37 @@ ai_tests/
 │   ├── skills.md          # 技能系统测试（列表、启用/禁用）
 │   └── init.md            # cody init 初始化测试
 ├── sdk/
-│   ├── basic.md           # SDK 基本功能（run、结果检查）
+│   ├── basic.md           # SDK 基本功能（run、Builder、会话、工具调用）
 │   ├── streaming.md       # 流式输出测试
 │   ├── config.md          # 配置管理测试（加载、合并、覆盖）
 │   ├── errors.md          # 错误处理测试（路径越权、错误格式）
 │   ├── circuit_breaker.md # 熔断器测试（token/cost 上限、死循环）
 │   ├── interaction.md     # 人工交互测试（AI 提问、submit_interaction）
 │   ├── memory.md          # 跨任务记忆测试（add/get/clear、save_memory 工具）
-│   └── user_input.md      # 用户主动输入测试（inject_user_input）
+│   ├── user_input.md      # 用户主动输入测试（inject_user_input）
+│   ├── custom_tools.md    # 自定义工具注册测试（.tool() Builder）
+│   ├── custom_prompt.md   # 自定义 Prompt 测试（system_prompt / extra_system_prompt）
+│   ├── sync_client.md     # 同步客户端测试（CodyClient）
+│   ├── stateless.md       # 无状态模式测试（.stateless()）
+│   ├── hooks.md           # 工具钩子测试（before_tool / after_tool）
+│   ├── events.md          # 事件系统与指标收集测试（.on() / .enable_metrics()）
+│   ├── cancel.md          # 流取消测试（cancel_event）
+│   ├── tool_filter.md     # 工具过滤测试（include_tools / exclude_tools）
+│   ├── convenience.md     # 便捷方法测试（read_file / grep / glob / exec_command）
+│   ├── mcp.md             # MCP 集成测试（stdio / HTTP 配置验证）
+│   ├── lsp.md             # LSP 集成测试（语言配置、diagnostics）
+│   └── thinking.md        # 思考模式测试（thinking 配置、流式输出）
 ├── web/
 │   ├── api.md             # Web API 端点测试
 │   └── chat.md            # Web Chat / WebSocket 测试
 └── tools/
     ├── file_ops.md        # 文件操作工具（读写、编辑、目录列表）
-    ├── search.md          # 搜索工具（grep、glob）
+    ├── search.md          # 搜索工具（grep、glob、patch）
     ├── command.md         # 命令执行工具
     ├── agents.md          # 子 Agent 测试（生成、并行）
-    └── history.md         # 文件历史测试（撤销/重做）
+    ├── history.md         # 文件历史测试（撤销/重做）
+    ├── web.md             # Web 工具测试（webfetch、websearch）
+    └── todo.md            # Todo 工具测试（todo_write、todo_read）
 ```
 
 ## 如何使用

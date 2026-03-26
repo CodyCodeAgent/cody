@@ -92,6 +92,13 @@ class RunRequest(BaseModel):
     thinking_budget: Optional[int] = None
     skills: Optional[list[str]] = None
     session_id: Optional[str] = None
+    # Circuit breaker overrides
+    max_tokens: Optional[int] = None
+    max_cost_usd: Optional[float] = None
+    max_steps: Optional[int] = None
+    # Tool filtering
+    include_tools: Optional[list[str]] = None
+    exclude_tools: Optional[list[str]] = None
 
 
 class ToolTraceResponse(BaseModel):

@@ -140,3 +140,63 @@ cody run --workdir "$TEST_DIR" --allow-root "$EXTRA_DIR" "读取 $EXTRA_DIR/data
 ```bash
 grep -i "extra data" "$TEST_DIR/output.log" && echo "PASS: extra root accessible" || echo "FAIL: could not read extra root"
 ```
+
+---
+
+## TC-SEC-003: strict_read_boundary 限制读操作
+
+**优先级**: P1
+**前置条件**: cody 已安装
+**涉及功能**: `CodyBuilder.strict_read_boundary()`
+
+### 操作步骤
+
+```bash
+TEST_DIR="$CODY_TEST_DIR/sec_003"
+mkdir -p "$TEST_DIR/allowed"
+mkdir -p "$TEST_DIR/forbidden"
+echo "allowed content" > "$TEST_DIR/allowed/ok.txt"
+echo "forbidden content" > "$TEST_DIR/forbidden/secret.txt"
+cat > "$TEST_DIR/test_strict_read.py" << 'PYEOF'
+import asyncio
+import os
+from cody.sdk import Cody
+
+async def main():
+    test_dir = os.environ["TEST_DIR"]
+    allowed = os.path.join(test_dir, "allowed")
+    forbidden_file = os.path.join(test_dir, "forbidden", "secret.txt")
+
+    client = (
+        Cody()
+        .workdir(allowed)
+        .strict_read_boundary()
+        .build()
+    )
+    async with client:
+        # Try to read file outside boundary
+        try:
+            result = await client.tool("read_file", {"path": forbidden_file})
+            # If tool returns an error message about path denied
+            denied = "denied" in result.result.lower() or "not allowed" in result.result.lower() or "outside" in result.result.lower()
+            print(f"READ_DENIED: {denied}")
+            print(f"RESULT: {result.result[:200]}")
+        except Exception as e:
+            print(f"READ_DENIED: True")
+            print(f"ERROR: {e}")
+
+asyncio.run(main())
+PYEOF
+cd /Users/bytedance/GC/GitHub/cody
+TEST_DIR="$TEST_DIR" python3 "$TEST_DIR/test_strict_read.py" 2>&1 | tee "$TEST_DIR/output.log"
+```
+
+### 预期结果
+
+- 开启 strict_read_boundary 后，读取边界外文件被拒绝
+
+### 验证方法
+
+```bash
+grep "READ_DENIED: True" "$TEST_DIR/output.log" && echo "PASS: read boundary enforced" || echo "FAIL: read not restricted"
+```

@@ -15,6 +15,7 @@ from typing import Any, Optional
 import httpx
 
 from .config import MCPConfig, MCPServerConfig
+from ._process import cancel_task_silently, terminate_process
 from .._version import __version__ as _version
 
 logger = logging.getLogger(__name__)
@@ -165,20 +166,8 @@ class MCPClient:
         # Try stdio first
         sp = self._servers.pop(name, None)
         if sp is not None:
-            if sp._reader_task and not sp._reader_task.done():
-                sp._reader_task.cancel()
-                try:
-                    await sp._reader_task
-                except asyncio.CancelledError:
-                    pass
-
-            if sp.process and sp.process.returncode is None:
-                sp.process.terminate()
-                try:
-                    await asyncio.wait_for(sp.process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    sp.process.kill()
-                    await sp.process.wait()
+            await cancel_task_silently(sp._reader_task)
+            await terminate_process(sp.process, timeout=5.0)
 
             logger.info("MCP server '%s' stopped", name)
             return

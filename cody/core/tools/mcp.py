@@ -41,13 +41,6 @@ async def mcp_call(
     if client is None:
         return "[ERROR] No MCP servers configured"
 
-    try:
-        args = _json.loads(arguments) if arguments else {}
-    except _json.JSONDecodeError as e:
-        return f"[ERROR] Invalid JSON arguments: {e}"
-
-    try:
-        result = await client.call_tool(tool_name, args)
-        return str(result)
-    except Exception as e:
-        return f"[ERROR] MCP call failed: {e}"
+    args = _json.loads(arguments) if arguments else {}
+    result = await client.call_tool(tool_name, args)
+    return str(result)

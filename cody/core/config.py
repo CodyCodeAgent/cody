@@ -95,8 +95,32 @@ class CompactionConfig(BaseModel):
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
     max_tokens: int = 100_000
+    # Percentage-based trigger: when set > 0, max_tokens is computed as
+    # trigger_ratio × context_window_tokens.  Overrides max_tokens.
+    trigger_ratio: float = 0.0
+    context_window_tokens: int = 0
     keep_recent: int = 4
+    # Token-based recent preservation: when > 0, overrides keep_recent
+    # (count-based) with a token budget for the recent messages window.
+    keep_recent_tokens: int = 0
     max_summary_tokens: int = 500
+    # Selective pruning — try to free tokens by replacing old tool outputs
+    # with lightweight markers before resorting to full compaction.
+    enable_pruning: bool = True
+    prune_protect_tokens: int = 40_000
+    prune_min_saving_tokens: int = 20_000
+    prune_min_content_tokens: int = 200
+
+    def effective_max_tokens(self) -> int:
+        """Compute the effective max_tokens threshold.
+
+        If ``trigger_ratio`` and ``context_window_tokens`` are both set,
+        returns ``int(trigger_ratio * context_window_tokens)``.
+        Otherwise returns ``max_tokens``.
+        """
+        if self.trigger_ratio > 0 and self.context_window_tokens > 0:
+            return int(self.trigger_ratio * self.context_window_tokens)
+        return self.max_tokens
 
 
 class InteractionConfig(BaseModel):
@@ -104,11 +128,31 @@ class InteractionConfig(BaseModel):
     enabled: bool = False
     timeout: float = 30.0  # seconds; 0 = no timeout (wait forever)
 
-class CircuitBreakerConfig(BaseModel):
-    """Circuit breaker configuration for automatic run termination."""
+class TruncationConfig(BaseModel):
+    """Tool output truncation configuration."""
     enabled: bool = True
-    max_tokens: int = 200_000
-    max_cost_usd: float = 5.0
+    max_output_chars: int = 120_000  # ~30K tokens
+
+class RetryConfig(BaseModel):
+    """LLM API retry configuration with exponential backoff."""
+    enabled: bool = True
+    max_retries: int = 3
+    base_delay: float = 2.0
+    max_delay: float = 30.0
+
+
+class CircuitBreakerConfig(BaseModel):
+    """Circuit breaker configuration for automatic run termination.
+
+    ``max_tokens`` is the cumulative token budget across all LLM API calls in a
+    single run (each call re-sends the full context).  With a 100K compaction
+    threshold, a 10-tool-call task can easily consume 500K–1M tokens, so the
+    default is set at 1M.
+    """
+    enabled: bool = True
+    max_tokens: int = 1_000_000
+    max_cost_usd: float = 10.0
+    max_steps: int = 0  # Max tool call steps per run; 0 = unlimited
     loop_detect_turns: int = 6
     loop_similarity_threshold: float = 0.9
     model_prices: dict[str, float] = Field(default_factory=lambda: {
@@ -121,6 +165,9 @@ class Config(BaseModel):
     model: str = ''
     model_base_url: Optional[str] = None
     model_api_key: Optional[str] = None
+    small_model: Optional[str] = None
+    small_model_base_url: Optional[str] = None
+    small_model_api_key: Optional[str] = None
     enable_thinking: bool = False
     thinking_budget: Optional[int] = None
     auth: AuthConfig = Field(default_factory=AuthConfig)
@@ -129,8 +176,10 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
+    truncation: TruncationConfig = Field(default_factory=TruncationConfig)
     compaction: CompactionConfig = Field(default_factory=CompactionConfig)
     interaction: InteractionConfig = Field(default_factory=InteractionConfig)
+    retry: RetryConfig = Field(default_factory=RetryConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
 
     def is_ready(self) -> bool:
@@ -230,6 +279,15 @@ class Config(BaseModel):
                     "Invalid CODY_THINKING_BUDGET value: %r, ignoring",
                     env_thinking_budget,
                 )
+        env_small_model = os.environ.get("CODY_SMALL_MODEL")
+        if env_small_model:
+            config.small_model = env_small_model
+        env_small_model_base_url = os.environ.get("CODY_SMALL_MODEL_BASE_URL")
+        if env_small_model_base_url:
+            config.small_model_base_url = env_small_model_base_url
+        env_small_model_api_key = os.environ.get("CODY_SMALL_MODEL_API_KEY")
+        if env_small_model_api_key:
+            config.small_model_api_key = env_small_model_api_key
         env_compaction_llm = os.environ.get("CODY_COMPACTION_USE_LLM")
         if env_compaction_llm:
             config.compaction.use_llm = env_compaction_llm.lower() in (
@@ -301,6 +359,7 @@ class Config(BaseModel):
         data = self.model_dump(exclude_none=True)
         # Exclude sensitive fields from persistence
         data.pop("model_api_key", None)
+        data.pop("small_model_api_key", None)
         if "compaction" in data:
             data["compaction"].pop("model_api_key", None)
         if "auth" in data:

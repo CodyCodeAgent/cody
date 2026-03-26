@@ -38,9 +38,16 @@ from pydantic_ai.messages import (
 from pydantic_graph import End
 
 from .audit import AuditLogger
+from .retry import RetryParams as _RetryDataclass, with_retry, with_retry_sync
 from .config import Config
-from .context import CompactResult, compact_messages, compact_messages_llm
-from .deps import CodyDeps
+from .context import (
+    CompactResult,
+    compact_messages,
+    compact_messages_llm,
+    estimate_tokens,
+    prune_tool_outputs,
+)
+from .deps import CodyDeps, UNSET, _UnsetType
 from .errors import CircuitBreakerError, InteractionTimeoutError
 from .file_history import FileHistory
 from .interaction import InteractionRequest, InteractionResponse
@@ -51,6 +58,7 @@ from .memory import ProjectMemoryStore
 from .permissions import PermissionLevel, PermissionManager
 from .prompt import Prompt, prompt_images, prompt_text
 from .session import Message, SessionStore
+from .storage import AuditLoggerProtocol, FileHistoryProtocol, MemoryStoreProtocol
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
 from .user_input import UserInputQueue
@@ -123,12 +131,7 @@ class CodyResult:
                     if part.part_kind == "thinking" and part.content:
                         thinking_parts.append(part.content)
                     elif part.part_kind == "tool-call":
-                        args = part.args if isinstance(part.args, dict) else {}
-                        if isinstance(part.args, str):
-                            try:
-                                args = json.loads(part.args)
-                            except (json.JSONDecodeError, TypeError):
-                                args = {"raw": part.args}
+                        args = _parse_tool_args(part.args)
                         trace = ToolTrace(
                             tool_name=part.tool_name,
                             args=args,
@@ -195,6 +198,14 @@ class ToolResultEvent:
 
 
 @dataclass
+class PruneEvent:
+    """Old tool outputs were selectively pruned before this run."""
+    messages_pruned: int
+    estimated_tokens_saved: int
+    event_type: Literal["prune"] = "prune"
+
+
+@dataclass
 class CompactEvent:
     """Context was auto-compacted before this run."""
     original_messages: int
@@ -234,6 +245,19 @@ class CircuitBreakerEvent:
 
 
 @dataclass
+class RetryEvent:
+    """Emitted before retrying a failed model call in streaming mode.
+
+    Consumers should clear any buffered partial output (text, thinking,
+    tool calls) so the retried response starts clean.
+    """
+    attempt: int  # 1-based attempt that just failed
+    max_attempts: int
+    error: str
+    event_type: Literal["retry"] = "retry"
+
+
+@dataclass
 class InteractionRequestEvent:
     """Emitted when the runner needs human input."""
     request: InteractionRequest
@@ -248,14 +272,26 @@ class UserInputReceivedEvent:
 
 
 StreamEvent = Union[
-    SessionStartEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
+    SessionStartEvent, PruneEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
     ToolCallEvent, ToolResultEvent, DoneEvent,
-    CancelledEvent, CircuitBreakerEvent, InteractionRequestEvent,
+    CancelledEvent, CircuitBreakerEvent, RetryEvent, InteractionRequestEvent,
     UserInputReceivedEvent,
 ]
 
 
 # ── Metadata extraction helpers ──────────────────────────────────────────
+
+def _parse_tool_args(raw_args) -> dict[str, Any]:
+    """Parse tool call args from pydantic-ai (may be dict or JSON string)."""
+    if isinstance(raw_args, dict):
+        return raw_args
+    if isinstance(raw_args, str):
+        try:
+            return json.loads(raw_args)
+        except (json.JSONDecodeError, TypeError):
+            return {"raw": raw_args}
+    return {}
+
 
 _CONFIDENCE_RE = re.compile(r"<confidence>\s*([\d.]+)\s*</confidence>")
 
@@ -315,10 +351,36 @@ def _build_allowed_roots(workdir: Path, config_roots: list[str], extra_roots: li
     return result
 
 
+@dataclass
+class _CircuitBreakerState:
+    """Per-run mutable state for circuit breaker checks.
+
+    Isolated as a dataclass so concurrent runs on the same AgentRunner
+    don't interfere with each other's counters.
+    """
+    total_tokens: int = 0
+    estimated_cost: float = 0.0
+    step_count: int = 0
+    recent_results: list[str] = field(default_factory=list)
+
+
 class AgentRunner:
     """Run Cody Agent with full context"""
 
-    def __init__(self, config: Config, workdir: Path, extra_roots: list[Path] | None = None):
+    def __init__(
+        self,
+        config: Config,
+        workdir: Path,
+        extra_roots: list[Path] | None = None,
+        custom_tools: list | None = None,
+        system_prompt: str | None = None,
+        extra_system_prompt: str | None = None,
+        before_tool_hooks: list | None = None,
+        after_tool_hooks: list | None = None,
+        audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET,
+        file_history: FileHistoryProtocol | _UnsetType | None = UNSET,
+        memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET,
+    ):
         self.workdir = workdir
         self.config = config
         self.allowed_roots: list[Path] = _build_allowed_roots(
@@ -331,17 +393,28 @@ class AgentRunner:
         if self.config.mcp.servers:
             self._mcp_client = MCPClient(self.config.mcp)
 
-        # Sub-agent manager
+        # Audit logger (injected or default SQLite)
+        if isinstance(audit_logger, _UnsetType) or audit_logger is None:
+            self._audit_logger: AuditLoggerProtocol = AuditLogger()
+        else:
+            self._audit_logger = audit_logger
+
+        # File history (injected or default in-memory)
+        if isinstance(file_history, _UnsetType) or file_history is None:
+            self._file_history: FileHistoryProtocol = FileHistory(workdir=self.workdir)
+        else:
+            self._file_history = file_history
+
+        # Sub-agent manager (shares injected storage)
         self._sub_agent_manager = SubAgentManager(
             config=self.config,
             workdir=self.workdir,
+            audit_logger=self._audit_logger,
+            file_history=self._file_history,
         )
 
         # LSP client
         self._lsp_client = LSPClient(workdir=self.workdir)
-
-        # Audit logger
-        self._audit_logger = AuditLogger()
 
         # Permission manager
         self._permission_manager = PermissionManager(
@@ -349,16 +422,12 @@ class AgentRunner:
             default_level=PermissionLevel(self.config.permissions.default_level),
         )
 
-        # File history
-        self._file_history = FileHistory(workdir=self.workdir)
-
         # Shared todo list for AI task tracking
         self._todo_list: list = []
 
-        # Circuit breaker state (reset per run)
-        self._cb_total_tokens: int = 0
-        self._cb_estimated_cost: float = 0.0
-        self._cb_recent_results: list[str] = []
+        # Circuit breaker state is now per-run (see _CircuitBreakerState).
+        # _cb is set at the start of each run/run_stream/run_sync call.
+        self._cb: _CircuitBreakerState = _CircuitBreakerState()
 
         # Pending interaction requests (id → Future).
         # Futures are created by consumers (CLI/TUI/Web) when they emit
@@ -368,15 +437,34 @@ class AgentRunner:
         # User input queue: users can proactively send messages without AI asking.
         self._user_input_queue = UserInputQueue()
 
-        # Project memory
-        self._memory_store: Optional[ProjectMemoryStore] = None
-        try:
-            self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
-        except Exception:
-            logger.debug("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
+        # Custom tools provided by the SDK user
+        self._custom_tools: list = custom_tools or []
+
+        # Custom system prompt overrides
+        self._system_prompt_override: str | None = system_prompt
+        self._extra_system_prompt: str | None = extra_system_prompt
+
+        # Step hooks (before/after tool execution)
+        self._before_tool_hooks: list = before_tool_hooks or []
+        self._after_tool_hooks: list = after_tool_hooks or []
+
+        # Project memory (injected or default file-backed)
+        if isinstance(memory_store, _UnsetType):
+            self._memory_store: Optional[MemoryStoreProtocol] = None
+            try:
+                self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
+            except Exception:
+                logger.warning("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
+        else:
+            self._memory_store = memory_store
 
         # Create agent
         self.agent = self._create_agent()
+
+    @property
+    def memory_store(self) -> Optional["MemoryStoreProtocol"]:
+        """Public access to the project memory store (may be ``None``)."""
+        return self._memory_store
 
     def _resolve_model(self):
         """Resolve model to a Pydantic AI model instance.
@@ -386,42 +474,34 @@ class AgentRunner:
         """
         return resolve_model(self.config)
 
-    def _create_agent(self) -> Agent:
+    def _create_agent(
+        self,
+        *,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+    ) -> Agent:
         """Create Pydantic AI Agent with tools.
 
         Tools are registered declaratively via tools.register_tools() —
         see tools.py CORE_TOOLS / MCP_TOOLS for the full list.
 
         System prompt order:
-          1. Base persona
+          1. Base persona (or user-provided system_prompt override)
           2. CODY.md project instructions (global ~/.cody/CODY.md + project CODY.md)
           3. Project memory (cross-session learnings)
           4. Available skills XML (Agent Skills standard)
-        """
-        # 1. Base persona
-        system_parts = [
-            "You are Cody, an AI coding assistant. "
-            "You have access to file operations, shell commands, skills, web search, "
-            "and code intelligence via LSP. "
-            "When a skill matches the task, call read_skill(skill_name) to load its "
-            "full instructions. "
-            "Use webfetch/websearch for web lookups and lsp_* tools for code intelligence. "
-            "Always execute commands and file operations as needed to complete tasks.\n\n"
+          5. extra_system_prompt (user-provided, appended last)
 
-            "## Sub-Agent Parallelism\n"
-            "You SHOULD use spawn_agent() when the task involves 2 or more independent "
-            "sub-tasks. Doing work in parallel is faster and preferred over doing it "
-            "sequentially. Spawn multiple agents in a single tool-call turn.\n\n"
-            "Examples of when to spawn agents:\n"
-            "  - User: 'Add unit tests for auth, billing, and notification modules'\n"
-            "    → spawn 3 test agents, one per module\n"
-            "  - User: 'Refactor logging in src/api/ and src/workers/'\n"
-            "    → spawn 2 code agents, one per directory\n"
-            "  - User: 'Analyze the architecture of frontend and backend'\n"
-            "    → spawn 2 research agents in parallel\n\n"
-            "Only skip sub-agents when: the task is truly single-step, or steps have "
-            "sequential dependencies (step B needs output of step A).",
-        ]
+        Args:
+            include_tools: If set, only register tools with these names.
+            exclude_tools: If set, skip tools with these names.
+        """
+        # 1. Base persona (from core/prompts.py), or custom override
+        if self._system_prompt_override is not None:
+            system_parts = [self._system_prompt_override]
+        else:
+            from .prompts import build_system_prompt
+            system_parts = [build_system_prompt()]
 
         # 2. CODY.md project instructions (global + project, merged)
         project_instructions = load_project_instructions(self.workdir)
@@ -441,13 +521,23 @@ class AgentRunner:
         if skills_xml:
             system_parts.append(skills_xml)
 
+        # 5. Extra system prompt (user-provided, appended last)
+        if self._extra_system_prompt:
+            system_parts.append(self._extra_system_prompt)
+
         agent = Agent(
             self._resolve_model(),
             deps_type=CodyDeps,
             system_prompt="\n\n".join(system_parts),
         )
 
-        tools.register_tools(agent, include_mcp=bool(self._mcp_client))
+        tools.register_tools(
+            agent,
+            include_mcp=bool(self._mcp_client),
+            custom_tools=self._custom_tools or None,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+        )
 
         # Dynamic system prompt: MCP tools (evaluated at each run,
         # so it always reflects currently connected servers & tools)
@@ -478,6 +568,24 @@ class AgentRunner:
 
         return agent  # type: ignore[return-value]
 
+    def _get_agent(
+        self,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+    ) -> Agent:
+        """Return the agent to use for a run.
+
+        If *include_tools* or *exclude_tools* is specified, a new agent is
+        created with filtered tools (one-off, not cached).  Otherwise,
+        the default agent (``self.agent``) is returned.
+        """
+        if include_tools is not None or exclude_tools is not None:
+            return self._create_agent(
+                include_tools=include_tools,
+                exclude_tools=exclude_tools,
+            )
+        return self.agent
+
     def _create_deps(self, interaction_handler=None) -> CodyDeps:
         """Create dependencies.
 
@@ -499,6 +607,8 @@ class AgentRunner:
             todo_list=self._todo_list,
             memory_store=self._memory_store,
             interaction_handler=interaction_handler or self._auto_approve_handler,
+            before_tool_hooks=self._before_tool_hooks,
+            after_tool_hooks=self._after_tool_hooks,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -592,23 +702,11 @@ class AgentRunner:
 
     # ── Context compaction ────────────────────────────────────────────────────
 
-    async def _compact_history_if_needed(
-        self,
-        history: Optional[list[ModelMessage]],
-        max_tokens: int = 100_000,
-    ) -> tuple[Optional[list[ModelMessage]], Optional[CompactResult]]:
-        """Auto-compact message history when approaching token limits.
-
-        Converts ModelMessage history to dict format, runs compaction,
-        then converts back. Returns (history, compact_result_or_none).
-
-        When ``config.compaction.use_llm`` is enabled, uses an LLM agent to
-        generate a semantic summary. Falls back to truncation on any error.
-        """
-        if not history:
-            return history, None
-
-        # Convert ModelMessage list → dict list for compaction
+    @staticmethod
+    def _history_to_dicts(
+        history: list[ModelMessage],
+    ) -> list[dict]:
+        """Convert ModelMessage list → dict list for compaction/pruning."""
         msgs: list[dict] = []
         for msg in history:
             if isinstance(msg, ModelRequest):
@@ -619,6 +717,86 @@ class AgentRunner:
                 for part in msg.parts:  # type: ignore[assignment]
                     if hasattr(part, 'content'):
                         msgs.append({"role": "assistant", "content": part.content})
+        return msgs
+
+    @staticmethod
+    def _dicts_to_history(msgs: list[dict]) -> list[ModelMessage]:
+        """Convert dict list back to ModelMessage format."""
+        new_history: list[ModelMessage] = []
+        for m in msgs:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if role == "system":
+                new_history.append(
+                    ModelRequest(parts=[UserPromptPart(content=f"[Context]\n{content}")])
+                )
+            elif role == "user":
+                new_history.append(ModelRequest(parts=[UserPromptPart(content=content)]))
+            elif role == "assistant":
+                new_history.append(ModelResponse(parts=[TextPart(content=content)]))
+        return new_history
+
+    async def _compact_history_if_needed(
+        self,
+        history: Optional[list[ModelMessage]],
+        max_tokens: int = 100_000,
+    ) -> tuple[Optional[list[ModelMessage]], Optional[CompactResult]]:
+        """Auto-compact message history when approaching token limits.
+
+        Uses a two-phase strategy inspired by OpenCode:
+
+        1. **Prune** — selectively replace old, large tool outputs with
+           lightweight markers.  This preserves conversation structure and is
+           very cheap (no LLM call).
+        2. **Compact** — if pruning alone didn't free enough tokens, fall back
+           to full compaction (truncation or LLM summarization).
+
+        The effective token threshold is determined by
+        ``CompactionConfig.effective_max_tokens()`` which honours
+        ``trigger_ratio`` and ``context_window_tokens`` when set.
+
+        Returns (history, compact_result_or_none).
+        """
+        if not history:
+            return history, None
+
+        msgs = self._history_to_dicts(history)
+        cc = self.config.compaction
+        eff_max = cc.effective_max_tokens()
+
+        # ── Phase 1: Selective pruning ───────────────────────────────────
+        if cc.enable_pruning:
+            pruned, prune_result = prune_tool_outputs(
+                msgs,
+                max_tokens=eff_max,
+                protect_recent_tokens=cc.prune_protect_tokens,
+                min_saving_tokens=cc.prune_min_saving_tokens,
+                min_content_tokens=cc.prune_min_content_tokens,
+            )
+            if prune_result is not None:
+                logger.info(
+                    "Pruned %d messages, ~%d tokens saved",
+                    prune_result.messages_pruned,
+                    prune_result.estimated_tokens_saved,
+                )
+                msgs = pruned
+                # Re-check: is pruning sufficient?
+                remaining = sum(
+                    estimate_tokens(m.get("content", "")) for m in msgs
+                )
+                if remaining <= eff_max:
+                    # Pruning was enough — convert back and return
+                    return (
+                        self._dicts_to_history(msgs),
+                        CompactResult(
+                            summary="",
+                            original_messages=len(history),
+                            compacted_messages=len(msgs),
+                            estimated_tokens_saved=prune_result.estimated_tokens_saved,
+                        ),
+                    )
+
+        # ── Phase 2: Full compaction ─────────────────────────────────────
 
         # Extract existing summary for incremental compaction
         existing_summary = ""
@@ -639,9 +817,10 @@ class AgentRunner:
                     msgs,
                     config=self.config,
                     existing_summary=existing_summary,
-                    max_tokens=self.config.compaction.max_tokens,
-                    keep_recent=self.config.compaction.keep_recent,
-                    max_summary_tokens=self.config.compaction.max_summary_tokens,
+                    max_tokens=eff_max,
+                    keep_recent=cc.keep_recent,
+                    keep_recent_tokens=cc.keep_recent_tokens,
+                    max_summary_tokens=cc.max_summary_tokens,
                 )
             except Exception:
                 logger.warning(
@@ -649,10 +828,16 @@ class AgentRunner:
                     exc_info=True,
                 )
                 compacted, result = compact_messages(
-                    msgs, max_tokens=max_tokens,
+                    msgs,
+                    max_tokens=eff_max,
+                    keep_recent_tokens=cc.keep_recent_tokens,
                 )
         else:
-            compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+            compacted, result = compact_messages(
+                msgs,
+                max_tokens=eff_max,
+                keep_recent_tokens=cc.keep_recent_tokens,
+            )
 
         if result is None:
             return history, None  # no compaction needed
@@ -665,67 +850,55 @@ class AgentRunner:
             result.used_llm,
         )
 
-        # Convert back to ModelMessage format
-        # System summary message becomes a user context message
-        new_history: list[ModelMessage] = []
-        for m in compacted:
-            role = m.get("role", "")
-            content = m.get("content", "")
-            if role == "system":
-                new_history.append(
-                    ModelRequest(parts=[UserPromptPart(content=f"[Context]\n{content}")])
-                )
-            elif role == "user":
-                new_history.append(ModelRequest(parts=[UserPromptPart(content=content)]))
-            elif role == "assistant":
-                new_history.append(ModelResponse(parts=[TextPart(content=content)]))
-
-        return new_history, result
+        return self._dicts_to_history(compacted), result
 
     def _compact_history_sync(
         self,
         history: Optional[list[ModelMessage]],
-        max_tokens: int = 100_000,
     ) -> tuple[Optional[list[ModelMessage]], Optional[CompactResult]]:
-        """Synchronous compaction — always uses truncation (no LLM)."""
+        """Synchronous compaction — prune first, then truncation (no LLM)."""
         if not history:
             return history, None
 
-        msgs: list[dict] = []
-        for msg in history:
-            if isinstance(msg, ModelRequest):
-                for part in msg.parts:
-                    if hasattr(part, 'content'):
-                        msgs.append({"role": "user", "content": part.content})
-            elif isinstance(msg, ModelResponse):
-                for part in msg.parts:  # type: ignore[assignment]
-                    if hasattr(part, 'content'):
-                        msgs.append({"role": "assistant", "content": part.content})
+        msgs = self._history_to_dicts(history)
+        cc = self.config.compaction
+        eff_max = cc.effective_max_tokens()
 
-        compacted, result = compact_messages(msgs, max_tokens=max_tokens)
+        # Phase 1: Selective pruning
+        if cc.enable_pruning:
+            pruned, prune_result = prune_tool_outputs(
+                msgs,
+                max_tokens=eff_max,
+                protect_recent_tokens=cc.prune_protect_tokens,
+                min_saving_tokens=cc.prune_min_saving_tokens,
+                min_content_tokens=cc.prune_min_content_tokens,
+            )
+            if prune_result is not None:
+                msgs = pruned
+                remaining = sum(
+                    estimate_tokens(m.get("content", "")) for m in msgs
+                )
+                if remaining <= eff_max:
+                    return (
+                        self._dicts_to_history(msgs),
+                        CompactResult(
+                            summary="",
+                            original_messages=len(history),
+                            compacted_messages=len(msgs),
+                            estimated_tokens_saved=prune_result.estimated_tokens_saved,
+                        ),
+                    )
+
+        # Phase 2: Truncation
+        compacted, result = compact_messages(
+            msgs,
+            max_tokens=eff_max,
+            keep_recent_tokens=cc.keep_recent_tokens,
+        )
         if result is None:
             return history, None
 
-        new_history: list[ModelMessage] = []
-        for m in compacted:
-            role = m.get("role", "")
-            content = m.get("content", "")
-            if role == "system":
-                new_history.append(
-                    ModelRequest(
-                        parts=[UserPromptPart(content=f"[Context]\n{content}")]
-                    )
-                )
-            elif role == "user":
-                new_history.append(
-                    ModelRequest(parts=[UserPromptPart(content=content)])
-                )
-            elif role == "assistant":
-                new_history.append(
-                    ModelResponse(parts=[TextPart(content=content)])
-                )
-
-        return new_history, result
+        return self._dicts_to_history(compacted), result
 
     # ── Model settings ────────────────────────────────────────────────────────
 
@@ -743,56 +916,90 @@ class AgentRunner:
 
         return {"extra_body": extra_body}
 
+    def _retry_config(self) -> _RetryDataclass:
+        """Build retry dataclass from pydantic config."""
+        rc = self.config.retry
+        return _RetryDataclass(
+            max_retries=rc.max_retries,
+            base_delay=rc.base_delay,
+            max_delay=rc.max_delay,
+            enabled=rc.enabled,
+        )
+
     # ── Circuit breaker ────────────────────────────────────────────────────
 
-    def _reset_circuit_breaker(self) -> None:
-        """Reset circuit breaker counters for a new run."""
-        self._cb_total_tokens = 0
-        self._cb_estimated_cost = 0.0
-        self._cb_recent_results = []
+    def _new_circuit_breaker(self) -> _CircuitBreakerState:
+        """Create and install a fresh per-run circuit breaker state."""
+        self._cb = _CircuitBreakerState()
+        return self._cb
 
     def _update_circuit_breaker(self, result_text: str, usage: Any) -> None:
         """Update circuit breaker state after a tool call or model response."""
+        cb_state = self._cb
         if usage:
             tokens = getattr(usage, "total_tokens", 0) or 0
-            self._cb_total_tokens = tokens
+            cb_state.total_tokens = tokens
             price = self.config.circuit_breaker.model_prices.get(
                 self.config.model,
                 self.config.circuit_breaker.model_prices.get("default", 0.000003),
             )
-            self._cb_estimated_cost = self._cb_total_tokens * price
+            cb_state.estimated_cost = cb_state.total_tokens * price
 
         if result_text:
-            self._cb_recent_results.append(result_text)
+            cb_state.step_count += 1
+            cb_state.recent_results.append(result_text)
             max_keep = self.config.circuit_breaker.loop_detect_turns + 1
-            if len(self._cb_recent_results) > max_keep:
-                self._cb_recent_results = self._cb_recent_results[-max_keep:]
+            if len(cb_state.recent_results) > max_keep:
+                cb_state.recent_results = cb_state.recent_results[-max_keep:]
 
     def _check_circuit_breaker(self) -> None:
         """Check circuit breaker conditions and raise if tripped."""
         if not self.config.circuit_breaker.enabled:
             return
         cb = self.config.circuit_breaker
-        if self._cb_total_tokens > cb.max_tokens:
-            raise CircuitBreakerError("token_limit", self._cb_total_tokens, self._cb_estimated_cost)
-        if self._cb_estimated_cost > cb.max_cost_usd:
-            raise CircuitBreakerError("cost_limit", self._cb_total_tokens, self._cb_estimated_cost)
+        s = self._cb
+        if s.total_tokens > cb.max_tokens:
+            raise CircuitBreakerError("token_limit", s.total_tokens, s.estimated_cost)
+        if s.estimated_cost > cb.max_cost_usd:
+            raise CircuitBreakerError("cost_limit", s.total_tokens, s.estimated_cost)
+        if cb.max_steps > 0 and s.step_count >= cb.max_steps:
+            raise CircuitBreakerError("step_limit", s.total_tokens, s.estimated_cost)
         if self._is_loop_detected():
-            raise CircuitBreakerError("loop_detected", self._cb_total_tokens, self._cb_estimated_cost)
+            raise CircuitBreakerError("loop_detected", s.total_tokens, s.estimated_cost)
 
     def _is_loop_detected(self) -> bool:
-        """Check if recent tool results indicate a loop."""
+        """Check if recent tool results indicate a loop.
+
+        Detects two patterns:
+        1. Repetition: all N results are similar to each other (A-A-A-A)
+        2. Alternating: consecutive pairs repeat (A-B-A-B with N >= 4)
+        """
         n = self.config.circuit_breaker.loop_detect_turns
-        if len(self._cb_recent_results) < n:
+        if n <= 0 or len(self._cb.recent_results) < n:
             return False
-        recent = self._cb_recent_results[-n:]
+        recent = self._cb.recent_results[-n:]
         threshold = self.config.circuit_breaker.loop_similarity_threshold
-        # All recent results must be similar to each other
+
+        # Pattern 1: all similar to first (A-A-A-A)
         first = recent[0]
-        return all(
+        if all(
             SequenceMatcher(None, first, r).ratio() >= threshold
             for r in recent[1:]
-        )
+        ):
+            return True
+
+        # Pattern 2: alternating loop (A-B-A-B) — check consecutive pairs repeat
+        if n >= 4:
+            period = 2
+            is_alternating = True
+            for i in range(period, n):
+                if SequenceMatcher(None, recent[i], recent[i - period]).ratio() < threshold:
+                    is_alternating = False
+                    break
+            if is_alternating:
+                return True
+
+        return False
 
     # ── Interaction (human-in-the-loop) ──────────────────────────────────
 
@@ -840,8 +1047,11 @@ class AgentRunner:
             self._pending_interactions[request.id] = future
             await interaction_q.put(InteractionRequestEvent(request=request))
             try:
-                if timeout > 0:
-                    return await asyncio.wait_for(future, timeout=timeout)
+                # Confirm requests (permission checks) wait indefinitely —
+                # the user needs time to review.  Questions use the configured timeout.
+                effective_timeout = 0 if request.kind == "confirm" else timeout
+                if effective_timeout > 0:
+                    return await asyncio.wait_for(future, timeout=effective_timeout)
                 return await future
             except asyncio.TimeoutError:
                 self._pending_interactions.pop(request.id, None)
@@ -875,20 +1085,143 @@ class AgentRunner:
         self,
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> CodyResult:
-        """Run agent with prompt, optionally continuing from history"""
-        self._reset_circuit_breaker()
+        """Run agent with prompt, optionally continuing from history.
+
+        Args:
+            prompt: Task description.
+            message_history: Prior conversation messages.
+            include_tools: If set, only these tools are available for this run.
+            exclude_tools: If set, these tools are excluded for this run.
+            cancel_event: If set and triggered, the run is cancelled and
+                a ``CodyResult`` with output ``"(cancelled)"`` is returned.
+        """
+        self._new_circuit_breaker()
         deps = self._create_deps()
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        result = await self.agent.run(  # type: ignore[call-overload]
+        agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
+
+        run_coro = with_retry(
+            agent.run,  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
+            retry_config=self._retry_config(),
         )
+
+        if cancel_event is not None:
+            run_task = asyncio.ensure_future(run_coro)
+            cancel_task = asyncio.ensure_future(cancel_event.wait())
+            done, pending = await asyncio.wait(
+                {run_task, cancel_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for t in pending:
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+            if cancel_task in done:
+                return CodyResult(output="(cancelled)")
+            result = run_task.result()
+        else:
+            result = await run_coro
+
         cody_result = CodyResult.from_raw(result)
         self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
         self._check_circuit_breaker()
         return cody_result
+
+    async def _stream_tool_node(
+        self, node, agent_run, interaction_q, drain_interaction_q,
+    ) -> AsyncGenerator:
+        """Stream tool calls/results for a single CallToolsNode.
+
+        Merges tool execution events with interaction events so that
+        InteractionRequestEvents are yielded to the caller even while
+        a tool is blocked waiting for a human response.
+        """
+        # Inject proactive user input alongside tool results.
+        user_messages = self._user_input_queue.drain_all()
+        if user_messages:
+            combined = "\n".join(user_messages)
+            node.user_prompt = combined  # type: ignore[union-attr]
+            yield UserInputReceivedEvent(content=combined)
+
+        _merged_q: asyncio.Queue = asyncio.Queue()
+        _TOOL_STREAM_DONE = object()
+
+        async def _consume_tool_stream():
+            try:
+                async with node.stream(agent_run.ctx) as tool_stream:
+                    async for ev in tool_stream:
+                        await _merged_q.put(("tool", ev))
+                await _merged_q.put(("done", _TOOL_STREAM_DONE))
+            except Exception as exc:
+                await _merged_q.put(("error", exc))
+
+        async def _forward_interactions():
+            while True:
+                ia_event = await interaction_q.get()
+                await _merged_q.put(("interaction", ia_event))
+
+        _tool_task = asyncio.create_task(_consume_tool_stream())
+        _ia_task = asyncio.create_task(_forward_interactions())
+
+        try:
+            while True:
+                kind, item = await _merged_q.get()
+                if kind == "done":
+                    break
+                if kind == "error":
+                    raise item
+                if kind == "interaction":
+                    yield item
+                    continue
+                # kind == "tool"
+                event = item
+                if isinstance(event, FunctionToolCallEvent):
+                    part = event.part
+                    args = _parse_tool_args(part.args)
+                    yield ToolCallEvent(
+                        tool_name=part.tool_name,
+                        args=args,
+                        tool_call_id=part.tool_call_id,
+                    )
+                elif isinstance(event, FunctionToolResultEvent):
+                    result_part = event.result
+                    if result_part.part_kind == "tool-return":
+                        content = result_part.content
+                        if not isinstance(content, str):
+                            content = str(content)
+                        yield ToolResultEvent(
+                            tool_name=result_part.tool_name,
+                            tool_call_id=result_part.tool_call_id,
+                            result=content,
+                        )
+                        self._update_circuit_breaker(content, None)
+        finally:
+            _ia_task.cancel()
+            try:
+                await _ia_task
+            except asyncio.CancelledError:
+                pass
+            if not _tool_task.done():
+                try:
+                    await _tool_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+        # Drain any remaining interaction events after tool execution
+        for interaction_event in drain_interaction_q():
+            yield interaction_event
+
+        # Check circuit breaker after each tool execution round
+        self._check_circuit_breaker()
 
     @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
     async def run_stream(
@@ -896,11 +1229,20 @@ class AgentRunner:
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """Run agent with streaming, yielding structured StreamEvent objects.
 
         Uses pydantic-ai's ``agent.iter()`` API for node-level control,
         which enables proactive user input injection between nodes.
+
+        Args:
+            prompt: Task description.
+            message_history: Prior conversation messages.
+            cancel_event: Set to cancel the run.
+            include_tools: If set, only these tools are available for this run.
+            exclude_tools: If set, these tools are excluded for this run.
 
         Events:
           - CompactEvent: context was auto-compacted (first event if applicable)
@@ -917,7 +1259,7 @@ class AgentRunner:
         Raises:
           InteractionTimeoutError: if an interaction request times out
         """
-        self._reset_circuit_breaker()
+        self._new_circuit_breaker()
 
         # Side channel for interaction events emitted from within tool execution.
         interaction_q: asyncio.Queue = asyncio.Queue()
@@ -953,122 +1295,74 @@ class AgentRunner:
         # Drain any stale user input from a previous run.
         self._user_input_queue.drain_all()
 
+        agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
+
         try:
-            async with self.agent.iter(  # type: ignore[call-overload]
+            async with agent.iter(  # type: ignore[call-overload]
                 pydantic_prompt, deps=deps, message_history=message_history,
                 model_settings=self._build_model_settings(),
             ) as agent_run:
                 async for node in agent_run:
                     if cancel_event and cancel_event.is_set():
                         yield CancelledEvent()
-                        return
+                        break
 
                     # UserPromptNode is handled automatically by iter().
                     # We only need to stream ModelRequestNode and CallToolsNode.
 
-                    if self.agent.is_model_request_node(node):
-                        # Stream LLM response: thinking + text deltas
-                        async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
-                            async for event in stream:
-                                if isinstance(event, PartStartEvent):
-                                    part = event.part
-                                    if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                        yield ThinkingEvent(content=part.content)
-                                    elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                        yield TextDeltaEvent(content=part.content)
-                                elif isinstance(event, PartDeltaEvent):
-                                    delta = event.delta
-                                    if delta.part_delta_kind == "thinking":
-                                        content = getattr(delta, "content_delta", None)
-                                        if content:
-                                            yield ThinkingEvent(content=content)
-                                    elif delta.part_delta_kind == "text":
-                                        content = getattr(delta, "content_delta", None)
-                                        if content:
-                                            yield TextDeltaEvent(content=content)
+                    if agent.is_model_request_node(node):
+                        # Stream LLM response with retry on transient errors.
+                        # On failure a RetryEvent is yielded so consumers can
+                        # clear buffered partial output before the retry.
+                        retry_cfg = self._retry_config()
+                        max_attempts = (retry_cfg.max_retries + 1) if retry_cfg.enabled else 1
 
-                    elif self.agent.is_call_tools_node(node):
-                        # Inject proactive user input alongside tool results.
-                        # node.user_prompt is appended after tool return parts
-                        # as a UserPromptPart, so the LLM sees it on the next turn.
-                        user_messages = self._user_input_queue.drain_all()
-                        if user_messages:
-                            combined = "\n".join(user_messages)
-                            node.user_prompt = combined  # type: ignore[union-attr]
-                            yield UserInputReceivedEvent(content=combined)
-
-                        # Stream tool calls and results, merging interaction
-                        # events that may arrive while tools are executing.
-                        # We use a merged queue so that interaction_request events
-                        # are yielded to the caller even when a tool (e.g. question)
-                        # is blocked awaiting a response via its Future.
-                        _merged_q: asyncio.Queue = asyncio.Queue()
-                        _TOOL_STREAM_DONE = object()
-
-                        async def _consume_tool_stream():
-                            async with node.stream(agent_run.ctx) as tool_stream:
-                                async for ev in tool_stream:
-                                    await _merged_q.put(("tool", ev))
-                            await _merged_q.put(("done", _TOOL_STREAM_DONE))
-
-                        async def _forward_interactions():
-                            while True:
-                                ia_event = await interaction_q.get()
-                                await _merged_q.put(("interaction", ia_event))
-
-                        _tool_task = asyncio.create_task(_consume_tool_stream())
-                        _ia_task = asyncio.create_task(_forward_interactions())
-
-                        try:
-                            while True:
-                                kind, item = await _merged_q.get()
-                                if kind == "done":
-                                    break
-                                if kind == "interaction":
-                                    yield item
-                                    continue
-                                # kind == "tool"
-                                event = item
-                                if isinstance(event, FunctionToolCallEvent):
-                                    part = event.part
-                                    args = part.args if isinstance(part.args, dict) else {}
-                                    if isinstance(part.args, str):
-                                        try:
-                                            args = json.loads(part.args)
-                                        except (json.JSONDecodeError, TypeError):
-                                            args = {"raw": part.args}
-                                    yield ToolCallEvent(
-                                        tool_name=part.tool_name,
-                                        args=args,
-                                        tool_call_id=part.tool_call_id,
-                                    )
-                                elif isinstance(event, FunctionToolResultEvent):
-                                    result_part = event.result
-                                    if result_part.part_kind == "tool-return":
-                                        content = result_part.content
-                                        if not isinstance(content, str):
-                                            content = str(content)
-                                        yield ToolResultEvent(
-                                            tool_name=result_part.tool_name,
-                                            tool_call_id=result_part.tool_call_id,
-                                            result=content,
-                                        )
-                                        self._update_circuit_breaker(content, None)
-                        finally:
-                            _ia_task.cancel()
+                        for attempt in range(max_attempts):
                             try:
-                                await _ia_task
-                            except asyncio.CancelledError:
-                                pass
-                            if not _tool_task.done():
-                                await _tool_task
+                                async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
+                                    async for event in stream:
+                                        if isinstance(event, PartStartEvent):
+                                            part = event.part
+                                            if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                                                yield ThinkingEvent(content=part.content)
+                                            elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                                                yield TextDeltaEvent(content=part.content)
+                                        elif isinstance(event, PartDeltaEvent):
+                                            delta = event.delta
+                                            if delta.part_delta_kind == "thinking":
+                                                content = getattr(delta, "content_delta", None)
+                                                if content:
+                                                    yield ThinkingEvent(content=content)
+                                            elif delta.part_delta_kind == "text":
+                                                content = getattr(delta, "content_delta", None)
+                                                if content:
+                                                    yield TextDeltaEvent(content=content)
+                                break  # success — exit retry loop
+                            except Exception as exc:
+                                from .retry import is_retryable
+                                if attempt >= max_attempts - 1 or not is_retryable(exc):
+                                    raise
+                                delay = min(
+                                    retry_cfg.base_delay * (2 ** attempt),
+                                    retry_cfg.max_delay,
+                                )
+                                logger.warning(
+                                    "Stream model call failed (attempt %d/%d), "
+                                    "retrying in %.1fs: %s",
+                                    attempt + 1, max_attempts, delay, exc,
+                                )
+                                yield RetryEvent(
+                                    attempt=attempt + 1,
+                                    max_attempts=max_attempts,
+                                    error=str(exc),
+                                )
+                                await asyncio.sleep(delay)
 
-                        # Drain any remaining interaction events after tool execution
-                        for interaction_event in _drain_interaction_q():
-                            yield interaction_event
-
-                        # Check circuit breaker after each tool execution round
-                        self._check_circuit_breaker()
+                    elif agent.is_call_tools_node(node):
+                        async for ev in self._stream_tool_node(
+                            node, agent_run, interaction_q, _drain_interaction_q,
+                        ):
+                            yield ev
 
                     elif isinstance(node, End):
                         # Final result
@@ -1098,7 +1392,7 @@ class AgentRunner:
         Note: LLM compaction is not available in sync mode. Falls back to
         truncation-based compaction regardless of config.compaction.use_llm.
         """
-        self._reset_circuit_breaker()
+        self._new_circuit_breaker()
         # run_sync always auto-approves — interaction requires async
         if self.config.interaction.enabled:
             logger.warning(
@@ -1112,9 +1406,11 @@ class AgentRunner:
             )
         message_history, _compact = self._compact_history_sync(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
-        result = self.agent.run_sync(  # type: ignore[call-overload]
+        result = with_retry_sync(
+            self.agent.run_sync,  # type: ignore[call-overload]
             pydantic_prompt, deps=deps, message_history=message_history,
             model_settings=self._build_model_settings(),
+            retry_config=self._retry_config(),
         )
         cody_result = CodyResult.from_raw(result)
         self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
@@ -1146,6 +1442,9 @@ class AgentRunner:
         prompt: Prompt,
         store: SessionStore,
         session_id: Optional[str] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> tuple[CodyResult, str]:
         """Run agent with automatic session persistence.
 
@@ -1160,7 +1459,11 @@ class AgentRunner:
         if compact_result is not None:
             self._save_compaction_checkpoint(store, sid, compact_result)
 
-        result = await self.run(prompt, message_history=history)
+        result = await self.run(
+            prompt, message_history=history,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+            cancel_event=cancel_event,
+        )
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
         store.add_message(sid, "assistant", result.output)
         return result, sid
@@ -1172,6 +1475,8 @@ class AgentRunner:
         store: SessionStore,
         session_id: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
     ) -> AsyncGenerator[tuple[StreamEvent, str], None]:
         """Stream agent with automatic session persistence.
 
@@ -1199,7 +1504,10 @@ class AgentRunner:
 
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
-        async for event in self.run_stream(prompt, message_history=history, cancel_event=cancel_event):
+        async for event in self.run_stream(
+            prompt, message_history=history, cancel_event=cancel_event,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+        ):
             if isinstance(event, DoneEvent):
                 store.add_message(sid, "assistant", event.result.output)
             elif isinstance(event, CancelledEvent):

@@ -22,6 +22,9 @@ _CODY_ENV_VARS = [
     "CODY_CODING_PLAN_KEY",
     "CODY_ENABLE_THINKING",
     "CODY_THINKING_BUDGET",
+    "CODY_SMALL_MODEL",
+    "CODY_SMALL_MODEL_BASE_URL",
+    "CODY_SMALL_MODEL_API_KEY",
 ]
 
 
@@ -475,3 +478,54 @@ def test_apply_overrides_extra_roots_empty_is_noop():
     config.security.allowed_roots = ["/a"]
     config.apply_overrides(extra_roots=[])
     assert config.security.allowed_roots == ["/a"]
+
+
+# ── Small model configuration ────────────────────────────────────────────────
+
+
+def test_small_model_defaults():
+    config = Config()
+    assert config.small_model is None
+    assert config.small_model_base_url is None
+    assert config.small_model_api_key is None
+
+
+def test_small_model_from_json(tmp_path):
+    data = {
+        "model": "claude-opus",
+        "small_model": "gpt-4o-mini",
+        "small_model_base_url": "https://api.openai.com/v1",
+    }
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps(data))
+    config = Config.load(config_path)
+    assert config.small_model == "gpt-4o-mini"
+    assert config.small_model_base_url == "https://api.openai.com/v1"
+
+
+def test_small_model_env_overrides(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    (tmp_path / "project").mkdir()
+    (tmp_path / "home").mkdir()
+
+    monkeypatch.setenv("CODY_SMALL_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("CODY_SMALL_MODEL_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("CODY_SMALL_MODEL_API_KEY", "sk-small-key")
+    config = Config.load(workdir=tmp_path / "project")
+    assert config.small_model == "gpt-4o-mini"
+    assert config.small_model_base_url == "https://api.openai.com/v1"
+    assert config.small_model_api_key == "sk-small-key"
+
+
+def test_small_model_api_key_excluded_from_save(tmp_path):
+    config = Config(
+        model="test",
+        small_model="gpt-4o-mini",
+        small_model_api_key="sk-secret",
+    )
+    config_path = tmp_path / "config.json"
+    config.save(config_path)
+
+    saved_data = json.loads(config_path.read_text())
+    assert "small_model_api_key" not in saved_data
+    assert saved_data["small_model"] == "gpt-4o-mini"

@@ -15,13 +15,10 @@ async def lsp_diagnostics(ctx: RunContext['CodyDeps'], file_path: str) -> str:
     if lsp is None:
         return "[ERROR] LSP not available"
 
-    try:
-        diags = await lsp.get_diagnostics(file_path)
-        if not diags:
-            return f"No diagnostics for {file_path}"
-        return "\n".join(str(d) for d in diags)
-    except Exception as e:
-        return f"[ERROR] LSP diagnostics failed: {e}"
+    diags = await lsp.get_diagnostics(file_path)
+    if not diags:
+        return f"No diagnostics for {file_path}"
+    return "\n".join(str(d) for d in diags)
 
 
 async def lsp_definition(
@@ -41,13 +38,10 @@ async def lsp_definition(
     if lsp is None:
         return "[ERROR] LSP not available"
 
-    try:
-        loc = await lsp.goto_definition(file_path, line, character)
-        if loc is None:
-            return f"No definition found at {file_path}:{line}:{character}"
-        return f"Definition: {loc}"
-    except Exception as e:
-        return f"[ERROR] LSP goto-definition failed: {e}"
+    loc = await lsp.goto_definition(file_path, line, character)
+    if loc is None:
+        return f"No definition found at {file_path}:{line}:{character}"
+    return f"Definition: {loc}"
 
 
 async def lsp_references(
@@ -67,16 +61,13 @@ async def lsp_references(
     if lsp is None:
         return "[ERROR] LSP not available"
 
-    try:
-        locations = await lsp.find_references(file_path, line, character)
-        if not locations:
-            return f"No references found at {file_path}:{line}:{character}"
-        lines = [f"References ({len(locations)}):"]
-        for loc in locations:
-            lines.append(f"  {loc}")
-        return "\n".join(lines)
-    except Exception as e:
-        return f"[ERROR] LSP find-references failed: {e}"
+    locations = await lsp.find_references(file_path, line, character)
+    if not locations:
+        return f"No references found at {file_path}:{line}:{character}"
+    lines = [f"References ({len(locations)}):"]
+    for loc in locations:
+        lines.append(f"  {loc}")
+    return "\n".join(lines)
 
 
 async def lsp_hover(
@@ -96,12 +87,9 @@ async def lsp_hover(
     if lsp is None:
         return "[ERROR] LSP not available"
 
-    try:
-        info = await lsp.hover(file_path, line, character)
-        if info is None:
-            return f"No hover info at {file_path}:{line}:{character}"
-        if info.language:
-            return f"```{info.language}\n{info.content}\n```"
-        return info.content
-    except Exception as e:
-        return f"[ERROR] LSP hover failed: {e}"
+    info = await lsp.hover(file_path, line, character)
+    if info is None:
+        return f"No hover info at {file_path}:{line}:{character}"
+    if info.language:
+        return f"```{info.language}\n{info.content}\n```"
+    return info.content

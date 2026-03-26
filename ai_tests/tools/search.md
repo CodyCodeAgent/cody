@@ -137,3 +137,61 @@ grep 'LOG_LEVEL = "WARNING"' "$TEST_DIR/config.py" && echo "PASS: LOG_LEVEL is W
 grep "DATABASE_URL" "$TEST_DIR/config.py" && echo "PASS: DB URL preserved" || echo "FAIL: DB URL lost"
 grep "SECRET_KEY" "$TEST_DIR/config.py" && echo "PASS: SECRET preserved" || echo "FAIL: SECRET lost"
 ```
+
+---
+
+## TC-SEARCH-003: patch 工具多文件修改
+
+**优先级**: P2
+**前置条件**: cody 已安装
+**涉及功能**: `patch` 工具
+
+### 操作步骤
+
+```bash
+TEST_DIR="$CODY_TEST_DIR/search_003"
+mkdir -p "$TEST_DIR"
+cat > "$TEST_DIR/hello.py" << 'PYEOF'
+def hello():
+    print("Hello World")
+PYEOF
+cat > "$TEST_DIR/test_patch.py" << 'PYEOF'
+import asyncio
+import os
+from cody.sdk import AsyncCodyClient
+
+async def main():
+    workdir = os.environ["TEST_WORKDIR"]
+    async with AsyncCodyClient(workdir=workdir) as client:
+        result = await client.tool("patch", {
+            "path": os.path.join(workdir, "hello.py"),
+            "diff": '''--- a/hello.py
++++ b/hello.py
+@@ -1,2 +1,2 @@
+ def hello():
+-    print("Hello World")
++    print("Hello Cody")
+''',
+        })
+        print(f"PATCH_OK: {bool(result.result)}")
+
+    content = open(os.path.join(workdir, "hello.py")).read()
+    has_cody = "Hello Cody" in content
+    print(f"CONTENT_PATCHED: {has_cody}")
+
+asyncio.run(main())
+PYEOF
+cd /Users/bytedance/GC/GitHub/cody
+TEST_WORKDIR="$TEST_DIR" python3 "$TEST_DIR/test_patch.py" 2>&1 | tee "$TEST_DIR/output.log"
+```
+
+### 预期结果
+
+- patch 工具成功应用 diff
+- 文件内容被修改
+
+### 验证方法
+
+```bash
+grep "CONTENT_PATCHED: True" "$TEST_DIR/output.log" && echo "PASS: patch applied" || echo "FAIL: patch not applied"
+```

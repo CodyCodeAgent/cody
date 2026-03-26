@@ -163,6 +163,7 @@ class CircuitBreakerConfig:
     enabled: bool = True
     max_tokens: int = 200_000
     max_cost_usd: float = 5.0
+    max_steps: int = 0  # Max tool call steps per run; 0 = unlimited
     loop_detect_turns: int = 6
     loop_similarity_threshold: float = 0.9
     model_prices: dict[str, float] = field(default_factory=dict)
@@ -173,6 +174,7 @@ class CircuitBreakerConfig:
             "enabled": self.enabled,
             "max_tokens": self.max_tokens,
             "max_cost_usd": self.max_cost_usd,
+            "max_steps": self.max_steps,
             "loop_detect_turns": self.loop_detect_turns,
             "loop_similarity_threshold": self.loop_similarity_threshold,
         }

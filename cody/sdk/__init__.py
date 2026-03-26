@@ -101,6 +101,20 @@ from .types import (
     StreamChunk,
     ToolResult,
     Usage,
+    # Typed chunk classes for isinstance() narrowing
+    SessionStartChunk,
+    TextDeltaChunk,
+    ThinkingChunk,
+    ToolCallChunk,
+    ToolResultChunk,
+    CompactChunk,
+    PruneChunk,
+    DoneChunk,
+    CancelledChunk,
+    CircuitBreakerChunk,
+    InteractionRequestChunk,
+    UserInputReceivedChunk,
+    UnknownChunk,
 )
 
 # Events
@@ -124,6 +138,23 @@ from .metrics import (
     ToolMetrics,
     RunMetrics,
     SessionMetrics,
+)
+
+# Core types needed by SDK consumers
+from ..core.interaction import InteractionRequest, InteractionResponse
+from ..core.errors import CircuitBreakerError, InteractionTimeoutError
+from ..core.deps import UNSET
+
+# Storage protocols and null implementations
+from ..core.storage import (
+    SessionStoreProtocol,
+    AuditLoggerProtocol,
+    FileHistoryProtocol,
+    MemoryStoreProtocol,
+    NullSessionStore,
+    NullAuditLogger,
+    NullFileHistory,
+    NullMemoryStore,
 )
 
 __all__ = [
@@ -182,4 +213,34 @@ __all__ = [
     "StreamChunk",
     "ToolResult",
     "Usage",
+    # Typed chunk classes
+    "SessionStartChunk",
+    "TextDeltaChunk",
+    "ThinkingChunk",
+    "ToolCallChunk",
+    "ToolResultChunk",
+    "CompactChunk",
+    "PruneChunk",
+    "DoneChunk",
+    "CancelledChunk",
+    "CircuitBreakerChunk",
+    "InteractionRequestChunk",
+    "UserInputReceivedChunk",
+    "UnknownChunk",
+    # Storage protocols
+    "SessionStoreProtocol",
+    "AuditLoggerProtocol",
+    "FileHistoryProtocol",
+    "MemoryStoreProtocol",
+    # Null implementations (stateless mode)
+    "NullSessionStore",
+    "NullAuditLogger",
+    "NullFileHistory",
+    "NullMemoryStore",
+    # Core types
+    "InteractionRequest",
+    "InteractionResponse",
+    "CircuitBreakerError",
+    "InteractionTimeoutError",
+    "UNSET",
 ]

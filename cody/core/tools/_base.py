@@ -13,6 +13,7 @@ from pathlib import Path
 from ..errors import ToolError, ToolPathDenied
 from ..interaction import InteractionRequest
 from ..permissions import PermissionDeniedError, PermissionLevel
+from .truncate import truncate_output
 
 if TYPE_CHECKING:
     from ..deps import CodyDeps
@@ -34,17 +35,26 @@ async def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str, args_su
     level = ctx.deps.permission_manager.check(tool_name)
     if level != PermissionLevel.CONFIRM:
         return
+    # Already approved for this run via "Allow All"
+    if tool_name in ctx.deps.auto_approved_tools:
+        return
     # CONFIRM level — route through interaction handler if available
     handler = getattr(ctx.deps, "interaction_handler", None)
     if handler is None:
         return  # no handler → auto-approve (legacy)
+    if args_summary:
+        prompt_text = f"{tool_name}: {args_summary}"
+    else:
+        prompt_text = f"{tool_name}"
     request = InteractionRequest(
         kind="confirm",
-        prompt=f"Tool '{tool_name}' requires confirmation to execute.",
+        prompt=prompt_text,
         context={"tool_name": tool_name, "args": args_summary},
     )
     response = await handler(request)
-    if response.action == "reject":
+    if response.action == "approve_all":
+        ctx.deps.auto_approved_tools.add(tool_name)
+    elif response.action == "reject":
         raise PermissionDeniedError(tool_name, f"User rejected execution of {tool_name}")
 
 
@@ -87,6 +97,29 @@ def _resolve_and_check(
     )
 
 
+def _maybe_truncate(result: str, tool_name: str, args: tuple, kwargs: dict) -> str:
+    """Apply output truncation using config from RunContext if available."""
+    # First positional arg is ctx: RunContext[CodyDeps]
+    ctx = args[0] if args else None
+    if ctx is None:
+        return result
+    deps = getattr(ctx, "deps", None)
+    if deps is None:
+        return result
+    config = getattr(deps, "config", None)
+    if config is None:
+        return result
+    trunc = getattr(config, "truncation", None)
+    if trunc is None or not trunc.enabled:
+        return result
+    workdir = getattr(deps, "workdir", None)
+    return truncate_output(
+        result, tool_name,
+        max_chars=trunc.max_output_chars,
+        workdir=workdir,
+    )
+
+
 def _with_model_retry(func):
     """Wrap a tool function so ToolError is converted to ModelRetry.
 
@@ -96,14 +129,70 @@ def _with_model_retry(func):
     sent back to the model so it can correct its parameters and try again.
 
     Also logs elapsed time for every tool call at DEBUG level.
+
+    Step hooks (before_tool / after_tool) are called if registered in
+    ``ctx.deps``.  ``before_tool`` can modify args or reject a call;
+    ``after_tool`` can transform the result string.
     """
     tool_name = func.__name__
 
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         start = time.perf_counter()
+
+        # Extract ctx (first positional arg) for hook access
+        ctx = args[0] if args else None
+        deps = getattr(ctx, "deps", None) if ctx else None
+
+        # ── before_tool hooks ──
+        if deps and getattr(deps, "before_tool_hooks", None):
+            for hook in deps.before_tool_hooks:
+                try:
+                    hook_result = await hook(tool_name, dict(kwargs))
+                except Exception as hook_err:
+                    _tool_logger.warning(
+                        "before_tool hook raised %s for tool.%s: %s",
+                        type(hook_err).__name__, tool_name, hook_err,
+                    )
+                    continue  # skip broken hook, don't block tool
+                if hook_result is None:
+                    _tool_logger.debug("tool.%s skipped by before_tool hook", tool_name)
+                    raise ModelRetry(
+                        f"Tool '{tool_name}' was rejected by a before_tool hook."
+                    )
+                if not isinstance(hook_result, dict):
+                    _tool_logger.warning(
+                        "before_tool hook returned %s instead of dict for tool.%s, ignoring",
+                        type(hook_result).__name__, tool_name,
+                    )
+                    continue
+                kwargs = hook_result
+
         try:
             result = await func(*args, **kwargs)
+            # Apply output truncation if configured.
+            if isinstance(result, str):
+                result = _maybe_truncate(result, tool_name, args, kwargs)
+
+            # ── after_tool hooks ──
+            if deps and getattr(deps, "after_tool_hooks", None) and isinstance(result, str):
+                for hook in deps.after_tool_hooks:
+                    try:
+                        hook_out = await hook(tool_name, dict(kwargs), result)
+                    except Exception as hook_err:
+                        _tool_logger.warning(
+                            "after_tool hook raised %s for tool.%s: %s",
+                            type(hook_err).__name__, tool_name, hook_err,
+                        )
+                        continue  # skip broken hook, keep current result
+                    if isinstance(hook_out, str):
+                        result = hook_out
+                    else:
+                        _tool_logger.warning(
+                            "after_tool hook returned %s instead of str for tool.%s, ignoring",
+                            type(hook_out).__name__, tool_name,
+                        )
+
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)
             return result
@@ -111,6 +200,16 @@ def _with_model_retry(func):
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s failed in %.3fs: %s", tool_name, elapsed, e)
             raise ModelRetry(str(e)) from e
+        except Exception as e:
+            # Catch-all for unhandled tool errors — return a formatted error
+            # string to the model instead of crashing the agent run.
+            # Individual tools no longer need their own try/except wrappers.
+            elapsed = time.perf_counter() - start
+            _tool_logger.warning(
+                "tool.%s raised %s in %.3fs: %s",
+                tool_name, type(e).__name__, elapsed, e,
+            )
+            return f"[ERROR] {tool_name} failed: {e}"
 
     return wrapper
 

@@ -7,11 +7,18 @@ from ..errors import ToolInvalidParams
 from ._base import _audit_tool_call, _check_permission, _resolve_and_check
 
 
-async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
+async def read_file(
+    ctx: RunContext['CodyDeps'],
+    path: str,
+    offset: int = 0,
+    limit: int = 0,
+) -> str:
     """Read file contents
 
     Args:
         path: Path to the file to read (relative or absolute)
+        offset: Line number to start reading from (0-based, default: 0 = start)
+        limit: Maximum number of lines to return (default: 0 = all lines)
     """
     full_path = _resolve_and_check(
         ctx.deps.workdir, path, allow_read_outside=not ctx.deps.strict_read_boundary, allowed_roots=ctx.deps.allowed_roots
@@ -23,7 +30,22 @@ async def read_file(ctx: RunContext['CodyDeps'], path: str) -> str:
     if full_path.is_dir():
         raise ToolInvalidParams(f"Path is a directory, not a file: {path}")
 
-    return full_path.read_text(encoding="utf-8", errors="replace")
+    content = full_path.read_text(encoding="utf-8", errors="replace")
+
+    if offset > 0 or limit > 0:
+        lines = content.splitlines(keepends=True)
+        total = len(lines)
+        start = min(offset, total)
+        if limit > 0:
+            selected = lines[start:start + limit]
+        else:
+            selected = lines[start:]
+        result = "".join(selected)
+        if start > 0 or (limit > 0 and start + limit < total):
+            result += f"\n[Showing lines {start + 1}-{min(start + len(selected), total)} of {total} total]"
+        return result
+
+    return content
 
 
 async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> str:
@@ -33,7 +55,7 @@ async def write_file(ctx: RunContext['CodyDeps'], path: str, content: str) -> st
         path: Path to the file
         content: Content to write
     """
-    await _check_permission(ctx, "write_file")
+    await _check_permission(ctx, "write_file", args_summary=path)
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     # Record old content for undo
@@ -66,7 +88,7 @@ async def edit_file(
         old_text: Exact text to replace
         new_text: New text
     """
-    await _check_permission(ctx, "edit_file")
+    await _check_permission(ctx, "edit_file", args_summary=path)
     full_path = _resolve_and_check(ctx.deps.workdir, path, allowed_roots=ctx.deps.allowed_roots)
 
     if not full_path.exists():

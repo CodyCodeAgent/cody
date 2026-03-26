@@ -6,6 +6,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [2.0.0] - 2026-03-26
+
+### Added
+
+- **CLI 多模态支持**：`cody run --image screenshot.png "fix this bug"` 支持附带图片，可重复使用
+- **CLI 熔断控制**：`--max-tokens`、`--max-cost`、`--max-steps` 参数控制单次运行的资源上限（`run`、`chat`、`tui` 均支持）
+- **CLI 工具过滤**：`--include-tools grep,read_file` 限制可用工具集，`--exclude-tools exec_command` 排除指定工具
+- **TUI 多模态支持**：`/image <path> <message>` 命令发送图片给 AI
+- **TUI 技能管理**：`/skills` 列表、`/skills enable X`、`/skills disable X`
+- **TUI 设置面板**：`/settings` 查看、`/settings model X` 切换模型、`/settings thinking on|off` 切换思考模式
+- **TUI Token 统计**：状态栏实时显示累计 token 用量
+- **Web Metrics 端点**：`GET /metrics` 返回 total_runs、total_tokens、total_cost_usd、uptime 等运行时指标
+- **Web 熔断配置**：`PUT /config` 支持 `cb_max_tokens`、`cb_max_cost_usd`、`cb_max_steps` 字段；`RunRequest` 支持 per-request 熔断覆盖
+- **Web 工具过滤**：`RunRequest` 和 chat WebSocket 均支持 `include_tools` / `exclude_tools` 参数
+- **自定义工具注册 API**：支持通过 SDK Builder `.tool(func)` 注册自定义 async 工具函数。自定义工具与内置工具一同注册到 Agent，享有相同的错误重试（`ModelRetry`）和输出截断机制。Core 层 `register_tools()` 新增 `custom_tools` 参数，`AgentRunner` 构造函数新增 `custom_tools` 参数
+- **System Prompt 自定义**：SDK Builder 新增 `.system_prompt(text)` 替换默认 persona，`.extra_system_prompt(text)` 在所有内置 prompt 后追加自定义指令。两者可组合使用。CODY.md、项目记忆、Skills 等内置 prompt 部分不受 `system_prompt` 替换影响
+- **Per-run 工具选择**：`run()` / `stream()` 新增 `include_tools` 和 `exclude_tools` 参数，支持每次运行指定可用工具集。`include_tools=["read_file", "grep"]` 只启用指定工具，`exclude_tools=["exec_command"]` 排除指定工具。同时新增 `list_tool_names()` 辅助函数用于工具名称发现
+- **非流式 `run()` 可取消**：`run()` 新增 `cancel_event: asyncio.Event` 参数。设置后，`run()` 与 cancel event 竞速，被取消时返回 `output="(cancelled)"` 的结果。从 core `AgentRunner.run()` 到 SDK `AsyncCodyClient.run()` 全链路支持
+- **Step hook / 中间件**：SDK Builder 新增 `.before_tool(hook)` 和 `.after_tool(hook)` 方法，支持在工具调用前后注入自定义逻辑。`before_tool` hook 接收 `(tool_name, args_dict)` 可修改参数或返回 `None` 拒绝调用；`after_tool` hook 接收 `(tool_name, args_dict, result)` 可转换结果。多个 hook 按注册顺序链式执行。Hook 通过 `CodyDeps` 注入，在 `_with_model_retry` 包装器中统一调用
+- **存储层抽象**：新增 `core/storage.py` 定义 `SessionStoreProtocol`、`AuditLoggerProtocol`、`FileHistoryProtocol` 三个 Protocol 接口。SDK Builder 新增 `.session_store(store)`、`.audit_logger(logger)`、`.file_history(history)` 方法，允许注入自定义存储实现（PostgreSQL、DynamoDB 等）替换默认 SQLite。不传时自动使用默认 SQLite 实现，完全向后兼容。Protocol 使用 `runtime_checkable` 支持 `isinstance()` 检查
+- **子 Agent 可恢复**：`SubAgentManager` 新增 `resume(agent_id)` 方法，支持恢复已完成/失败/超时的子 Agent。恢复时自动构建包含原始任务和前次输出/错误的上下文 prompt，让新 Agent 从上次中断处继续。新增 `resume_agent` 工具函数，注册到 `SUB_AGENT_TOOLS`。`SubAgentResult` 新增 `task` 和 `agent_type` 字段用于存储恢复上下文
+- **StreamChunk 类型重构**：`StreamChunk` 从 flat 单类重构为继承体系。新增 12 个类型化子类（`TextDeltaChunk`、`ToolCallChunk`、`DoneChunk` 等），每个子类预设 `type` 字段。消费者可用 `isinstance(chunk, TextDeltaChunk)` 进行类型安全的模式匹配。原有 `chunk.type == "text_delta"` 用法和直接构造 `StreamChunk(type=...)` 完全向后兼容
+- **`max_steps` 熔断**：`CircuitBreakerConfig` 新增 `max_steps` 字段（默认 0 = 无限制），限制单次 run 的工具调用步数。超限时触发 `CircuitBreakerError("step_limit")`。SDK Builder 的 `.circuit_breaker()` 同步支持 `max_steps` 参数
+- **Small Model 配置**：`Config` 新增 `small_model` / `small_model_base_url` / `small_model_api_key` 字段，用于低成本操作（compaction、摘要等）。不配置时自动 fallback 到主模型。Compaction 的模型 fallback 链：`compaction.model → small_model → model`。支持环境变量 `CODY_SMALL_MODEL` / `CODY_SMALL_MODEL_BASE_URL` / `CODY_SMALL_MODEL_API_KEY`
+- **`read_file` 分段读取**：`read_file` 工具新增 `offset`（起始行号）和 `limit`（最大行数）参数，支持分段读取大文件和被截断的工具输出
+- **工具输出截断**：所有工具输出在返回 LLM 前自动截断（默认 120K 字符 ≈ 30K tokens）。超长输出保存到临时文件，模型可通过 `read_file()` 按需读取。防止单个工具输出撑爆上下文窗口。配置项：`truncation.enabled`（默认开启）、`truncation.max_output_chars`（120000）
+- **LLM API 重试**：`run()` 和 `run_sync()` 自动对 429（rate limit）和 5xx（服务端错误）使用指数退避重试（默认 3 次，2s → 4s → 8s）。对 context overflow、auth 错误等不重试。配置项：`retry.enabled`（默认开启）、`retry.max_retries`（3）、`retry.base_delay`（2.0s）、`retry.max_delay`（30s）
+- **Selective Pruning（选择性修剪）**：在全量 compaction 前增加轻量级修剪阶段（灵感来自 OpenCode）。旧的大型工具输出被替换为 `[output pruned at <ts>]` 标记，保留对话结构，无需 LLM 调用。配置项：`compaction.enable_pruning`（默认开启）、`prune_protect_tokens`（保护窗口 40k）、`prune_min_saving_tokens`（最低节省阈值 20k）、`prune_min_content_tokens`（单条最小阈值 200）
+- **PruneEvent 流式事件**：`StreamEvent` 新增 `prune` 事件类型，通知消费者（CLI/TUI/Web）修剪发生的详情
+- **两阶段上下文管理**：`_compact_history_if_needed` 和 `_compact_history_sync` 现在先尝试修剪，仅在修剪不够时才执行全量压缩
+- **结构化摘要模板**：LLM 压缩的 prompt 从通用模板升级为结构化模板（Goal / Instructions / Discoveries / Accomplished / Relevant Files / Key Decisions），减少信息丢失，保留精确的名称、路径、错误信息
+- **Token-based 消息保留**：新增 `compaction.keep_recent_tokens` 配置，按 token 预算保留最近消息（代替固定条数 `keep_recent`），对长短消息混合的对话更精确
+- **百分比触发阈值**：新增 `compaction.trigger_ratio` + `context_window_tokens` 配置，支持按模型上下文窗口百分比触发压缩（如 75%），无需硬编码 token 数
+
+---
+
 ## [1.11.0] - 2026-03-20
 
 ### Fixed

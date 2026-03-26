@@ -38,6 +38,9 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "model": "claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
+  "small_model": null,
+  "small_model_base_url": null,
+  "small_model_api_key": null,
   "enable_thinking": false,
   "thinking_budget": null,
   "auth": {
@@ -62,18 +65,47 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "strict_read_boundary": false,
     "require_confirmation": true
   },
+  "interaction": {
+    "enabled": false,
+    "timeout": 30.0
+  },
+  "circuit_breaker": {
+    "enabled": true,
+    "max_tokens": 200000,
+    "max_cost_usd": 5.0,
+    "max_steps": 0,
+    "loop_detect_turns": 6,
+    "loop_similarity_threshold": 0.9
+  },
   "rate_limit": {
     "enabled": false,
     "max_requests": 60,
     "window_seconds": 60.0
+  },
+  "truncation": {
+    "enabled": true,
+    "max_output_chars": 120000
+  },
+  "retry": {
+    "enabled": true,
+    "max_retries": 3,
+    "base_delay": 2.0,
+    "max_delay": 30.0
   },
   "compaction": {
     "use_llm": false,
     "model": null,
     "model_base_url": null,
     "max_tokens": 100000,
+    "trigger_ratio": 0.0,
+    "context_window_tokens": 0,
     "keep_recent": 4,
-    "max_summary_tokens": 500
+    "keep_recent_tokens": 0,
+    "max_summary_tokens": 500,
+    "enable_pruning": true,
+    "prune_protect_tokens": 40000,
+    "prune_min_saving_tokens": 20000,
+    "prune_min_content_tokens": 200
   }
 }
 ```
@@ -169,6 +201,38 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "thinking_budget": 10000
 }
 ```
+
+---
+
+#### `small_model`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 用于上下文压缩等轻量任务的小模型。未设置时使用主模型。
+
+```json
+{
+  "small_model": "gpt-4o-mini",
+  "small_model_base_url": "https://api.openai.com/v1",
+  "small_model_api_key": "sk-..."
+}
+```
+
+---
+
+#### `small_model_base_url`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 小模型的 API 地址。未设置时使用 `model_base_url`。
+
+---
+
+#### `small_model_api_key`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 小模型的 API Key。未设置时使用 `model_api_key`。
 
 ---
 
@@ -517,6 +581,92 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ---
 
+### 工具输出截断配置 (`truncation`)
+
+防止单个工具输出过大撑爆上下文窗口。超长输出自动截断，完整内容保存到临时文件供模型按需读取。
+
+#### `truncation.enabled`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 是否启用工具输出自动截断
+
+---
+
+#### `truncation.max_output_chars`
+
+**类型:** `integer`
+**默认:** `120000`
+**说明:** 单个工具输出的最大字符数（约 30K tokens）。超出部分截断，完整内容保存到临时文件。
+
+**示例：**
+
+```json
+{
+  "truncation": {
+    "enabled": true,
+    "max_output_chars": 80000
+  }
+}
+```
+
+> **注意：** 截断在 `_with_model_retry` 包装层统一执行，所有注册工具自动生效，无需逐工具修改。
+
+---
+
+### LLM 重试配置 (`retry`)
+
+LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误）使用指数退避重试。对客户端错误（auth、context overflow）不重试。
+
+#### `retry.enabled`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 是否启用 LLM API 自动重试
+
+---
+
+#### `retry.max_retries`
+
+**类型:** `integer`
+**默认:** `3`
+**说明:** 最大重试次数（不含首次调用）
+
+---
+
+#### `retry.base_delay`
+
+**类型:** `number`
+**默认:** `2.0`
+**说明:** 首次重试延迟（秒）。后续按指数增长：2s → 4s → 8s
+
+---
+
+#### `retry.max_delay`
+
+**类型:** `number`
+**默认:** `30.0`
+**说明:** 最大重试延迟（秒）
+
+---
+
+**示例：** 自定义重试策略
+
+```json
+{
+  "retry": {
+    "enabled": true,
+    "max_retries": 5,
+    "base_delay": 1.0,
+    "max_delay": 60.0
+  }
+}
+```
+
+> **注意：** 重试覆盖 `run()` 和 `run_sync()`。`run_stream()` 的流式调用暂不支持自动重试。
+
+---
+
 ### 上下文压缩配置 (`compaction`)
 
 控制对话历史自动压缩行为。当消息总 token 数超过阈值时，自动将旧消息压缩为摘要。
@@ -557,7 +707,23 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 **类型:** `integer`
 **默认:** `100000`
-**说明:** 触发压缩的 token 阈值。当消息总 token 数超过此值时开始压缩
+**说明:** 触发压缩的 token 阈值。当消息总 token 数超过此值时开始压缩。如果同时设置了 `trigger_ratio` 和 `context_window_tokens`，此值会被覆盖
+
+---
+
+#### `compaction.trigger_ratio`
+
+**类型:** `float`
+**默认:** `0.0`（禁用）
+**说明:** 按模型上下文窗口百分比触发压缩。设为 `0.75` 表示在 75% 容量时触发。需同时设置 `context_window_tokens`
+
+---
+
+#### `compaction.context_window_tokens`
+
+**类型:** `integer`
+**默认:** `0`
+**说明:** 模型的上下文窗口大小（token 数）。与 `trigger_ratio` 配合使用。例如 GPT-4 设为 `128000`
 
 ---
 
@@ -565,7 +731,15 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 **类型:** `integer`
 **默认:** `4`
-**说明:** 压缩时保留的最近消息数，这些消息不会被压缩
+**说明:** 压缩时保留的最近消息数（按条数）。当 `keep_recent_tokens > 0` 时，此值被覆盖
+
+---
+
+#### `compaction.keep_recent_tokens`
+
+**类型:** `integer`
+**默认:** `0`（禁用，使用 `keep_recent` 按条数）
+**说明:** 压缩时保留最近消息的 token 预算。设为如 `20000` 表示保留最近约 20k token 的消息。比按固定条数更精确
 
 ---
 
@@ -577,7 +751,39 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ---
 
-**完整示例：** 使用低成本模型做上下文压缩
+#### `compaction.enable_pruning`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 启用选择性修剪（Selective Pruning）。在执行全量压缩前，先尝试将旧的大型工具输出替换为轻量标记。灵感来自 OpenCode 的两阶段策略，能在不丢失对话结构的情况下释放 token 空间
+
+---
+
+#### `compaction.prune_protect_tokens`
+
+**类型:** `integer`
+**默认:** `40000`
+**说明:** 最近消息的保护窗口（token 数）。在此窗口内的消息永远不会被修剪
+
+---
+
+#### `compaction.prune_min_saving_tokens`
+
+**类型:** `integer`
+**默认:** `20000`
+**说明:** 执行修剪的最低节省阈值。只有当可释放的 token 数超过此值时才执行修剪
+
+---
+
+#### `compaction.prune_min_content_tokens`
+
+**类型:** `integer`
+**默认:** `200`
+**说明:** 单条消息的最小修剪阈值。低于此 token 数的消息不会被修剪（避免修剪小输出）
+
+---
+
+**完整示例：** 按 128k 窗口 75% 触发 + token-based 保留 + LLM 摘要 + 修剪
 
 ```json
 {
@@ -585,14 +791,107 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "use_llm": true,
     "model": "gpt-4o-mini",
     "model_base_url": "https://api.openai.com/v1",
-    "max_tokens": 80000,
-    "keep_recent": 6,
-    "max_summary_tokens": 600
+    "trigger_ratio": 0.75,
+    "context_window_tokens": 128000,
+    "keep_recent_tokens": 20000,
+    "max_summary_tokens": 600,
+    "enable_pruning": true,
+    "prune_protect_tokens": 40000,
+    "prune_min_saving_tokens": 20000,
+    "prune_min_content_tokens": 200
   }
 }
 ```
 
-> **注意：** `run_sync()` 同步模式下 LLM 压缩不可用，会自动降级为截断式压缩。
+> 上例中 `trigger_ratio=0.75 × context_window_tokens=128000 = 96000`，当 token 超 96k 时触发。
+> `keep_recent_tokens=20000` 保留最近约 20k token 的消息（代替固定 4 条）。
+
+> **注意：** 同步模式（`CodyClient`）下 LLM 压缩不可用，会自动降级为截断式压缩。
+> 修剪（Pruning）在同步和异步模式下均可用。
+
+---
+
+### 人工交互配置 (`interaction`)
+
+控制 Agent 是否在变更操作（写文件、执行命令等）前暂停等待人类确认。
+
+#### `interaction.enabled`
+
+**类型:** `boolean`
+**默认:** `false`
+**说明:** 启用后，CONFIRM 级别的工具调用和 `question` 工具会暂停等待人类响应。
+
+#### `interaction.timeout`
+
+**类型:** `float`
+**默认:** `30.0`
+**说明:** 等待人类响应的超时时间（秒）。超时后抛出 `InteractionTimeoutError`。设为 `0` 表示无限等待。
+
+```json
+{
+  "interaction": {
+    "enabled": true,
+    "timeout": 60.0
+  }
+}
+```
+
+> **注意：** 同步模式（`CodyClient`）下 interaction 无效，始终自动批准。
+
+---
+
+### 熔断器配置 (`circuit_breaker`)
+
+防止 Agent 失控消耗过多资源。任一条件触发时自动终止运行。
+
+#### `circuit_breaker.enabled`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 是否启用熔断器。
+
+#### `circuit_breaker.max_tokens`
+
+**类型:** `integer`
+**默认:** `200000`
+**说明:** 单次运行最大 token 消耗。超出时终止。
+
+#### `circuit_breaker.max_cost_usd`
+
+**类型:** `float`
+**默认:** `5.0`
+**说明:** 单次运行最大成本（美元）。超出时终止。
+
+#### `circuit_breaker.max_steps`
+
+**类型:** `integer`
+**默认:** `0`（无限制）
+**说明:** 单次运行最大工具调用步数。设为 `0` 表示不限制。
+
+#### `circuit_breaker.loop_detect_turns`
+
+**类型:** `integer`
+**默认:** `6`
+**说明:** 连续多少次相似结果判定为死循环。
+
+#### `circuit_breaker.loop_similarity_threshold`
+
+**类型:** `float`
+**默认:** `0.9`
+**说明:** 死循环检测的相似度阈值（0.0-1.0）。
+
+```json
+{
+  "circuit_breaker": {
+    "enabled": true,
+    "max_tokens": 200000,
+    "max_cost_usd": 5.0,
+    "max_steps": 50,
+    "loop_detect_turns": 6,
+    "loop_similarity_threshold": 0.9
+  }
+}
+```
 
 ---
 

@@ -28,7 +28,7 @@ async def main():
 
     # 验证配置已生效
     runner = client.get_runner()
-    cb_config = runner._config.circuit_breaker
+    cb_config = runner.config.circuit_breaker
     print(f"CB_ENABLED: {cb_config.enabled}")
     print(f"MAX_TOKENS: {cb_config.max_tokens}")
     print(f"MAX_COST: {cb_config.max_cost_usd}")
@@ -37,7 +37,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
-cd "$CODY_PROJECT_DIR"
+cd /Users/bytedance/GC/GitHub/cody
 python3 "$TEST_DIR/test_cb_config.py" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 
@@ -97,7 +97,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
-cd "$CODY_PROJECT_DIR"
+cd /Users/bytedance/GC/GitHub/cody
 python3 "$TEST_DIR/test_cb_token_limit.py" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 
@@ -145,7 +145,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
-cd "$CODY_PROJECT_DIR"
+cd /Users/bytedance/GC/GitHub/cody
 python3 "$TEST_DIR/test_cb_default.py" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 

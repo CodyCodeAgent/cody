@@ -145,7 +145,7 @@ async def test_async_stream_with_tool_events():
     """Verify stream() yields StreamChunks with tool_call_id for tool events."""
     client = AsyncCodyClient()
 
-    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None):
+    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None, **kwargs):
         sid = session_id or "test-sid"
         yield ToolCallEvent(tool_name="grep", args={"pattern": "foo"}, tool_call_id="tc_1"), sid
         yield ToolResultEvent(tool_name="grep", tool_call_id="tc_1", result="match found"), sid
@@ -180,7 +180,7 @@ async def test_async_stream_cancel():
     """Verify cancel_event stops the stream and yields a 'cancelled' chunk."""
     client = AsyncCodyClient()
 
-    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None):
+    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None, **kwargs):
         sid = session_id or "test-sid"
         yield TextDeltaEvent(content="Hello"), sid
         # Simulate cancel being set mid-stream
@@ -269,7 +269,7 @@ async def test_async_run_with_session():
 async def test_async_stream():
     client = AsyncCodyClient()
 
-    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None):
+    async def fake_stream_with_session(prompt, store, session_id=None, cancel_event=None, **kwargs):
         sid = session_id or "test-sid"
         yield TextDeltaEvent(content="Hello"), sid
         yield TextDeltaEvent(content=" async"), sid

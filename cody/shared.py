@@ -4,7 +4,11 @@ Contains presentation helpers that both CLI and TUI need but that don't
 belong in core/ (they are purely UI concerns).
 """
 
+import base64
+import mimetypes
 from pathlib import Path
+
+from .core.prompt import ImageData, MultimodalPrompt, Prompt
 
 # ── Spinner / formatting ─────────────────────────────────────────────────────
 
@@ -54,6 +58,27 @@ def format_session_line(
     """Format a single session-list row (shared by CLI /sessions and TUI)."""
     marker = " << current" if sid == current_id else ""
     return f"  {sid}  {title[:40]:<40}  {count} msgs  {updated_at[:10]}{marker}"
+
+
+# ── Image helpers ────────────────────────────────────────────────────────────
+
+
+def load_image_file(path: Path) -> ImageData:
+    """Read an image file from disk and return an ImageData for multimodal prompts."""
+    data = base64.b64encode(path.read_bytes()).decode()
+    mime = mimetypes.guess_type(path.name)[0] or "image/png"
+    return ImageData(data=data, media_type=mime, filename=path.name)
+
+
+def build_multimodal_prompt(text: str, image_paths: list[str | Path]) -> Prompt:
+    """Build a Prompt from text and optional image file paths.
+
+    Returns a plain str when no images are provided, otherwise a MultimodalPrompt.
+    """
+    if not image_paths:
+        return text
+    images = [load_image_file(Path(p)) for p in image_paths]
+    return MultimodalPrompt(text=text, images=images)
 
 
 # ── Config path resolution ───────────────────────────────────────────────────
