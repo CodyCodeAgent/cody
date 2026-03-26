@@ -27,7 +27,7 @@ async def main():
 
     # 验证配置已传递到 core
     runner = client.get_runner()
-    ia_config = runner._config.interaction
+    ia_config = runner.config.interaction
     print(f"IA_ENABLED: {ia_config.enabled}")
     print(f"IA_TIMEOUT: {ia_config.timeout}")
 
@@ -35,7 +35,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
-cd "$CODY_PROJECT_DIR"
+cd /Users/bytedance/GC/GitHub/cody
 python3 "$TEST_DIR/test_ia_config.py" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 
@@ -106,7 +106,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
-cd "$CODY_PROJECT_DIR"
+cd /Users/bytedance/GC/GitHub/cody
 timeout 120 python3 "$TEST_DIR/test_ia_event.py" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 
@@ -153,7 +153,7 @@ async def main():
 
 asyncio.run(main())
 PYEOF
-cd "$CODY_PROJECT_DIR"
+cd /Users/bytedance/GC/GitHub/cody
 python3 "$TEST_DIR/test_ia_disabled.py" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 

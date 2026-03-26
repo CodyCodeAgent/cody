@@ -1144,12 +1144,15 @@ class AsyncCodyClient:
         effective_workdir = Path(workdir) if workdir else self.workdir
         cfg = self._get_config()
         sm = SkillManager(config=cfg, workdir=effective_workdir)
+        runner = self.get_runner()
         deps = CodyDeps(
             config=cfg,
             workdir=effective_workdir,
             skill_manager=sm,
             allowed_roots=[effective_workdir],
             strict_read_boundary=cfg.security.strict_read_boundary,
+            file_history=runner._file_history if hasattr(runner, '_file_history') else None,
+            audit_logger=runner._audit_logger if hasattr(runner, '_audit_logger') else None,
         )
 
         start_time = time.time()

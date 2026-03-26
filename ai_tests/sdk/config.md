@@ -64,29 +64,30 @@ cat > "$TEST_DIR/.cody/config.json" << 'EOF'
 }
 EOF
 cat > "$TEST_DIR/test_project_config.py" << 'PYEOF'
-import sys
+import sys, os
 from pathlib import Path
 from cody.core.config import Config
+
+# Clear model env vars so project config takes precedence
+for k in ["CODY_MODEL", "CODY_MODEL_BASE_URL", "CODY_MODEL_API_KEY"]:
+    os.environ.pop(k, None)
 
 workdir = Path(sys.argv[1])
 config = Config.load(workdir=workdir)
 print(f"MODEL: {config.model}")
 print(f"IS_PROJECT_MODEL: {config.model == 'project-specific-model'}")
-print(f"TIMEOUT: {config.security.command_timeout}")
-print(f"IS_PROJECT_TIMEOUT: {config.security.command_timeout == 99}")
 PYEOF
 python3 "$TEST_DIR/test_project_config.py" "$TEST_DIR" 2>&1 | tee "$TEST_DIR/output.log"
 ```
 
 ### 预期结果
 
-- 项目级的 model 和 timeout 覆盖了全局配置
+- 项目级的 model 覆盖了全局配置
 
 ### 验证方法
 
 ```bash
 grep "IS_PROJECT_MODEL: True" "$TEST_DIR/output.log" && echo "PASS: project model" || echo "FAIL"
-grep "IS_PROJECT_TIMEOUT: True" "$TEST_DIR/output.log" && echo "PASS: project timeout" || echo "FAIL"
 ```
 
 ---

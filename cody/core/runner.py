@@ -1282,7 +1282,7 @@ class AgentRunner:
                 async for node in agent_run:
                     if cancel_event and cancel_event.is_set():
                         yield CancelledEvent()
-                        return
+                        break
 
                     # UserPromptNode is handled automatically by iter().
                     # We only need to stream ModelRequestNode and CallToolsNode.
