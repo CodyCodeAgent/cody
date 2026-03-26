@@ -491,6 +491,25 @@ def test_metrics_get_run_history():
     assert len(history) == 2
 
 
+def test_metrics_collector_max_runs_eviction():
+    """Runs exceeding max_runs are evicted (oldest first)."""
+    mc = MetricsCollector(max_runs=3)
+    for i in range(5):
+        mc.start_run(f"prompt_{i}")
+        mc.end_run(f"out_{i}", TokenUsage(total_tokens=i * 10))
+
+    assert len(mc._runs) == 3
+    # Should keep the 3 most recent (indices 2, 3, 4)
+    assert mc._runs[0].token_usage.total_tokens == 20
+    assert mc._runs[2].token_usage.total_tokens == 40
+
+
+def test_metrics_collector_max_runs_default():
+    """Default max_runs is 1000."""
+    mc = MetricsCollector()
+    assert mc._max_runs == 1000
+
+
 # ── Builder Tests ───────────────────────────────────────────────────────────
 
 

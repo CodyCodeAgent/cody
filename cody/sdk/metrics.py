@@ -92,7 +92,8 @@ class MetricsCollector:
         print(f"Duration: {metrics.total_duration:.2f}s")
     """
     
-    def __init__(self):
+    def __init__(self, max_runs: int = 1000):
+        self._max_runs = max_runs
         self._runs: list[RunMetrics] = []
         self._tools: dict[str, ToolMetrics] = defaultdict(
             lambda: ToolMetrics(tool_name="unknown")
@@ -132,7 +133,9 @@ class MetricsCollector:
         self._current_run.token_usage = token_usage
         
         self._runs.append(self._current_run)
-        
+        if len(self._runs) > self._max_runs:
+            self._runs = self._runs[-self._max_runs:]
+
         # Update session metrics
         if self._current_run.session_id:
             session_id = self._current_run.session_id
