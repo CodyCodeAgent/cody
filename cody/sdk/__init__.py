@@ -140,6 +140,18 @@ from .metrics import (
     SessionMetrics,
 )
 
+# Storage protocols and null implementations
+from ..core.storage import (
+    SessionStoreProtocol,
+    AuditLoggerProtocol,
+    FileHistoryProtocol,
+    MemoryStoreProtocol,
+    NullSessionStore,
+    NullAuditLogger,
+    NullFileHistory,
+    NullMemoryStore,
+)
+
 __all__ = [
     # Clients
     "AsyncCodyClient",
@@ -210,4 +222,14 @@ __all__ = [
     "InteractionRequestChunk",
     "UserInputReceivedChunk",
     "UnknownChunk",
+    # Storage protocols
+    "SessionStoreProtocol",
+    "AuditLoggerProtocol",
+    "FileHistoryProtocol",
+    "MemoryStoreProtocol",
+    # Null implementations (stateless mode)
+    "NullSessionStore",
+    "NullAuditLogger",
+    "NullFileHistory",
+    "NullMemoryStore",
 ]

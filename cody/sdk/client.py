@@ -48,6 +48,9 @@ from .types import (
 )
 
 
+_BUILDER_UNSET = object()  # sentinel: "not set" vs explicit None
+
+
 # ── Builder Pattern ─────────────────────────────────────────────────────────
 
 
@@ -92,6 +95,8 @@ class CodyBuilder:
     _session_store: object | None = None
     _audit_logger: object | None = None
     _file_history: object | None = None
+    _memory_store: object | None = _BUILDER_UNSET
+    _stateless: bool = False
 
     def workdir(self, path: str) -> "CodyBuilder":
         """Set working directory."""
@@ -377,6 +382,21 @@ class CodyBuilder:
         self._file_history = history
         return self
 
+    def memory_store(self, store) -> "CodyBuilder":
+        """Inject a custom memory store (must satisfy MemoryStoreProtocol)."""
+        self._memory_store = store
+        return self
+
+    def stateless(self) -> "CodyBuilder":
+        """Enable stateless mode — no persistence (session, audit, file history, memory).
+
+        Uses null storage implementations so the code path stays the same
+        but nothing is written to disk. Individual storage can still be
+        overridden after calling stateless() (e.g. ``.stateless().audit_logger(real_logger)``).
+        """
+        self._stateless = True
+        return self
+
     def on(self, event_type: str, handler) -> "CodyBuilder":
         """Register event handler. Implicitly enables events.
 
@@ -411,6 +431,25 @@ class CodyBuilder:
         cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
+        # Apply stateless defaults for any storage not explicitly set
+        session_store = self._session_store
+        audit_logger = self._audit_logger
+        file_history = self._file_history
+        memory_store = self._memory_store
+        if self._stateless:
+            from ..core.storage import (
+                NullSessionStore, NullAuditLogger,
+                NullFileHistory, NullMemoryStore,
+            )
+            if session_store is None:
+                session_store = NullSessionStore()
+            if audit_logger is None:
+                audit_logger = NullAuditLogger()
+            if file_history is None:
+                file_history = NullFileHistory()
+            if memory_store is _BUILDER_UNSET:
+                memory_store = NullMemoryStore()
+
         client = AsyncCodyClient(
             config=cfg,
             auto_start_mcp=self._auto_start_mcp,
@@ -419,9 +458,10 @@ class CodyBuilder:
             extra_system_prompt=self._extra_system_prompt,
             before_tool_hooks=self._before_tool_hooks or None,
             after_tool_hooks=self._after_tool_hooks or None,
-            session_store=self._session_store,
-            audit_logger=self._audit_logger,
-            file_history=self._file_history,
+            session_store=session_store,
+            audit_logger=audit_logger,
+            file_history=file_history,
+            memory_store=memory_store,
         )
         # Apply deferred event handlers
         for event_type_str, handler in self._event_handlers:
@@ -481,6 +521,7 @@ class AsyncCodyClient:
         session_store: object | None = None,
         audit_logger: object | None = None,
         file_history: object | None = None,
+        memory_store: object | None = _BUILDER_UNSET,
     ):
         if config:
             self._config = config
@@ -518,10 +559,11 @@ class AsyncCodyClient:
         self._before_tool_hooks: list = before_tool_hooks or []
         self._after_tool_hooks: list = after_tool_hooks or []
 
-        # Storage layer injection (None = use defaults)
+        # Storage layer injection (None = use defaults, _BUILDER_UNSET = not set)
         self._injected_session_store = session_store
         self._injected_audit_logger = audit_logger
         self._injected_file_history = file_history
+        self._injected_memory_store = memory_store
 
         # MCP auto-start flag
         self._auto_start_mcp = auto_start_mcp
@@ -627,7 +669,9 @@ class AsyncCodyClient:
         (ToolCallEvent, ThinkingEvent, etc.) or direct MCP control.
         """
         if self._runner is None:
-            from ..core.runner import AgentRunner
+            from ..core.runner import AgentRunner, _UNSET
+            # Convert SDK sentinel to runner sentinel
+            mem = _UNSET if self._injected_memory_store is _BUILDER_UNSET else self._injected_memory_store
             self._runner = AgentRunner(
                 config=self._get_config(),
                 workdir=self.workdir,
@@ -638,6 +682,7 @@ class AsyncCodyClient:
                 after_tool_hooks=self._after_tool_hooks or None,
                 audit_logger=self._injected_audit_logger,
                 file_history=self._injected_file_history,
+                memory_store=mem,
             )
         return self._runner
 

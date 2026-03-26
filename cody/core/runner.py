@@ -58,7 +58,7 @@ from .memory import ProjectMemoryStore
 from .permissions import PermissionLevel, PermissionManager
 from .prompt import Prompt, prompt_images, prompt_text
 from .session import Message, SessionStore
-from .storage import AuditLoggerProtocol, FileHistoryProtocol
+from .storage import AuditLoggerProtocol, FileHistoryProtocol, MemoryStoreProtocol
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
 from .user_input import UserInputQueue
@@ -67,6 +67,8 @@ from .project_instructions import load_project_instructions
 from . import tools
 
 logger = logging.getLogger(__name__)
+
+_UNSET = object()  # sentinel to distinguish "not passed" from "explicitly None"
 
 
 # ── Result models ──────────────────────────────────────────────────────────
@@ -346,6 +348,7 @@ class AgentRunner:
         after_tool_hooks: list | None = None,
         audit_logger: AuditLoggerProtocol | None = None,
         file_history: FileHistoryProtocol | None = None,
+        memory_store: MemoryStoreProtocol | None = _UNSET,
     ):
         self.workdir = workdir
         self.config = config
@@ -410,12 +413,15 @@ class AgentRunner:
         self._before_tool_hooks: list = before_tool_hooks or []
         self._after_tool_hooks: list = after_tool_hooks or []
 
-        # Project memory
-        self._memory_store: Optional[ProjectMemoryStore] = None
-        try:
-            self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
-        except Exception:
-            logger.debug("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
+        # Project memory (injected or default file-backed)
+        if memory_store is _UNSET:
+            self._memory_store: Optional[MemoryStoreProtocol] = None
+            try:
+                self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
+            except Exception:
+                logger.debug("ProjectMemoryStore init failed, continuing without memory", exc_info=True)
+        else:
+            self._memory_store = memory_store
 
         # Create agent
         self.agent = self._create_agent()

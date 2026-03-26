@@ -13,10 +13,9 @@ if TYPE_CHECKING:
 from .config import Config
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
-from .memory import ProjectMemoryStore
 from .permissions import PermissionManager
 from .skill_manager import SkillManager
-from .storage import AuditLoggerProtocol, FileHistoryProtocol
+from .storage import AuditLoggerProtocol, FileHistoryProtocol, MemoryStoreProtocol
 from .sub_agent import SubAgentManager
 
 # Hook type aliases (runtime-safe, no TYPE_CHECKING guard needed)
@@ -47,7 +46,7 @@ class CodyDeps:
     permission_manager: Optional[PermissionManager] = None
     file_history: Optional[FileHistoryProtocol] = None
     todo_list: Optional[list] = None
-    memory_store: Optional[ProjectMemoryStore] = None
+    memory_store: Optional[MemoryStoreProtocol] = None
     interaction_handler: Optional[Callable[[InteractionRequest], Awaitable[InteractionResponse]]] = None
     before_tool_hooks: list[BeforeToolHook] = field(default_factory=list)
     after_tool_hooks: list[AfterToolHook] = field(default_factory=list)
