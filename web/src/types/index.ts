@@ -81,6 +81,8 @@ export interface WSEvent {
     | "done"
     | "error"
     | "cancelled"
+    | "retry"
+    | "resuming"
     | "pong"
     | "config_required"
     | "interaction_request"

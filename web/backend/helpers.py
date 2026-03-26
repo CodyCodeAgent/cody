@@ -36,7 +36,7 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
     from cody.core.runner import (
         CancelledEvent, CompactEvent, ThinkingEvent, TextDeltaEvent,
         ToolCallEvent, ToolResultEvent, DoneEvent, CircuitBreakerEvent,
-        InteractionRequestEvent, UserInputReceivedEvent,
+        InteractionRequestEvent, UserInputReceivedEvent, RetryEvent,
     )
 
     base: dict[str, Any] = {"type": event.event_type}
@@ -93,6 +93,10 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
         base["kind"] = event.request.kind
         base["prompt"] = event.request.prompt
         base["options"] = event.request.options
+    elif isinstance(event, RetryEvent):
+        base["attempt"] = event.attempt
+        base["max_attempts"] = event.max_attempts
+        base["error"] = event.error
     elif isinstance(event, UserInputReceivedEvent):
         base["content"] = event.content
 
@@ -137,13 +141,21 @@ def resolve_chat_runner(
 
     extra_roots = [Path(p) for p in (code_paths or []) if p]
 
-    overrides = {
+    # Collect all override keys to decide whether to create a fresh runner
+    model_overrides = {
         k: data.get(k)
         for k in ("model", "model_base_url", "model_api_key",
                   "enable_thinking", "thinking_budget")
         if data.get(k)
     }
-    if overrides:
+    cb_overrides = {
+        k: data.get(k)
+        for k in ("max_tokens", "max_cost_usd", "max_steps")
+        if data.get(k) is not None
+    }
+    has_overrides = bool(model_overrides) or bool(cb_overrides)
+
+    if model_overrides:
         config.apply_overrides(
             model=data.get("model"),
             model_base_url=data.get("model_base_url"),
@@ -151,14 +163,27 @@ def resolve_chat_runner(
             enable_thinking=data.get("enable_thinking"),
             thinking_budget=data.get("thinking_budget"),
         )
-        runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
-    elif extra_roots:
+
+    # Apply circuit breaker overrides (before runner creation so they take effect)
+    if cb_overrides:
+        if "max_tokens" in cb_overrides:
+            config.circuit_breaker.max_tokens = cb_overrides["max_tokens"]
+        if "max_cost_usd" in cb_overrides:
+            config.circuit_breaker.max_cost_usd = cb_overrides["max_cost_usd"]
+        if "max_steps" in cb_overrides:
+            config.circuit_breaker.max_steps = cb_overrides["max_steps"]
+
+    # Create a new runner if any overrides or extra_roots are present;
+    # otherwise use the cached runner.  Never mutate a cached runner's config.
+    if has_overrides or extra_roots:
         runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
     else:
         runner = get_runner(workdir)
 
-    # Enable interaction so the AI can ask questions via WebSocket
-    config.interaction.enabled = True
+    # Enable interaction so the AI can ask questions via WebSocket.
+    # Must set on runner.config (not the local config copy) so the
+    # stream interaction handler picks it up.
+    runner.config.interaction.enabled = True
 
     return config, runner
 
@@ -166,7 +191,7 @@ def resolve_chat_runner(
 def config_from_run_request(request) -> Config:
     """Load config (cached) and apply request-level overrides on a copy."""
     workdir = Path(request.workdir) if request.workdir else Path.cwd()
-    return get_config(workdir).apply_overrides(
+    cfg = get_config(workdir).apply_overrides(
         model=request.model,
         model_base_url=request.model_base_url,
         model_api_key=request.model_api_key,
@@ -175,3 +200,11 @@ def config_from_run_request(request) -> Config:
         skills=request.skills,
         extra_roots=request.allowed_roots,
     )
+    # Apply circuit breaker overrides from request
+    if request.max_tokens is not None:
+        cfg.circuit_breaker.max_tokens = request.max_tokens
+    if request.max_cost_usd is not None:
+        cfg.circuit_breaker.max_cost_usd = request.max_cost_usd
+    if request.max_steps is not None:
+        cfg.circuit_breaker.max_steps = request.max_steps
+    return cfg

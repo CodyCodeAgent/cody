@@ -392,11 +392,16 @@ cody init
 cody run "创建一个 FastAPI 项目"
 cody run --thinking "复杂分析任务"
 cody run -v "调试这个问题"
+cody run --image screenshot.png "fix the bug shown here"   # 多模态（v2.0.0+）
+cody run --max-tokens 500000 --max-cost 2.0 "重构项目"      # 熔断控制
+cody run --include-tools grep,read_file "搜索 TODO"          # 工具过滤
+cody run --exclude-tools exec_command "分析代码"              # 排除工具
 
 # 交互对话
 cody chat
 cody chat --continue
 cody chat --session <id>
+cody chat --max-tokens 500000       # 熔断控制同样适用于 chat
 
 # 配置管理
 cody config setup                  # 交互式配置向导
@@ -416,9 +421,12 @@ cody tui --session <id>      # 恢复指定会话
 **功能：**
 - 流式响应实时显示
 - 多会话管理（新建/恢复/列出/切换）
-- 斜杠命令（/help, /new, /sessions, /clear, /quit）
+- 斜杠命令（/help, /new, /sessions, /skills, /settings, /image, /clear, /quit）
+- 技能管理 — `/skills` 列表、`/skills enable X`、`/skills disable X`
+- 设置面板 — `/settings` 查看、`/settings model X` 切换模型、`/settings thinking on|off`
+- 多模态 — `/image <path> <message>` 发送图片
 - 键盘快捷键（Ctrl+N 新会话, Ctrl+C 取消/退出, Ctrl+Q 退出）
-- 状态栏处理状态指示器 — 显示 "Thinking..." -> "Running {tool}..." -> "Generating..." + 实时耗时
+- 状态栏处理状态指示器 — 显示 "Thinking..." -> "Running {tool}..." -> "Generating..." + 实时耗时 + 累计 Token 用量
 
 #### Web 前端（参考实现）
 
@@ -432,8 +440,9 @@ cody tui --session <id>      # 恢复指定会话
 - 实时对话 — WebSocket 流式消息显示
 - 图片上传 — 支持粘贴截图（Ctrl+V）和文件选择，图片随消息发送到多模态模型
 - 流式状态栏 — 显示处理状态（Thinking/Running/Generating）+ 耗时 + Stop 按钮
-- WebSocket 断连恢复 — 断连时自动重置 streaming 状态并提示用户
-- 空闲超时 — 120 秒无事件自动停止，防止永久卡住
+- WebSocket 断连恢复 — stream task 不因断连取消，重连后自动接管正在运行的 stream
+- 空闲超时 — 10 分钟无事件自动停止，防止永久卡住
+- 运行时指标 — `GET /metrics` 端点返回 total_runs、total_tokens、total_cost_usd、uptime
 - GFM Markdown 渲染 — 支持表格、任务列表、删除线等（`remark-gfm`）
 - 项目侧边栏 — 快速切换/删除项目
 - 深色主题 UI

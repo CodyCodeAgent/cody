@@ -77,3 +77,4 @@ class CodyDeps:
     interaction_handler: Optional[Callable[[InteractionRequest], Awaitable[InteractionResponse]]] = None
     before_tool_hooks: list[BeforeToolHook] = field(default_factory=list)
     after_tool_hooks: list[AfterToolHook] = field(default_factory=list)
+    auto_approved_tools: set[str] = field(default_factory=set)

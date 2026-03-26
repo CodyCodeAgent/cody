@@ -250,6 +250,19 @@ class CircuitBreakerEvent:
 
 
 @dataclass
+class RetryEvent:
+    """Emitted before retrying a failed model call in streaming mode.
+
+    Consumers should clear any buffered partial output (text, thinking,
+    tool calls) so the retried response starts clean.
+    """
+    attempt: int  # 1-based attempt that just failed
+    max_attempts: int
+    error: str
+    event_type: Literal["retry"] = "retry"
+
+
+@dataclass
 class InteractionRequestEvent:
     """Emitted when the runner needs human input."""
     request: InteractionRequest
@@ -955,7 +968,7 @@ class AgentRunner:
         2. Alternating: consecutive pairs repeat (A-B-A-B with N >= 4)
         """
         n = self.config.circuit_breaker.loop_detect_turns
-        if len(self._cb.recent_results) < n:
+        if n <= 0 or len(self._cb.recent_results) < n:
             return False
         recent = self._cb.recent_results[-n:]
         threshold = self.config.circuit_breaker.loop_similarity_threshold
@@ -1027,8 +1040,11 @@ class AgentRunner:
             self._pending_interactions[request.id] = future
             await interaction_q.put(InteractionRequestEvent(request=request))
             try:
-                if timeout > 0:
-                    return await asyncio.wait_for(future, timeout=timeout)
+                # Confirm requests (permission checks) wait indefinitely —
+                # the user needs time to review.  Questions use the configured timeout.
+                effective_timeout = 0 if request.kind == "confirm" else timeout
+                if effective_timeout > 0:
+                    return await asyncio.wait_for(future, timeout=effective_timeout)
                 return await future
             except asyncio.TimeoutError:
                 self._pending_interactions.pop(request.id, None)
@@ -1133,10 +1149,13 @@ class AgentRunner:
         _TOOL_STREAM_DONE = object()
 
         async def _consume_tool_stream():
-            async with node.stream(agent_run.ctx) as tool_stream:
-                async for ev in tool_stream:
-                    await _merged_q.put(("tool", ev))
-            await _merged_q.put(("done", _TOOL_STREAM_DONE))
+            try:
+                async with node.stream(agent_run.ctx) as tool_stream:
+                    async for ev in tool_stream:
+                        await _merged_q.put(("tool", ev))
+                await _merged_q.put(("done", _TOOL_STREAM_DONE))
+            except Exception as exc:
+                await _merged_q.put(("error", exc))
 
         async def _forward_interactions():
             while True:
@@ -1151,6 +1170,8 @@ class AgentRunner:
                 kind, item = await _merged_q.get()
                 if kind == "done":
                     break
+                if kind == "error":
+                    raise item
                 if kind == "interaction":
                     yield item
                     continue
@@ -1288,25 +1309,52 @@ class AgentRunner:
                     # We only need to stream ModelRequestNode and CallToolsNode.
 
                     if agent.is_model_request_node(node):
-                        # Stream LLM response: thinking + text deltas
-                        async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
-                            async for event in stream:
-                                if isinstance(event, PartStartEvent):
-                                    part = event.part
-                                    if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                        yield ThinkingEvent(content=part.content)
-                                    elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                        yield TextDeltaEvent(content=part.content)
-                                elif isinstance(event, PartDeltaEvent):
-                                    delta = event.delta
-                                    if delta.part_delta_kind == "thinking":
-                                        content = getattr(delta, "content_delta", None)
-                                        if content:
-                                            yield ThinkingEvent(content=content)
-                                    elif delta.part_delta_kind == "text":
-                                        content = getattr(delta, "content_delta", None)
-                                        if content:
-                                            yield TextDeltaEvent(content=content)
+                        # Stream LLM response with retry on transient errors.
+                        # On failure a RetryEvent is yielded so consumers can
+                        # clear buffered partial output before the retry.
+                        retry_cfg = self._retry_config()
+                        max_attempts = (retry_cfg.max_retries + 1) if retry_cfg.enabled else 1
+
+                        for attempt in range(max_attempts):
+                            try:
+                                async with node.stream(agent_run.ctx) as stream:  # type: ignore[var-annotated]
+                                    async for event in stream:
+                                        if isinstance(event, PartStartEvent):
+                                            part = event.part
+                                            if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                                                yield ThinkingEvent(content=part.content)
+                                            elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
+                                                yield TextDeltaEvent(content=part.content)
+                                        elif isinstance(event, PartDeltaEvent):
+                                            delta = event.delta
+                                            if delta.part_delta_kind == "thinking":
+                                                content = getattr(delta, "content_delta", None)
+                                                if content:
+                                                    yield ThinkingEvent(content=content)
+                                            elif delta.part_delta_kind == "text":
+                                                content = getattr(delta, "content_delta", None)
+                                                if content:
+                                                    yield TextDeltaEvent(content=content)
+                                break  # success — exit retry loop
+                            except Exception as exc:
+                                from .retry import is_retryable
+                                if attempt >= max_attempts - 1 or not is_retryable(exc):
+                                    raise
+                                delay = min(
+                                    retry_cfg.base_delay * (2 ** attempt),
+                                    retry_cfg.max_delay,
+                                )
+                                logger.warning(
+                                    "Stream model call failed (attempt %d/%d), "
+                                    "retrying in %.1fs: %s",
+                                    attempt + 1, max_attempts, delay, exc,
+                                )
+                                yield RetryEvent(
+                                    attempt=attempt + 1,
+                                    max_attempts=max_attempts,
+                                    error=str(exc),
+                                )
+                                await asyncio.sleep(delay)
 
                     elif agent.is_call_tools_node(node):
                         async for ev in self._stream_tool_node(

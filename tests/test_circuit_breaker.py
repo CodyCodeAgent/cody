@@ -24,8 +24,8 @@ class TestCircuitBreakerConfig:
     def test_defaults(self):
         cb = CircuitBreakerConfig()
         assert cb.enabled is True
-        assert cb.max_tokens == 200_000
-        assert cb.max_cost_usd == 5.0
+        assert cb.max_tokens == 1_000_000
+        assert cb.max_cost_usd == 10.0
         assert cb.max_steps == 0
         assert cb.loop_detect_turns == 6
         assert cb.loop_similarity_threshold == 0.9

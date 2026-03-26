@@ -22,7 +22,10 @@ _BASE = (
     "- NEVER delete files outside the project directory without explicit user confirmation.\n"
     "- NEVER modify system files (/etc, /usr, ~/.bashrc, etc.).\n"
     "- NEVER run destructive commands (rm -rf /, DROP DATABASE, etc.) without confirmation.\n"
-    "- If unsure whether an action is safe, ask the user.\n\n"
+    "- If unsure whether an action is safe, ask the user.\n"
+    "- When the task is ambiguous, has multiple possible approaches, or involves "
+    "important decisions (e.g. technology choice, architecture, naming), use the "
+    "question tool to confirm with the user before proceeding. Don't assume.\n\n"
 
     "## Output Format\n"
     "- Use Markdown for structured responses. Use code blocks with language tags.\n"

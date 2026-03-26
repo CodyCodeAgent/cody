@@ -6,10 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [Unreleased]
+## [2.0.0] - 2026-03-26
 
 ### Added
 
+- **CLI 多模态支持**：`cody run --image screenshot.png "fix this bug"` 支持附带图片，可重复使用
+- **CLI 熔断控制**：`--max-tokens`、`--max-cost`、`--max-steps` 参数控制单次运行的资源上限（`run`、`chat`、`tui` 均支持）
+- **CLI 工具过滤**：`--include-tools grep,read_file` 限制可用工具集，`--exclude-tools exec_command` 排除指定工具
+- **TUI 多模态支持**：`/image <path> <message>` 命令发送图片给 AI
+- **TUI 技能管理**：`/skills` 列表、`/skills enable X`、`/skills disable X`
+- **TUI 设置面板**：`/settings` 查看、`/settings model X` 切换模型、`/settings thinking on|off` 切换思考模式
+- **TUI Token 统计**：状态栏实时显示累计 token 用量
+- **Web Metrics 端点**：`GET /metrics` 返回 total_runs、total_tokens、total_cost_usd、uptime 等运行时指标
+- **Web 熔断配置**：`PUT /config` 支持 `cb_max_tokens`、`cb_max_cost_usd`、`cb_max_steps` 字段；`RunRequest` 支持 per-request 熔断覆盖
+- **Web 工具过滤**：`RunRequest` 和 chat WebSocket 均支持 `include_tools` / `exclude_tools` 参数
 - **自定义工具注册 API**：支持通过 SDK Builder `.tool(func)` 注册自定义 async 工具函数。自定义工具与内置工具一同注册到 Agent，享有相同的错误重试（`ModelRetry`）和输出截断机制。Core 层 `register_tools()` 新增 `custom_tools` 参数，`AgentRunner` 构造函数新增 `custom_tools` 参数
 - **System Prompt 自定义**：SDK Builder 新增 `.system_prompt(text)` 替换默认 persona，`.extra_system_prompt(text)` 在所有内置 prompt 后追加自定义指令。两者可组合使用。CODY.md、项目记忆、Skills 等内置 prompt 部分不受 `system_prompt` 替换影响
 - **Per-run 工具选择**：`run()` / `stream()` 新增 `include_tools` 和 `exclude_tools` 参数，支持每次运行指定可用工具集。`include_tools=["read_file", "grep"]` 只启用指定工具，`exclude_tools=["exec_command"]` 排除指定工具。同时新增 `list_tool_names()` 辅助函数用于工具名称发现

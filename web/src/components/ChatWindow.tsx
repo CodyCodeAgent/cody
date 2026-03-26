@@ -36,6 +36,7 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
   // Interaction request state (AI asking the user a question)
   const [interactionRequest, setInteractionRequest] = useState<{
     requestId: string;
+    kind: string;
     prompt: string;
     options?: string[];
   } | null>(null);
@@ -148,6 +149,14 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
       lastEventRef.current = Date.now();
 
       switch (event.type) {
+        case "retry":
+          // Model call failed and will be retried — clear partial output
+          buf.content = "";
+          buf.thinking = "";
+          buf.toolCalls = [];
+          scheduleFlush();
+          break;
+
         case "thinking":
           buf.thinking += (event.content ?? "");
           scheduleFlush();
@@ -194,9 +203,10 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
         case "interaction_request": {
           // AI is asking the user a question — show input prompt
           const reqId = event.request_id ?? "";
+          const kind = (event.kind as string) ?? "question";
           const prompt = event.prompt ?? event.content ?? "The AI has a question";
           const options = event.options as string[] | undefined;
-          setInteractionRequest({ requestId: reqId, prompt, options });
+          setInteractionRequest({ requestId: reqId, kind, prompt, options });
           scheduleFlush();
           break;
         }
@@ -238,6 +248,12 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
           setInteractionRequest(null);
           break;
         }
+
+        case "cancelled":
+          resetBuffer();
+          setStreaming(false);
+          setInteractionRequest(null);
+          break;
 
         case "config_required":
           setConfigReady(false);
@@ -362,12 +378,12 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
     const id = setInterval(() => {
       setElapsed(Math.floor((Date.now() - t0) / 1000));
       // Idle timeout: no events for 120s → auto-stop
-      if (Date.now() - lastEventRef.current > 120_000) {
+      if (Date.now() - lastEventRef.current > 600_000) {
         setMessages((prev) => [
           ...prev,
           {
             role: "system" as const,
-            content: "Response timed out (no data for 120s). Please try again.",
+            content: "Response timed out (no data for 10min). Please try again.",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -459,7 +475,59 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
         )}
 
         {/* Interaction request prompt */}
-        {interactionRequest && (
+        {interactionRequest && interactionRequest.kind === "confirm" && (
+          <div className="interaction-request interaction-confirm">
+            <div className="interaction-request-icon">⚠</div>
+            <div className="interaction-request-body">
+              <div className="interaction-request-prompt">{interactionRequest.prompt}</div>
+              <div className="interaction-confirm-actions">
+                <button
+                  className="btn btn-sm interaction-confirm-approve"
+                  onClick={() => {
+                    socketRef.current?.send({
+                      type: "submit_interaction",
+                      request_id: interactionRequest.requestId,
+                      action: "approve",
+                      content: "",
+                    });
+                    setInteractionRequest(null);
+                  }}
+                >
+                  Allow
+                </button>
+                <button
+                  className="btn btn-sm interaction-confirm-approve-all"
+                  onClick={() => {
+                    socketRef.current?.send({
+                      type: "submit_interaction",
+                      request_id: interactionRequest.requestId,
+                      action: "approve_all",
+                      content: "",
+                    });
+                    setInteractionRequest(null);
+                  }}
+                >
+                  Allow All
+                </button>
+                <button
+                  className="btn btn-sm interaction-confirm-reject"
+                  onClick={() => {
+                    socketRef.current?.send({
+                      type: "submit_interaction",
+                      request_id: interactionRequest.requestId,
+                      action: "reject",
+                      content: "",
+                    });
+                    setInteractionRequest(null);
+                  }}
+                >
+                  Deny
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {interactionRequest && interactionRequest.kind !== "confirm" && (
           <div className="interaction-request">
             <div className="interaction-request-icon">?</div>
             <div className="interaction-request-body">
@@ -501,6 +569,13 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
                   : "Generating..."}
             </span>
             <span className="stream-status-time">{formatElapsed(elapsed)}</span>
+            <button
+              className="stream-stop-btn"
+              onClick={() => socketRef.current?.send({ type: "cancel" })}
+              title="Stop generating"
+            >
+              Stop
+            </button>
           </div>
         )}
 

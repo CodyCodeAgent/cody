@@ -35,17 +35,26 @@ async def _check_permission(ctx: RunContext['CodyDeps'], tool_name: str, args_su
     level = ctx.deps.permission_manager.check(tool_name)
     if level != PermissionLevel.CONFIRM:
         return
+    # Already approved for this run via "Allow All"
+    if tool_name in ctx.deps.auto_approved_tools:
+        return
     # CONFIRM level — route through interaction handler if available
     handler = getattr(ctx.deps, "interaction_handler", None)
     if handler is None:
         return  # no handler → auto-approve (legacy)
+    if args_summary:
+        prompt_text = f"{tool_name}: {args_summary}"
+    else:
+        prompt_text = f"{tool_name}"
     request = InteractionRequest(
         kind="confirm",
-        prompt=f"Tool '{tool_name}' requires confirmation to execute.",
+        prompt=prompt_text,
         context={"tool_name": tool_name, "args": args_summary},
     )
     response = await handler(request)
-    if response.action == "reject":
+    if response.action == "approve_all":
+        ctx.deps.auto_approved_tools.add(tool_name)
+    elif response.action == "reject":
         raise PermissionDeniedError(tool_name, f"User rejected execution of {tool_name}")
 
 

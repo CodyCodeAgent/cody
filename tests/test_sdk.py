@@ -795,6 +795,7 @@ async def test_check_permission_confirm_auto_approve():
         def __init__(self):
             self.permission_manager = PermissionManager()
             self.interaction_handler = AgentRunner._auto_approve_handler
+            self.auto_approved_tools: set = set()
 
     class MockCtx:
         def __init__(self):
@@ -817,6 +818,7 @@ async def test_check_permission_confirm_reject():
         def __init__(self):
             self.permission_manager = PermissionManager()
             self.interaction_handler = _reject_handler
+            self.auto_approved_tools: set = set()
 
     class MockCtx:
         def __init__(self):

@@ -21,9 +21,10 @@ except ImportError:
     )
 
 from ..core import Config
+from ..core.prompt import Prompt
 from ..sdk.client import AsyncCodyClient
 from ..shared import (
-    SPINNER_FRAMES, compact_message, auto_title,
+    SPINNER_FRAMES, compact_message, auto_title, build_multimodal_prompt,
     format_elapsed, format_session_line, truncate_repr as _truncate_repr,
 )
 from .widgets import MessageBubble, StreamBubble, StatusLine
@@ -78,6 +79,9 @@ class CodyTUI(App):
         extra_roots: Optional[list[str]] = None,
         session_id: Optional[str] = None,
         continue_last: bool = False,
+        max_tokens: Optional[int] = None,
+        max_cost: Optional[float] = None,
+        max_steps: Optional[int] = None,
     ) -> None:
         super().__init__()
         self._model_override = model
@@ -87,6 +91,9 @@ class CodyTUI(App):
         self._extra_roots: list[str] = extra_roots or []
         self._session_id_arg = session_id
         self._continue_last = continue_last
+        self._max_tokens_override = max_tokens
+        self._max_cost_override = max_cost
+        self._max_steps_override = max_steps
 
         # Initialized in on_mount
         self._config: Optional[Config] = None
@@ -94,6 +101,8 @@ class CodyTUI(App):
         self._session_id: Optional[str] = None
         self._message_history: list = []
         self._cancel_event: Optional[asyncio.Event] = None
+        # Accumulated token usage for status line
+        self._total_tokens: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -108,6 +117,14 @@ class CodyTUI(App):
             thinking_budget=self._thinking_budget_override,
             extra_roots=self._extra_roots or None,
         )
+
+        # Apply circuit breaker overrides
+        if self._max_tokens_override is not None:
+            self._config.circuit_breaker.max_tokens = self._max_tokens_override
+        if self._max_cost_override is not None:
+            self._config.circuit_breaker.max_cost_usd = self._max_cost_override
+        if self._max_steps_override is not None:
+            self._config.circuit_breaker.max_steps = self._max_steps_override
 
         self._client = AsyncCodyClient(
             workdir=str(self._workdir),
@@ -201,9 +218,10 @@ class CodyTUI(App):
             if self._client and self._session_id
             else 0
         )
+        tokens_str = f"  |  Tokens: {self._total_tokens:,}" if self._total_tokens else ""
         self.query_one("#status-line", StatusLine).update(
             f" Session: {sid}  |  Model: {model}  |  "
-            f"Dir: {self._workdir.name}  |  Messages: {msg_count}"
+            f"Dir: {self._workdir.name}  |  Messages: {msg_count}{tokens_str}"
         )
 
     def _set_input_enabled(self, enabled: bool) -> None:
@@ -217,6 +235,9 @@ class CodyTUI(App):
     _COMMANDS = {
         "/new": "Start a new session",
         "/sessions": "List recent sessions",
+        "/skills": "List available skills",
+        "/settings": "Show/change settings",
+        "/image": "Send image with message",
         "/clear": "Clear screen",
         "/help": "Show help",
         "/quit": "Exit",
@@ -322,7 +343,7 @@ class CodyTUI(App):
         self._update_status()
 
     @work(thread=False)
-    async def _run_agent(self, prompt: str) -> None:
+    async def _run_agent(self, prompt: Prompt) -> None:
         """Stream agent response via SDK StreamChunk API."""
         assert self._session_id is not None
         self.is_running = True
@@ -390,6 +411,9 @@ class CodyTUI(App):
                 elif chunk.type == "done":
                     # Update message history from SDK stream
                     self._message_history = chunk.message_history or []
+                    # Accumulate token usage for status line
+                    if chunk.usage:
+                        self._total_tokens += chunk.usage.total_tokens
 
         except Exception as e:
             bubble.append(f"\n\n[bold red]Error: {e}[/bold red]")
@@ -412,8 +436,10 @@ class CodyTUI(App):
 
     # ── Commands ─────────────────────────────────────────────────────────────
 
-    def _handle_command(self, cmd: str) -> None:
-        cmd = cmd.strip().lower()
+    def _handle_command(self, raw_cmd: str) -> None:
+        parts = raw_cmd.strip().split(None, 1)
+        cmd = parts[0].lower()
+        arg = parts[1].strip() if len(parts) > 1 else ""
 
         if cmd in ("/quit", "/exit", "/q"):
             self.exit()
@@ -421,6 +447,12 @@ class CodyTUI(App):
             self.action_new_session()
         elif cmd == "/sessions":
             self._show_sessions()
+        elif cmd == "/skills":
+            self._show_skills(arg)
+        elif cmd == "/settings":
+            self._handle_settings(arg)
+        elif cmd == "/image":
+            self._handle_image_command(arg)
         elif cmd == "/clear":
             scroll = self.query_one("#chat-scroll", VerticalScroll)
             scroll.remove_children()
@@ -429,11 +461,18 @@ class CodyTUI(App):
             self._add_bubble(
                 "system",
                 "[bold]Commands:[/bold]\n"
-                "  /new      — Start a new session\n"
-                "  /sessions — List recent sessions\n"
-                "  /clear    — Clear screen\n"
-                "  /quit     — Exit\n"
-                "  /help     — Show this help\n\n"
+                "  /new             — Start a new session\n"
+                "  /sessions        — List recent sessions\n"
+                "  /skills          — List available skills\n"
+                "  /skills enable X — Enable a skill\n"
+                "  /skills disable X — Disable a skill\n"
+                "  /settings        — Show current settings\n"
+                "  /settings model X — Change model\n"
+                "  /settings thinking on/off — Toggle thinking\n"
+                "  /image path msg  — Send image with message\n"
+                "  /clear           — Clear screen\n"
+                "  /quit            — Exit\n"
+                "  /help            — Show this help\n\n"
                 "[bold]Shortcuts:[/bold]\n"
                 "  Ctrl+N — New session\n"
                 "  Ctrl+C — Cancel running / Quit\n"
@@ -459,6 +498,111 @@ class CodyTUI(App):
             )
             lines.append(f"[dim]{line}[/dim]")
         self._add_bubble("system", "\n".join(lines))
+
+    def _show_skills(self, arg: str) -> None:
+        if not self._client:
+            return
+        runner = self._client.get_runner()
+        sm = runner.skill_manager
+
+        # Sub-commands: enable / disable
+        if arg.startswith("enable "):
+            name = arg[7:].strip()
+            sm.enable_skill(name)
+            self._add_bubble("system", f"[green]Skill enabled: {name}[/green]")
+            return
+        if arg.startswith("disable "):
+            name = arg[8:].strip()
+            sm.disable_skill(name)
+            self._add_bubble("system", f"[yellow]Skill disabled: {name}[/yellow]")
+            return
+
+        # List skills
+        skills = sm.list_skills()
+        if not skills:
+            self._add_bubble("system", "[yellow]No skills found[/yellow]")
+            return
+        lines = ["[bold]Available skills:[/bold]"]
+        for s in skills:
+            status = "[green]on[/green]" if s.enabled else "[dim]off[/dim]"
+            lines.append(f"  {status}  {s.name}  [dim]{s.description}[/dim]")
+        self._add_bubble("system", "\n".join(lines))
+
+    def _handle_settings(self, arg: str) -> None:
+        if not self._config:
+            return
+
+        if not arg:
+            # Show current settings
+            cb = self._config.circuit_breaker
+            lines = [
+                "[bold]Current settings:[/bold]",
+                f"  Model: {self._config.model}",
+                f"  Thinking: {'on' if self._config.enable_thinking else 'off'}",
+            ]
+            if self._config.thinking_budget:
+                lines.append(f"  Thinking budget: {self._config.thinking_budget}")
+            lines.extend([
+                f"  Circuit breaker: max_tokens={cb.max_tokens}, "
+                f"max_cost=${cb.max_cost_usd}, max_steps={cb.max_steps}",
+                f"  Tokens used (session): {self._total_tokens:,}",
+            ])
+            self._add_bubble("system", "\n".join(lines))
+            return
+
+        parts = arg.split(None, 1)
+        key = parts[0].lower()
+        val = parts[1].strip() if len(parts) > 1 else ""
+
+        if key == "model" and val:
+            self._config.model = val
+            # Rebuild the runner so the new model takes effect
+            if self._client:
+                self._client.set_config(self._config)
+            self._add_bubble("system", f"[green]Model changed to: {val}[/green]")
+            self._update_status()
+        elif key == "thinking" and val:
+            enabled = val.lower() in ("on", "true", "1", "yes")
+            self._config.enable_thinking = enabled
+            if self._client:
+                self._client.get_runner().config.enable_thinking = enabled
+            self._add_bubble(
+                "system",
+                f"[green]Thinking {'enabled' if enabled else 'disabled'}[/green]",
+            )
+        else:
+            self._add_bubble(
+                "system",
+                "[yellow]Usage: /settings, /settings model <name>, "
+                "/settings thinking on|off[/yellow]",
+            )
+
+    def _handle_image_command(self, arg: str) -> None:
+        """Handle /image <path> <message> command to send an image with a prompt."""
+        if not arg:
+            self._add_bubble(
+                "system", "[yellow]Usage: /image <path> <message>[/yellow]"
+            )
+            return
+
+        parts = arg.split(None, 1)
+        image_path = Path(parts[0])
+        message = parts[1] if len(parts) > 1 else "Describe this image"
+
+        if not image_path.exists():
+            self._add_bubble("system", f"[red]File not found: {image_path}[/red]")
+            return
+
+        prompt = build_multimodal_prompt(message, [str(image_path)])
+
+        self._add_bubble("user", f"{message}\n[dim](image: {image_path.name})[/dim]")
+
+        # Auto-title
+        assert self._session_id is not None
+        if self._client and self._client.get_message_count(self._session_id) == 0:
+            self._client.update_title(self._session_id, auto_title(message))
+
+        self._run_agent(prompt)
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
@@ -505,6 +649,9 @@ def run_tui(
     extra_roots: Optional[list[str]] = None,
     session_id: Optional[str] = None,
     continue_last: bool = False,
+    max_tokens: Optional[int] = None,
+    max_cost: Optional[float] = None,
+    max_steps: Optional[int] = None,
 ) -> None:
     """Launch the Cody TUI.
 
@@ -519,5 +666,8 @@ def run_tui(
         extra_roots=extra_roots,
         session_id=session_id,
         continue_last=continue_last,
+        max_tokens=max_tokens,
+        max_cost=max_cost,
+        max_steps=max_steps,
     )
     app.run()

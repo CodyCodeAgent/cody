@@ -2,6 +2,8 @@
 
 Similar to chat.py but operates on a Task (which has its own session and
 uses the project's code_paths as allowed_roots). Router registered in app.py.
+
+Stream tasks survive WebSocket disconnection (see chat.py for details).
 """
 
 import asyncio
@@ -9,7 +11,9 @@ import json
 import logging
 import subprocess
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
@@ -25,6 +29,36 @@ from ..state import get_project_store, session_store_dep
 logger = logging.getLogger("cody.web.task_chat")
 
 router = APIRouter(tags=["task_chat"])
+
+
+# ── Active run registry ──────────────────────────────────────────────────────
+
+
+@dataclass
+class _ActiveRun:
+    """Mutable state for a running stream, shared across WS connections."""
+    ws: Optional[WebSocket] = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    runner: object = None
+    cancel_event: Optional[asyncio.Event] = None
+    task: Optional[asyncio.Task] = None
+
+
+# task_id → _ActiveRun
+_active_runs: dict[str, _ActiveRun] = {}
+
+
+async def _safe_send(run: _ActiveRun, payload: dict) -> None:
+    """Send to the current WebSocket, silently swallowing errors."""
+    async with run.lock:
+        if run.ws is not None:
+            try:
+                await run.ws.send_json(payload)
+            except Exception:
+                pass
+
+
+# ── WebSocket endpoint ────────────────────────────────────────────────────────
 
 
 @router.websocket("/ws/chat/task/{task_id}")
@@ -92,32 +126,40 @@ async def task_chat_websocket(
         task_id, project.name, task.branch_name, task.session_id,
     )
 
-    active_runner = None
-    stream_task = None
-    send_lock = asyncio.Lock()
+    # Adopt or create active-run state for this task
+    run = _active_runs.get(task_id)
+    if run is None:
+        run = _ActiveRun()
+        _active_runs[task_id] = run
 
-    async def _safe_send(payload: dict):
-        async with send_lock:
-            await ws.send_json(payload)
+    run.ws = ws
 
-    async def _run_stream(runner, prompt, sid):
-        nonlocal active_runner
-        active_runner = runner
+    if run.task and not run.task.done():
+        logger.info("Task chat WS reconnect: task=%s (active stream adopted)", task_id)
+        await ws.send_json({"type": "resuming"})
+
+    # ── stream helper ────────────────────────────────────────────────────
+
+    async def _run_stream(runner, prompt, sid, *, run_cancel_event=None):
+        run.runner = runner
         try:
             t0 = time.monotonic()
             event_count = 0
 
             if sid:
                 async for event, s in runner.run_stream_with_session(
-                    prompt, session_store, sid
+                    prompt, session_store, sid,
+                    cancel_event=run_cancel_event,
                 ):
                     payload = serialize_stream_event(event, session_id=s)
-                    await _safe_send(payload)
+                    await _safe_send(run, payload)
                     event_count += 1
             else:
-                async for event in runner.run_stream(prompt):
+                async for event in runner.run_stream(
+                    prompt, cancel_event=run_cancel_event,
+                ):
                     payload = serialize_stream_event(event)
-                    await _safe_send(payload)
+                    await _safe_send(run, payload)
                     event_count += 1
 
             elapsed = time.monotonic() - t0
@@ -136,9 +178,14 @@ async def task_chat_websocket(
                 err_msg = "API authentication failed — please check your API key."
             elif "429" in err_msg or "rate" in err_lower:
                 err_msg = "API rate limit hit — please wait and try again."
-            await _safe_send({"type": "error", "message": err_msg})
+            await _safe_send(run, {"type": "error", "message": err_msg})
         finally:
-            active_runner = None
+            run.runner = None
+            run.cancel_event = None
+            run.task = None
+            _active_runs.pop(task_id, None)
+
+    # ── message loop ─────────────────────────────────────────────────────
 
     try:
         while True:
@@ -148,25 +195,32 @@ async def task_chat_websocket(
             logger.debug("Task chat WS recv: task=%s type=%s", task_id, msg_type)
 
             if msg_type == "ping":
-                await _safe_send({"type": "pong"})
+                await ws.send_json({"type": "pong"})
+
+            elif msg_type == "cancel":
+                logger.info("Task chat WS cancel: task=%s", task_id)
+                if run.cancel_event:
+                    run.cancel_event.set()
+                else:
+                    await ws.send_json({"type": "cancelled"})
 
             elif msg_type == "submit_interaction":
                 request_id = data.get("request_id", "")
                 action = data.get("action", "answer")
                 content = data.get("content", "")
-                if active_runner and request_id:
+                if run.runner and request_id:
                     response = InteractionResponse(
                         request_id=request_id,
                         action=action,
                         content=content,
                     )
-                    await active_runner.submit_interaction(response)
+                    await run.runner.submit_interaction(response)
                     logger.info(
                         "Task chat WS interaction submitted: task=%s id=%s",
                         task_id, request_id,
                     )
                 else:
-                    await _safe_send({
+                    await ws.send_json({
                         "type": "error",
                         "message": "No active run or missing request_id",
                     })
@@ -188,14 +242,18 @@ async def task_chat_websocket(
                             workdir, data, project.code_paths,
                         )
                     except ValueError:
-                        await _safe_send({
+                        await ws.send_json({
                             "type": "error",
                             "message": "No API key configured — please set your API key in Settings.",
                         })
                         continue
 
-                    stream_task = asyncio.create_task(
-                        _run_stream(runner, prompt, task.session_id)
+                    run.cancel_event = asyncio.Event()
+                    run.task = asyncio.create_task(
+                        _run_stream(
+                            runner, prompt, task.session_id,
+                            run_cancel_event=run.cancel_event,
+                        )
                     )
 
                 except Exception as e:
@@ -203,7 +261,7 @@ async def task_chat_websocket(
                         "Task chat setup error: task=%s error=%s",
                         task_id, e, exc_info=True,
                     )
-                    await _safe_send({"type": "error", "message": str(e)})
+                    await ws.send_json({"type": "error", "message": str(e)})
 
     except WebSocketDisconnect:
         logger.info("Task chat WS disconnected: task=%s", task_id)
@@ -213,9 +271,5 @@ async def task_chat_websocket(
             task_id, e, exc_info=True,
         )
     finally:
-        if stream_task and not stream_task.done():
-            stream_task.cancel()
-            try:
-                await stream_task
-            except asyncio.CancelledError:
-                pass
+        # Detach sender but do NOT cancel the stream — it keeps running
+        run.ws = None

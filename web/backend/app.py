@@ -45,8 +45,8 @@ from .routes.sessions import router as sessions_router
 from .routes.skills import router as skills_router
 from .routes.audit_routes import router as audit_router
 from .routes.agents import router as agents_router
-from .routes.websocket import router as ws_router
 from .routes.config import router as config_router
+from .routes.metrics import router as metrics_router
 from .routes.projects import router as projects_router
 from .routes.tasks import router as tasks_router
 from .routes.task_chat import router as task_chat_router
@@ -118,8 +118,8 @@ app.include_router(sessions_router)
 app.include_router(skills_router)
 app.include_router(audit_router)
 app.include_router(agents_router)
-app.include_router(ws_router)
 app.include_router(config_router)
+app.include_router(metrics_router)
 
 
 # ── Web routes ──────────────────────────────────────────────────────────────

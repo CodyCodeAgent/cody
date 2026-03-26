@@ -28,6 +28,10 @@ class ConfigUpdateRequest(BaseModel):
     model_api_key: Optional[str] = None
     enable_thinking: Optional[bool] = None
     thinking_budget: Optional[int] = None
+    # Circuit breaker overrides
+    cb_max_tokens: Optional[int] = None
+    cb_max_cost_usd: Optional[float] = None
+    cb_max_steps: Optional[int] = None
 
 
 @router.get("/config/status")
@@ -91,6 +95,14 @@ async def update_config(
             model_base_url=body.model_base_url,
             model_api_key=body.model_api_key,
         )
+
+        # Apply circuit breaker overrides
+        if body.cb_max_tokens is not None:
+            cfg.circuit_breaker.max_tokens = body.cb_max_tokens
+        if body.cb_max_cost_usd is not None:
+            cfg.circuit_breaker.max_cost_usd = body.cb_max_cost_usd
+        if body.cb_max_steps is not None:
+            cfg.circuit_breaker.max_steps = body.cb_max_steps
 
         config_path = wd / ".cody" / "config.json"
         if not config_path.exists():

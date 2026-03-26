@@ -142,10 +142,16 @@ class RetryConfig(BaseModel):
 
 
 class CircuitBreakerConfig(BaseModel):
-    """Circuit breaker configuration for automatic run termination."""
+    """Circuit breaker configuration for automatic run termination.
+
+    ``max_tokens`` is the cumulative token budget across all LLM API calls in a
+    single run (each call re-sends the full context).  With a 100K compaction
+    threshold, a 10-tool-call task can easily consume 500K–1M tokens, so the
+    default is set at 1M.
+    """
     enabled: bool = True
-    max_tokens: int = 200_000
-    max_cost_usd: float = 5.0
+    max_tokens: int = 1_000_000
+    max_cost_usd: float = 10.0
     max_steps: int = 0  # Max tool call steps per run; 0 = unlimited
     loop_detect_turns: int = 6
     loop_similarity_threshold: float = 0.9
