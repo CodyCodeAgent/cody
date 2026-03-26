@@ -47,7 +47,7 @@ from .context import (
     estimate_tokens,
     prune_tool_outputs,
 )
-from .deps import CodyDeps
+from .deps import CodyDeps, UNSET
 from .errors import CircuitBreakerError, InteractionTimeoutError
 from .file_history import FileHistory
 from .interaction import InteractionRequest, InteractionResponse
@@ -64,7 +64,6 @@ from .sub_agent import SubAgentManager
 from .user_input import UserInputQueue
 from .model_resolver import resolve_model
 from .project_instructions import load_project_instructions
-from .deps import UNSET
 from . import tools
 
 logger = logging.getLogger(__name__)
@@ -358,8 +357,8 @@ class AgentRunner:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
-        audit_logger: AuditLoggerProtocol | None = None,
-        file_history: FileHistoryProtocol | None = None,
+        audit_logger: AuditLoggerProtocol | None = UNSET,
+        file_history: FileHistoryProtocol | None = UNSET,
         memory_store: MemoryStoreProtocol | None = UNSET,
     ):
         self.workdir = workdir
@@ -375,10 +374,16 @@ class AgentRunner:
             self._mcp_client = MCPClient(self.config.mcp)
 
         # Audit logger (injected or default SQLite)
-        self._audit_logger = audit_logger if audit_logger is not None else AuditLogger()
+        if audit_logger is UNSET or audit_logger is None:
+            self._audit_logger: AuditLoggerProtocol = AuditLogger()
+        else:
+            self._audit_logger = audit_logger
 
         # File history (injected or default in-memory)
-        self._file_history = file_history if file_history is not None else FileHistory(workdir=self.workdir)
+        if file_history is UNSET or file_history is None:
+            self._file_history: FileHistoryProtocol = FileHistory(workdir=self.workdir)
+        else:
+            self._file_history = file_history
 
         # Sub-agent manager (shares injected storage)
         self._sub_agent_manager = SubAgentManager(
@@ -1183,7 +1188,10 @@ class AgentRunner:
             except asyncio.CancelledError:
                 pass
             if not _tool_task.done():
-                await _tool_task
+                try:
+                    await _tool_task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
         # Drain any remaining interaction events after tool execution
         for interaction_event in drain_interaction_q():

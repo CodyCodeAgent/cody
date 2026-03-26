@@ -518,9 +518,9 @@ class AsyncCodyClient:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
-        session_store: object | None = None,
-        audit_logger: object | None = None,
-        file_history: object | None = None,
+        session_store: object | None = UNSET,
+        audit_logger: object | None = UNSET,
+        file_history: object | None = UNSET,
         memory_store: object | None = UNSET,
     ):
         if config:
@@ -671,9 +671,6 @@ class AsyncCodyClient:
         """
         if self._runner is None:
             from ..core.runner import AgentRunner
-            # Convert UNSET → None for runner (runner uses None = "use default")
-            al = None if self._injected_audit_logger is UNSET else self._injected_audit_logger
-            fh = None if self._injected_file_history is UNSET else self._injected_file_history
             self._runner = AgentRunner(
                 config=self._get_config(),
                 workdir=self.workdir,
@@ -682,8 +679,8 @@ class AsyncCodyClient:
                 extra_system_prompt=self._extra_system_prompt,
                 before_tool_hooks=self._before_tool_hooks or None,
                 after_tool_hooks=self._after_tool_hooks or None,
-                audit_logger=al,
-                file_history=fh,
+                audit_logger=self._injected_audit_logger,
+                file_history=self._injected_file_history,
                 memory_store=self._injected_memory_store,
             )
         return self._runner
