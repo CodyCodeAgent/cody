@@ -114,6 +114,8 @@ UserInputReceivedEvent  — user proactively sent a message (injected at next no
 ```
 `run_stream()` accepts an optional `cancel_event: asyncio.Event` parameter. When set, the stream yields a `CancelledEvent` and stops. Core provides all data; consumers (CLI/TUI/Web/SDK) decide rendering.
 
+**SDK StreamChunk types:** The SDK layer (`sdk/types.py`) converts core `StreamEvent` to `StreamChunk` objects via `_event_to_chunk()`. `StreamChunk` is a base dataclass; 12 typed subclasses (`TextDeltaChunk`, `ToolCallChunk`, `DoneChunk`, etc.) enable `isinstance()` narrowing for type-safe consumers. Old `chunk.type == "..."` code remains compatible.
+
 **CodyResult:** Rich result model returned by `run()` / `run_sync()` and via `DoneEvent`:
 ```
 CodyResult
@@ -129,7 +131,7 @@ CodyResult
 ```text
 Config, workdir, SkillManager, MCPClient, SubAgentManager,
 LSPClient, AuditLogger, PermissionManager, FileHistory, todo_list,
-ProjectMemoryStore, interaction_handler
+ProjectMemoryStore, interaction_handler, before_tool_hooks, after_tool_hooks
 ```
 
 **ToolContext** (`core/deps.py`): Lightweight context for direct tool invocation outside of agent runs (e.g., SDK `tool()` calls, Web `/tool` endpoint). Wraps `CodyDeps` in a `RunContext`-compatible interface.
@@ -151,7 +153,7 @@ core/tools/
 ├── search.py        — grep, glob, patch, search_files
 ├── command.py       — exec_command
 ├── skills.py        — list_skills, read_skill
-├── agents.py        — spawn_agent, get_agent_status, kill_agent
+├── agents.py        — spawn_agent, get_agent_status, kill_agent, resume_agent
 ├── mcp.py           — mcp_list_tools, mcp_call
 ├── web.py           — webfetch, websearch
 ├── lsp.py           — lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
@@ -168,7 +170,7 @@ FILE_TOOLS      — read_file, write_file, edit_file, list_directory
 SEARCH_TOOLS    — grep, glob, patch, search_files
 COMMAND_TOOLS   — exec_command
 SKILL_TOOLS     — list_skills, read_skill
-SUB_AGENT_TOOLS — spawn_agent, get_agent_status, kill_agent
+SUB_AGENT_TOOLS — spawn_agent, get_agent_status, kill_agent, resume_agent
 MCP_TOOLS       — mcp_call, mcp_list_tools
 WEB_TOOLS       — webfetch, websearch
 LSP_TOOLS       — lsp_diagnostics, lsp_definition, lsp_references, lsp_hover
@@ -181,7 +183,7 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 ```
 
 **Registration functions:**
-- `register_tools(agent, include_mcp=False, custom_tools=None)` — used by `AgentRunner` to register all tools. Optional `custom_tools` list appends user-defined async tool functions alongside built-in tools.
+- `register_tools(agent, include_mcp=False, custom_tools=None, include_tools=None, exclude_tools=None)` — used by `AgentRunner` to register all tools. Optional `custom_tools` list appends user-defined async tool functions. `include_tools`/`exclude_tools` filter per-run tool sets.
 - `register_sub_agent_tools(agent, agent_type)` — registers a subset based on agent type (`code`, `research`, `test`, `generic`)
 
 **Backward compatibility:** `from cody.core.tools import read_file` and `from cody.core import tools; tools.read_file` both work unchanged.
@@ -194,7 +196,7 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 | Search | grep, glob, search_files, patch | grep/glob=allow, patch=confirm |
 | Shell | exec_command | confirm |
 | Skills | list_skills, read_skill | allow |
-| Sub-Agent | spawn_agent, get_agent_status, kill_agent | spawn/kill=confirm, status=allow |
+| Sub-Agent | spawn_agent, get_agent_status, kill_agent, resume_agent | spawn/kill/resume=confirm, status=allow |
 | MCP | mcp_call, mcp_list_tools | call=confirm, list=allow |
 | Web | webfetch, websearch | allow |
 | LSP | lsp_diagnostics, lsp_definition, lsp_references, lsp_hover | allow |
@@ -202,6 +204,8 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 | Task Mgmt | todo_write, todo_read | allow |
 | User I/O | question | allow |
 | Memory | save_memory | allow |
+
+**Tool middleware (step hooks):** SDK consumers can register `before_tool` and `after_tool` hooks via the builder. Hooks are stored in `CodyDeps.before_tool_hooks` / `after_tool_hooks` and invoked inside `_with_model_retry()` — the wrapper that wraps every tool. `before_tool(tool_name, args) → args | None` can modify args or reject a call (None → `ModelRetry`); `after_tool(tool_name, args, result) → result` can transform the output. Multiple hooks chain in registration order.
 
 **Typed exceptions:** Tool errors use a typed hierarchy (`ToolError` base, with `ToolPermissionDenied`, `ToolPathDenied`, `ToolInvalidParams`) defined in `core/errors.py`. The server catches these by type instead of string-matching, mapping them to correct HTTP status codes (403/400/500).
 
@@ -228,6 +232,7 @@ Two-tier priority loading:
 - Max concurrency: 5 (via `asyncio.Semaphore`)
 - Default timeout: 300s per agent
 - Lifecycle: spawn → running → completed/failed/killed/timeout
+- **Recoverable:** `resume(agent_id)` re-spawns a completed/failed/timed-out agent with the original task + previous output/error as context, so the model continues where it left off. `SubAgentResult` stores `task` and `agent_type` for resume context.
 
 **Note:** `_execute()` uses delayed imports to break `runner → sub_agent → runner` circular dependency.
 
@@ -320,11 +325,13 @@ Multimodal prompt type system:
 
 ### 9. Session System (`core/session.py`)
 
-SQLite-backed persistence:
+SQLite-backed persistence (default implementation):
 - `create_session()`, `get_session()`, `list_sessions()`, `delete_session()`
 - `add_message(session_id, role, content, images)` — append to conversation history (images stored as JSON in SQLite)
 - Auto-migration: `ALTER TABLE messages ADD COLUMN images` on first use
 - Default DB: `~/.cody/sessions.db`
+
+**Storage abstraction** (`core/storage.py`): Defines `SessionStoreProtocol`, `AuditLoggerProtocol`, `FileHistoryProtocol` as `runtime_checkable` Protocol interfaces. Default SQLite implementations satisfy these protocols automatically. SDK consumers can inject custom implementations (PostgreSQL, DynamoDB, etc.) via builder methods `.session_store()`, `.audit_logger()`, `.file_history()`.
 
 ### 10. Security Stack
 

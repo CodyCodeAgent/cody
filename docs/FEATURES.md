@@ -221,11 +221,13 @@ async with client:
 - `spawn_agent(task, type)` - 孵化子 Agent
 - `get_agent_status(agent_id)` - 查询子 Agent 状态
 - `kill_agent(agent_id)` - 终止子 Agent
+- `resume_agent(agent_id)` - 恢复已完成/失败/超时的子 Agent（携带原始任务 + 前次输出/错误作为上下文）
 
 **使用场景：**
 - 复杂任务分解
 - 并行处理多个子任务
 - 专门化处理（编码/研究/测试分离）
+- 失败/超时后恢复继续
 
 ### 6. 框架能力：四种运行方式 + SDK
 

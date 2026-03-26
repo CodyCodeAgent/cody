@@ -24,10 +24,13 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 12. [结构化输出（Structured Output）](#结构化输出structured-output)
 13. [人工交互（Human Interaction）](#人工交互human-interaction)
 14. [项目记忆（Project Memory）](#项目记忆project-memory)
-15. [便捷方法](#便捷方法)
-16. [错误处理](#错误处理)
-17. [最佳实践](#最佳实践)
-18. [API 参考](#api-参考)
+15. [工具中间件（Step Hooks）](#工具中间件step-hooks)
+16. [存储层抽象（Storage Abstraction）](#存储层抽象storage-abstraction)
+17. [StreamChunk 类型系统](#streamchunk-类型系统)
+18. [便捷方法](#便捷方法)
+19. [错误处理](#错误处理)
+20. [最佳实践](#最佳实践)
+21. [API 参考](#api-参考)
 
 ---
 
@@ -1344,6 +1347,104 @@ await client.clear_memory()
 - `AgentRunner` 初始化时自动加载记忆，注入到 system prompt 的 "Project Memory" 段
 - 每个类别最多 50 条，超出时自动淘汰最旧的条目
 - 低置信度条目（< 0.3）不会注入 system prompt
+
+---
+
+## 工具中间件（Step Hooks）
+
+在每个工具调用前后注入自定义逻辑，无需修改框架内部：
+
+```python
+async def log_tool_call(tool_name: str, args: dict) -> dict:
+    """before_tool hook：记录工具调用，返回 args 继续执行，返回 None 拒绝。"""
+    print(f"Calling {tool_name} with {args}")
+    return args  # 返回 args 继续执行
+
+async def redact_secrets(tool_name: str, args: dict, result: str) -> str:
+    """after_tool hook：转换工具输出。"""
+    return result.replace(os.environ.get("SECRET", ""), "***")
+
+client = (
+    Cody()
+    .before_tool(log_tool_call)
+    .after_tool(redact_secrets)
+    .build()
+)
+```
+
+**before_tool hook** 签名：`async (tool_name: str, args: dict) -> dict | None`
+- 返回修改后的 `args` 继续执行
+- 返回 `None` 拒绝调用（触发 `ModelRetry`，模型可自我纠正）
+
+**after_tool hook** 签名：`async (tool_name: str, args: dict, result: str) -> str`
+- 接收工具输出，返回修改后的结果
+
+多个 hook 按注册顺序链式执行。Hook 通过 `CodyDeps` 注入，在 `_with_model_retry` 中统一调用。
+
+---
+
+## 存储层抽象（Storage Abstraction）
+
+默认使用 SQLite 存储，但可注入自定义实现（PostgreSQL、DynamoDB 等）：
+
+```python
+from cody.core.storage import SessionStoreProtocol, AuditLoggerProtocol
+
+class MySessionStore:
+    """自定义 SessionStore，满足 SessionStoreProtocol 即可。"""
+    def close(self): ...
+    def create_session(self, title="", model="", workdir=""): ...
+    def add_message(self, session_id, role, content, images=None): ...
+    def get_session(self, session_id): ...
+    def list_sessions(self, limit=20): ...
+    # ... 其余方法见 SessionStoreProtocol
+
+client = (
+    Cody()
+    .session_store(MySessionStore())
+    .audit_logger(my_audit_logger)
+    .file_history(my_file_history)
+    .build()
+)
+```
+
+三个 Protocol 接口（`runtime_checkable`，支持 `isinstance()` 检查）：
+
+| Protocol | 默认实现 | 存储位置 |
+|----------|---------|---------|
+| `SessionStoreProtocol` | `SessionStore` (SQLite) | `~/.cody/sessions.db` |
+| `AuditLoggerProtocol` | `AuditLogger` (SQLite) | `~/.cody/audit.db` |
+| `FileHistoryProtocol` | `FileHistory` (SQLite / 内存) | `.cody/file_history.db` |
+
+不传时自动使用默认 SQLite 实现，完全向后兼容。
+
+---
+
+## StreamChunk 类型系统
+
+`StreamChunk` 支持两种模式匹配风格：
+
+```python
+# 旧风格（仍然支持）
+async for chunk in client.stream("task"):
+    if chunk.type == "text_delta":
+        print(chunk.content, end="")
+
+# 新风格（类型安全，支持 isinstance 缩窄）
+from cody.sdk import TextDeltaChunk, ToolCallChunk, DoneChunk
+
+async for chunk in client.stream("task"):
+    if isinstance(chunk, TextDeltaChunk):
+        print(chunk.content, end="")
+    elif isinstance(chunk, ToolCallChunk):
+        print(f"→ {chunk.tool_name}({chunk.args})")
+    elif isinstance(chunk, DoneChunk):
+        print(f"\nDone: {chunk.usage.total_tokens} tokens")
+```
+
+12 个类型化子类：`SessionStartChunk`、`TextDeltaChunk`、`ThinkingChunk`、`ToolCallChunk`、`ToolResultChunk`、`CompactChunk`、`DoneChunk`、`CancelledChunk`、`CircuitBreakerChunk`、`InteractionRequestChunk`、`UserInputReceivedChunk`、`UnknownChunk`。
+
+所有子类继承 `StreamChunk` 基类，直接构造 `StreamChunk(type="...")` 仍然有效。
 
 ---
 

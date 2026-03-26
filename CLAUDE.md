@@ -56,7 +56,9 @@ web/backend/            →  core/runner.py  →  core/tools/
 - `core/config.py` — 配置管理，含 `CircuitBreakerConfig` 熔断配置
 - `core/interaction.py` — 统一人工交互层（InteractionRequest/Response）
 - `core/memory.py` — 跨任务项目记忆（ProjectMemoryStore）
+- `core/storage.py` — 存储层 Protocol 接口（SessionStoreProtocol、AuditLoggerProtocol、FileHistoryProtocol）
 - `sdk/client.py` — SDK 客户端：Builder/事件/指标，直接包装 core
+- `sdk/types.py` — SDK 响应类型（StreamChunk 及 12 个类型化子类、RunResult、Usage）
 - `web/backend/app.py` — FastAPI 应用入口
 - `cody/client.py` — 向后兼容 shim，新代码应直接用 `cody.sdk`
 
