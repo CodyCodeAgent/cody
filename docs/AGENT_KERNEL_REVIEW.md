@@ -491,62 +491,42 @@ def truncate_output(output: str, tool_name: str = "") -> str:
 
 #### 问题清单
 
-| # | 问题 | 位置 |
-|---|------|------|
-| 4a | Base Persona 过于简略，缺少行为约束 | `runner.py:402-424` |
-| 4b | ~~不区分模型~~ **已决定不做** — 框架不应硬编码模型特定 prompt | `runner.py:402-424` |
-| 4c | 子 Agent Prompt 缺少协作指导 | `sub_agent.py:62-94` |
-| 4d | 缺少"思考链"指导 | 全局缺失 |
-| 4e | Skills 匹配策略可进一步细化 | `runner.py:439-442` |
-| 4f | ~~Compaction Prompt 过于粗放~~ | ✅ 已在方案 3 实现：结构化模板 + handoff + 安全指令 |
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| 4a | ~~Base Persona 过于简略，缺少行为约束~~ | `prompts.py` | ✅ 已完成 |
+| 4b | ~~不区分模型~~ | `runner.py` | **已决定不做** |
+| 4c | ~~子 Agent Prompt 缺少协作指导~~ | `sub_agent.py` | ✅ 已完成 |
+| 4d | ~~缺少"思考链"指导~~ | `prompts.py` | ✅ 已完成 |
+| 4e | ~~Skills 匹配策略可进一步细化~~ | `prompts.py` | ✅ 已完成 |
+| 4f | ~~Compaction Prompt 过于粗放~~ | `context.py` | ✅ 已在方案 3 完成 |
 
-#### 问题 4a：Base Persona 过于简略
+#### ~~问题 4a：Base Persona 过于简略~~ ✅ 已完成
 
-当前 21 行 prompt 缺少以下关键行为约束：
+~~当前 21 行 prompt 缺少以下关键行为约束：~~
 
-- **输出格式规范** — 何时使用 Markdown、代码块、列表
-- **错误处理指导** — 工具调用失败时的重试策略和降级方案
-- **安全约束** — 明确禁止的操作（如删除根目录、修改系统文件）
-- **代码质量要求** — 保持现有代码风格、不引入不必要的依赖
-- **任务完成标准** — 什么算"完成"（测试通过？编译成功？）
-- **上下文管理** — 指导 Agent 在长对话中主动使用 `save_memory`
-
-建议 prompt 结构：
-```
-1. 角色定义（你是谁）
-2. 能力边界（你能/不能做什么）
-3. 行为准则（怎么做）
-4. 输出规范（怎么表达）
-5. 安全约束（什么不能做）
-6. 工具使用指南（优先级和策略）
-```
+✅ **已实现**：`core/prompts.py` 的 `_BASE` 包含完整的 Capabilities、Boundaries、Output Format、Code Quality、Task Completion、Context Management 六个 section，覆盖了所有缺失项。
 
 #### ~~问题 4b：不区分模型~~（已决定不做）
 
 理由：Cody 是框架，不应对特定模型做硬编码的 prompt hack；维护成本高；好的 prompt 应该是模型无关的。
 
-#### 问题 4c：子 Agent Prompt 缺少协作指导
+#### ~~问题 4c：子 Agent Prompt 缺少协作指导~~ ✅ 已完成
 
-**现状（`sub_agent.py:62-94`）：** 子 Agent 只知道自己的职责，不知道如何与主 Agent 交互。
+~~**现状（`sub_agent.py:62-94`）：** 子 Agent 只知道自己的职责，不知道如何与主 Agent 交互。~~
 
-缺少：
-- **输出格式要求** — 结构化摘要，方便主 Agent 聚合多个子 Agent 结果
-- **错误上报规范** — 什么情况下提前终止并报告（而不是无限重试）
-- **范围约束** — 明确不要超出指定目录/文件范围
+✅ **已实现**：`sub_agent.py` 的 `_AGENT_PROMPTS` 为每种 AgentType（CODE/RESEARCH/TEST/GENERIC）增加了 `## Rules`（范围约束）、`## Error Handling`（2 次失败即停止上报）、`## Output Format`（结构化摘要）。
 
-#### 问题 4d：缺少"思考链"指导
+#### ~~问题 4d：缺少"思考链"指导~~ ✅ 已完成
 
-当前 prompt 没有引导 Agent 先思考再行动：
-- 处理复杂任务时，先制定计划再执行
-- 修改代码前，先阅读相关代码理解上下文
-- 运行命令前，先检查当前环境状态
+~~当前 prompt 没有引导 Agent 先思考再行动。~~
 
-#### 问题 4e：Skills 匹配策略可进一步细化
+✅ **已实现**：`prompts.py` 的 `_THINKING_GUIDANCE` — Understand → Plan → Execute → Verify → Report 五步流程，强调"Do NOT skip step 1"。
 
-**现状：** Prompt 只说 "When a skill matches the task, call read_skill()"，可以更精细：
-- 基于文件类型/项目特征的自动触发建议（检测到 Dockerfile → 提示 docker skill）
-- Skill 之间的优先级/冲突处理规则
-- 明确何时**不应该**加载 skill（避免不必要的 context 占用）
+#### ~~问题 4e：Skills 匹配策略可进一步细化~~ ✅ 已完成
+
+~~**现状：** Prompt 只说 "When a skill matches the task, call read_skill()"。~~
+
+✅ **已实现**：`prompts.py` 的 `_SKILLS_GUIDANCE` — 基于文件类型/项目特征的上下文线索匹配，不要一次加载多个 skill（context 开销），简单任务跳过 skill。
 
 ---
 
