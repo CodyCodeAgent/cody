@@ -918,9 +918,9 @@ class AsyncCodyClient:
     ) -> AsyncIterator[StreamChunk]:
         """Stream agent response. Yields StreamChunk objects.
 
-        Note: SDK EventType events (STREAM_START/END, THINKING_START/END, etc.)
-        are only dispatched in ``run(stream=True)`` which uses ``_stream_run()``.
-        Calling ``stream()`` directly yields raw StreamChunks without event dispatch.
+        SDK EventType events (STREAM_START/END, THINKING_START/END, TOOL_CALL,
+        TOOL_RESULT, etc.) are dispatched automatically when an EventManager
+        is configured.
         """
         # Auto-start MCP servers on first stream (if enabled)
         if self._auto_start_mcp and not self._mcp_started:
@@ -933,29 +933,16 @@ class AsyncCodyClient:
         runner = self.get_runner()
         store = self.get_session_store()
 
+        in_thinking = False
+        stream_started = False
+
         async for event, sid in runner.run_stream_with_session(
             prompt, store, session_id, cancel_event=cancel_event,
             include_tools=include_tools, exclude_tools=exclude_tools,
         ):
-            yield _event_to_chunk(event, sid)
+            chunk = _event_to_chunk(event, sid)
 
-    # Alias for stream() — matches the name used in demos/docs
-    run_stream = stream
-
-    async def _stream_run(
-        self, prompt, session_id: Optional[str] = None,
-        include_tools: list[str] | None = None,
-        exclude_tools: list[str] | None = None,
-        cancel_event: Optional[asyncio.Event] = None,
-    ):
-        """Internal streaming run (called when run(stream=True))."""
-        in_thinking = False
-        stream_started = False
-        async for chunk in self.stream(
-            prompt, session_id=session_id,
-            include_tools=include_tools, exclude_tools=exclude_tools,
-            cancel_event=cancel_event,
-        ):
+            # ── SDK event dispatch ──
             if self._events:
                 # Emit STREAM_START on first non-session_start chunk
                 if not stream_started and chunk.type != "session_start":
@@ -1013,7 +1000,6 @@ class AsyncCodyClient:
                             tokens_saved=chunk.estimated_tokens_saved,
                         ))
                     elif chunk.type == "done":
-                        # Emit MODEL_RESPONSE with usage info
                         usage = chunk.usage
                         await self._events.dispatch_async(ModelEvent(
                             event_type=EventType.MODEL_RESPONSE,
@@ -1035,6 +1021,27 @@ class AsyncCodyClient:
                         event_type=EventType.STREAM_END,
                         chunk_type="stream_end",
                     ))
+
+            yield chunk
+
+    # Alias for stream() — matches the name used in demos/docs
+    run_stream = stream
+
+    async def _stream_run(
+        self, prompt, session_id: Optional[str] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        cancel_event: Optional[asyncio.Event] = None,
+    ):
+        """Internal streaming run (called when run(stream=True)).
+
+        Delegates to stream() which handles both chunk yielding and event dispatch.
+        """
+        async for chunk in self.stream(
+            prompt, session_id=session_id,
+            include_tools=include_tools, exclude_tools=exclude_tools,
+            cancel_event=cancel_event,
+        ):
             yield chunk
 
     # ── Tool ──────────────────────────────────────────────────────────────
