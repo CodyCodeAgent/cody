@@ -20,6 +20,7 @@ from ..core.runner import (
     CompactEvent,
     DoneEvent,
     InteractionRequestEvent,
+    PruneEvent,
     SessionStartEvent,
     StreamEvent as CoreStreamEvent,
     TaskMetadata,
@@ -75,11 +76,12 @@ class StreamChunk:
     tool_call_id: Optional[str] = None
     # Usage info (populated when type="done")
     usage: Optional[Usage] = None
-    # Compact event details (populated when type="compact")
+    # Compact/prune event details
     original_messages: int = 0
     compacted_messages: int = 0
     estimated_tokens_saved: int = 0
     used_llm: bool = False
+    messages_pruned: int = 0
     # Message history (populated when type="done") for multi-turn state
     message_history: Optional[list] = None
     # Interaction request details (populated when type="interaction_request")
@@ -125,6 +127,12 @@ class ToolResultChunk(StreamChunk):
 class CompactChunk(StreamChunk):
     """Context compaction event."""
     type: str = "compact"
+
+
+@dataclass
+class PruneChunk(StreamChunk):
+    """Tool output pruning event."""
+    type: str = "prune"
 
 
 @dataclass
@@ -217,6 +225,12 @@ def _event_to_chunk(
             compacted_messages=event.compacted_messages,
             estimated_tokens_saved=event.estimated_tokens_saved,
             used_llm=event.used_llm,
+        )
+    elif isinstance(event, PruneEvent):
+        return PruneChunk(
+            session_id=session_id,
+            messages_pruned=event.messages_pruned,
+            estimated_tokens_saved=event.estimated_tokens_saved,
         )
     elif isinstance(event, DoneEvent):
         return DoneChunk(

@@ -141,6 +141,40 @@ class TestResume:
             await manager.kill(agent_id)
 
     @pytest.mark.asyncio
+    async def test_resume_killed_agent_raises(self, manager):
+        """Killed agents cannot be resumed."""
+        never_finish = asyncio.Event()
+
+        async def slow_execute(agent_id, task, agent_type):
+            await never_finish.wait()
+            return "done"
+
+        with patch.object(manager, "_execute", side_effect=slow_execute):
+            agent_id = await manager.spawn("task", "generic")
+            await asyncio.sleep(0.05)
+            await manager.kill(agent_id)
+            assert manager.get_status(agent_id).status == AgentStatus.KILLED
+
+        with pytest.raises(RuntimeError, match="killed"):
+            await manager.resume(agent_id)
+
+    @pytest.mark.asyncio
+    async def test_resume_truncates_long_context(self, manager):
+        """Nested resume truncates previous output to avoid bloat."""
+        long_output = "x" * 5000
+
+        with patch.object(manager, "_execute", new_callable=AsyncMock, return_value=long_output):
+            old_id = await manager.spawn("analyze logs", "research")
+            await manager.wait(old_id)
+
+        with patch.object(manager, "_execute", new_callable=AsyncMock, return_value="done"):
+            new_id = await manager.resume(old_id)
+            new_result = manager.get_status(new_id)
+            # Task should contain truncated output, not the full 5000 chars
+            assert "truncated" in new_result.task
+            assert len(new_result.task) < 5000
+
+    @pytest.mark.asyncio
     async def test_resume_includes_previous_output(self, manager):
         """Resume task contains original task and previous output."""
         with patch.object(manager, "_execute", new_callable=AsyncMock, return_value="found 3 bugs"):
@@ -193,6 +227,15 @@ class TestResumeAgentTool:
         ctx.deps.sub_agent_manager = None
         result = await resume_agent(ctx, "any_id")
         assert "[ERROR]" in result
+
+
+# ── Permission registration ─────────────────────────────────────────────────
+
+
+class TestResumePermission:
+    def test_resume_agent_in_default_permissions(self):
+        from cody.core.permissions import _DEFAULT_PERMISSIONS
+        assert "resume_agent" in _DEFAULT_PERMISSIONS
 
 
 # ── Tool registration ───────────────────────────────────────────────────────

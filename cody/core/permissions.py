@@ -40,6 +40,7 @@ _DEFAULT_PERMISSIONS: dict[str, PermissionLevel] = {
     "exec_command": PermissionLevel.CONFIRM,
     "spawn_agent": PermissionLevel.CONFIRM,
     "kill_agent": PermissionLevel.CONFIRM,
+    "resume_agent": PermissionLevel.CONFIRM,
     "mcp_call": PermissionLevel.CONFIRM,
     "undo_file": PermissionLevel.CONFIRM,
     "redo_file": PermissionLevel.CONFIRM,

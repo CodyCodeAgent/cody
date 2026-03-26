@@ -170,11 +170,15 @@ class SubAgentManager:
         workdir: Path,
         max_concurrent: int = MAX_CONCURRENT_AGENTS,
         default_timeout: float = DEFAULT_AGENT_TIMEOUT,
+        audit_logger: object | None = None,
+        file_history: object | None = None,
     ):
         self.config = config
         self.workdir = workdir
         self.max_concurrent = max_concurrent
         self.default_timeout = default_timeout
+        self._injected_audit_logger = audit_logger
+        self._injected_file_history = file_history
 
         self._agents: dict[str, SubAgentResult] = {}
         self._tasks: dict[str, asyncio.Task] = {}
@@ -310,8 +314,15 @@ class SubAgentManager:
                 f"Agent {agent_id} is still {prev.status.value}. "
                 "Wait for it to finish or kill it first."
             )
+        if prev.status == AgentStatus.KILLED:
+            raise RuntimeError(
+                f"Agent {agent_id} was killed and cannot be resumed."
+            )
 
-        # Build resume prompt with previous context
+        # Build resume prompt with previous context.
+        # Truncate previous output/error to avoid exponential context bloat
+        # from nested resumes.
+        _MAX_PREV_CONTEXT = 2000
         parts = [
             "## Resumed Task\n",
             "You are continuing a previous sub-agent's work. "
@@ -319,9 +330,15 @@ class SubAgentManager:
             f"### Original Task\n{prev.task}\n",
         ]
         if prev.output:
-            parts.append(f"### Previous Output\n{prev.output}\n")
+            output_text = prev.output[:_MAX_PREV_CONTEXT]
+            if len(prev.output) > _MAX_PREV_CONTEXT:
+                output_text += "\n... (truncated)"
+            parts.append(f"### Previous Output\n{output_text}\n")
         if prev.error:
-            parts.append(f"### Previous Error\n{prev.error}\n")
+            error_text = prev.error[:_MAX_PREV_CONTEXT]
+            if len(prev.error) > _MAX_PREV_CONTEXT:
+                error_text += "\n... (truncated)"
+            parts.append(f"### Previous Error\n{error_text}\n")
         parts.append(
             "### Instructions\n"
             "Continue from where the previous agent left off. "
@@ -421,16 +438,19 @@ class SubAgentManager:
 
         tools.register_sub_agent_tools(agent, agent_type.value)
 
+        audit = self._injected_audit_logger if self._injected_audit_logger is not None else AuditLogger()
+        fh = self._injected_file_history if self._injected_file_history is not None else FileHistory(workdir=self.workdir)
+
         deps = CodyDeps(
             config=self.config,
             workdir=self.workdir,
             skill_manager=SkillManager(self.config, workdir=self.workdir),
-            audit_logger=AuditLogger(),
+            audit_logger=audit,
             permission_manager=PermissionManager(
                 overrides=self.config.permissions.overrides,
                 default_level=PermissionLevel(self.config.permissions.default_level),
             ),
-            file_history=FileHistory(workdir=self.workdir),
+            file_history=fh,
         )
 
         result = await agent.run(task, deps=deps)

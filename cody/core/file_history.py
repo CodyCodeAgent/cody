@@ -170,6 +170,12 @@ class FileHistory:
     def can_redo(self) -> bool:
         return len(self._redo_stack) > 0
 
+    def close(self) -> None:
+        """Close the underlying database connection (if any)."""
+        if self._db:
+            self._db.close()
+            self._db = None
+
     @property
     def undo_count(self) -> int:
         return len(self._undo_stack)

@@ -30,6 +30,7 @@ from .sdk.types import (  # noqa: F401
     ToolCallChunk,
     ToolResultChunk,
     CompactChunk,
+    PruneChunk,
     DoneChunk,
     CancelledChunk,
     CircuitBreakerChunk,

@@ -113,6 +113,58 @@ class TestBeforeToolHook:
         assert order == ["hook1", "hook2"]
 
 
+class TestBeforeToolHookErrorHandling:
+    @pytest.mark.asyncio
+    async def test_before_hook_exception_skipped(self, tmp_path):
+        """A before_tool hook that raises is skipped, tool still runs."""
+        async def bad_hook(tool_name, args):
+            raise RuntimeError("hook crashed")
+
+        deps = _make_deps(tmp_path, before_hooks=[bad_hook])
+        ctx = _MockCtx(deps)
+        wrapped = _with_model_retry(sample_tool)
+        result = await wrapped(ctx, query="hello")
+        assert result == "result:hello"
+
+    @pytest.mark.asyncio
+    async def test_before_hook_invalid_return_type_skipped(self, tmp_path):
+        """A before_tool hook returning non-dict is skipped."""
+        async def bad_hook(tool_name, args):
+            return 42  # not a dict
+
+        deps = _make_deps(tmp_path, before_hooks=[bad_hook])
+        ctx = _MockCtx(deps)
+        wrapped = _with_model_retry(sample_tool)
+        result = await wrapped(ctx, query="hello")
+        assert result == "result:hello"
+
+
+class TestAfterToolHookErrorHandling:
+    @pytest.mark.asyncio
+    async def test_after_hook_exception_skipped(self, tmp_path):
+        """An after_tool hook that raises is skipped, result preserved."""
+        async def bad_hook(tool_name, args, result):
+            raise RuntimeError("hook crashed")
+
+        deps = _make_deps(tmp_path, after_hooks=[bad_hook])
+        ctx = _MockCtx(deps)
+        wrapped = _with_model_retry(sample_tool)
+        result = await wrapped(ctx, query="hello")
+        assert result == "result:hello"
+
+    @pytest.mark.asyncio
+    async def test_after_hook_invalid_return_type_skipped(self, tmp_path):
+        """An after_tool hook returning non-str is skipped."""
+        async def bad_hook(tool_name, args, result):
+            return 42  # not a str
+
+        deps = _make_deps(tmp_path, after_hooks=[bad_hook])
+        ctx = _MockCtx(deps)
+        wrapped = _with_model_retry(sample_tool)
+        result = await wrapped(ctx, query="hello")
+        assert result == "result:hello"
+
+
 class TestAfterToolHook:
     @pytest.mark.asyncio
     async def test_after_hook_called(self, tmp_path):

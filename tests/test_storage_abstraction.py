@@ -34,6 +34,15 @@ class TestProtocolConformance:
         history = FileHistory(workdir=tmp_path)
         assert isinstance(history, FileHistoryProtocol)
 
+    def test_file_history_close(self, tmp_path):
+        """FileHistory.close() works for both in-memory and persistent modes."""
+        history = FileHistory(workdir=tmp_path)
+        history.close()  # no-op for in-memory, should not raise
+
+        history_persist = FileHistory(workdir=tmp_path, persist=True)
+        history_persist.close()
+        assert history_persist._db is None
+
 
 class TestCustomImplementation:
     """Custom implementations satisfy the Protocols."""
@@ -107,6 +116,18 @@ class TestRunnerInjection:
             runner = AgentRunner(config=Config(), workdir=tmp_path)
         assert isinstance(runner._audit_logger, AuditLogger)
         assert isinstance(runner._file_history, FileHistory)
+
+    def test_runner_passes_storage_to_sub_agent_manager(self, tmp_path):
+        mock_logger = MagicMock()
+        mock_history = MagicMock()
+        with patch.object(AgentRunner, "_create_agent", return_value=MagicMock()):
+            runner = AgentRunner(
+                config=Config(), workdir=tmp_path,
+                audit_logger=mock_logger,
+                file_history=mock_history,
+            )
+        assert runner._sub_agent_manager._injected_audit_logger is mock_logger
+        assert runner._sub_agent_manager._injected_file_history is mock_history
 
 
 # ── SDK Builder injection ───────────────────────────────────────────────────

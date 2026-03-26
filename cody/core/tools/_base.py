@@ -138,12 +138,25 @@ def _with_model_retry(func):
         # ── before_tool hooks ──
         if deps and getattr(deps, "before_tool_hooks", None):
             for hook in deps.before_tool_hooks:
-                hook_result = await hook(tool_name, dict(kwargs))
+                try:
+                    hook_result = await hook(tool_name, dict(kwargs))
+                except Exception as hook_err:
+                    _tool_logger.warning(
+                        "before_tool hook raised %s for tool.%s: %s",
+                        type(hook_err).__name__, tool_name, hook_err,
+                    )
+                    continue  # skip broken hook, don't block tool
                 if hook_result is None:
                     _tool_logger.debug("tool.%s skipped by before_tool hook", tool_name)
                     raise ModelRetry(
                         f"Tool '{tool_name}' was rejected by a before_tool hook."
                     )
+                if not isinstance(hook_result, dict):
+                    _tool_logger.warning(
+                        "before_tool hook returned %s instead of dict for tool.%s, ignoring",
+                        type(hook_result).__name__, tool_name,
+                    )
+                    continue
                 kwargs = hook_result
 
         try:
@@ -155,7 +168,21 @@ def _with_model_retry(func):
             # ── after_tool hooks ──
             if deps and getattr(deps, "after_tool_hooks", None) and isinstance(result, str):
                 for hook in deps.after_tool_hooks:
-                    result = await hook(tool_name, dict(kwargs), result)
+                    try:
+                        hook_out = await hook(tool_name, dict(kwargs), result)
+                    except Exception as hook_err:
+                        _tool_logger.warning(
+                            "after_tool hook raised %s for tool.%s: %s",
+                            type(hook_err).__name__, tool_name, hook_err,
+                        )
+                        continue  # skip broken hook, keep current result
+                    if isinstance(hook_out, str):
+                        result = hook_out
+                    else:
+                        _tool_logger.warning(
+                            "after_tool hook returned %s instead of str for tool.%s, ignoring",
+                            type(hook_out).__name__, tool_name,
+                        )
 
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s completed in %.3fs", tool_name, elapsed)

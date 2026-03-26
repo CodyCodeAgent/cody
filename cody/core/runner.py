@@ -58,6 +58,7 @@ from .memory import ProjectMemoryStore
 from .permissions import PermissionLevel, PermissionManager
 from .prompt import Prompt, prompt_images, prompt_text
 from .session import Message, SessionStore
+from .storage import AuditLoggerProtocol, FileHistoryProtocol
 from .skill_manager import SkillManager
 from .sub_agent import SubAgentManager
 from .user_input import UserInputQueue
@@ -343,8 +344,8 @@ class AgentRunner:
         extra_system_prompt: str | None = None,
         before_tool_hooks: list | None = None,
         after_tool_hooks: list | None = None,
-        audit_logger: object | None = None,
-        file_history: object | None = None,
+        audit_logger: AuditLoggerProtocol | None = None,
+        file_history: FileHistoryProtocol | None = None,
     ):
         self.workdir = workdir
         self.config = config
@@ -358,26 +359,28 @@ class AgentRunner:
         if self.config.mcp.servers:
             self._mcp_client = MCPClient(self.config.mcp)
 
-        # Sub-agent manager
+        # Audit logger (injected or default SQLite)
+        self._audit_logger = audit_logger if audit_logger is not None else AuditLogger()
+
+        # File history (injected or default in-memory)
+        self._file_history = file_history if file_history is not None else FileHistory(workdir=self.workdir)
+
+        # Sub-agent manager (shares injected storage)
         self._sub_agent_manager = SubAgentManager(
             config=self.config,
             workdir=self.workdir,
+            audit_logger=self._audit_logger,
+            file_history=self._file_history,
         )
 
         # LSP client
         self._lsp_client = LSPClient(workdir=self.workdir)
-
-        # Audit logger (injected or default SQLite)
-        self._audit_logger = audit_logger if audit_logger is not None else AuditLogger()
 
         # Permission manager
         self._permission_manager = PermissionManager(
             overrides=self.config.permissions.overrides,
             default_level=PermissionLevel(self.config.permissions.default_level),
         )
-
-        # File history (injected or default in-memory)
-        self._file_history = file_history if file_history is not None else FileHistory(workdir=self.workdir)
 
         # Shared todo list for AI task tracking
         self._todo_list: list = []

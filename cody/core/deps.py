@@ -10,14 +10,13 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from .interaction import InteractionRequest, InteractionResponse
 
-from .audit import AuditLogger
 from .config import Config
-from .file_history import FileHistory
 from .lsp_client import LSPClient
 from .mcp_client import MCPClient
 from .memory import ProjectMemoryStore
 from .permissions import PermissionManager
 from .skill_manager import SkillManager
+from .storage import AuditLoggerProtocol, FileHistoryProtocol
 from .sub_agent import SubAgentManager
 
 # Hook type aliases (runtime-safe, no TYPE_CHECKING guard needed)
@@ -44,9 +43,9 @@ class CodyDeps:
     mcp_client: Optional[MCPClient] = None
     sub_agent_manager: Optional[SubAgentManager] = None
     lsp_client: Optional[LSPClient] = None
-    audit_logger: Optional[AuditLogger] = None
+    audit_logger: Optional[AuditLoggerProtocol] = None
     permission_manager: Optional[PermissionManager] = None
-    file_history: Optional[FileHistory] = None
+    file_history: Optional[FileHistoryProtocol] = None
     todo_list: Optional[list] = None
     memory_store: Optional[ProjectMemoryStore] = None
     interaction_handler: Optional[Callable[[InteractionRequest], Awaitable[InteractionResponse]]] = None

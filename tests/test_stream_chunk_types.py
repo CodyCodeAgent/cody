@@ -8,6 +8,7 @@ from cody.sdk.types import (
     ToolCallChunk,
     ToolResultChunk,
     CompactChunk,
+    PruneChunk,
     DoneChunk,
     CancelledChunk,
     CircuitBreakerChunk,
@@ -99,6 +100,13 @@ class TestSubclassRelationship:
         assert isinstance(chunk, StreamChunk)
         assert chunk.type == "user_input_received"
 
+    def test_prune_is_stream_chunk(self):
+        chunk = PruneChunk(messages_pruned=5, estimated_tokens_saved=3000)
+        assert isinstance(chunk, StreamChunk)
+        assert chunk.type == "prune"
+        assert chunk.messages_pruned == 5
+        assert chunk.estimated_tokens_saved == 3000
+
     def test_unknown_is_stream_chunk(self):
         chunk = UnknownChunk()
         assert isinstance(chunk, StreamChunk)
@@ -173,6 +181,17 @@ class TestEventConversion:
         assert isinstance(chunk, SessionStartChunk)
         assert chunk.session_id == "s1"
 
+    def test_prune_event(self):
+        from cody.core.runner import PruneEvent
+        from cody.sdk.types import _event_to_chunk
+
+        event = PruneEvent(messages_pruned=10, estimated_tokens_saved=5000)
+        chunk = _event_to_chunk(event, session_id="s1")
+        assert isinstance(chunk, PruneChunk)
+        assert chunk.messages_pruned == 10
+        assert chunk.estimated_tokens_saved == 5000
+        assert chunk.session_id == "s1"
+
     def test_unknown_event(self):
         from cody.sdk.types import _event_to_chunk
 
@@ -196,7 +215,12 @@ class TestExports:
         assert TCC is ToolCallChunk
         assert DC is DoneChunk
 
+    def test_prune_chunk_importable_from_sdk(self):
+        from cody.sdk import PruneChunk as PC
+        assert PC is PruneChunk
+
     def test_importable_from_client_shim(self):
-        from cody.client import StreamChunk as SC, TextDeltaChunk as TDC
+        from cody.client import StreamChunk as SC, TextDeltaChunk as TDC, PruneChunk as PC
         assert SC is StreamChunk
         assert TDC is TextDeltaChunk
+        assert PC is PruneChunk
