@@ -48,7 +48,7 @@ from .types import (
 )
 
 
-_BUILDER_UNSET = object()  # sentinel: "not set" vs explicit None
+from ..core.deps import UNSET
 
 
 # ── Builder Pattern ─────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ class CodyBuilder:
     _session_store: object | None = None
     _audit_logger: object | None = None
     _file_history: object | None = None
-    _memory_store: object | None = _BUILDER_UNSET
+    _memory_store: object | None = UNSET
     _stateless: bool = False
 
     def workdir(self, path: str) -> "CodyBuilder":
@@ -121,7 +121,7 @@ class CodyBuilder:
     def thinking(self, enabled: bool = True, budget: Optional[int] = None) -> "CodyBuilder":
         """Enable thinking mode with optional token budget."""
         self._enable_thinking = enabled
-        if budget:
+        if budget is not None:
             self._thinking_budget = budget
         return self
 
@@ -447,7 +447,7 @@ class CodyBuilder:
                 audit_logger = NullAuditLogger()
             if file_history is None:
                 file_history = NullFileHistory()
-            if memory_store is _BUILDER_UNSET:
+            if memory_store is UNSET:
                 memory_store = NullMemoryStore()
 
         client = AsyncCodyClient(
@@ -521,7 +521,7 @@ class AsyncCodyClient:
         session_store: object | None = None,
         audit_logger: object | None = None,
         file_history: object | None = None,
-        memory_store: object | None = _BUILDER_UNSET,
+        memory_store: object | None = UNSET,
     ):
         if config:
             self._config = config
@@ -559,7 +559,7 @@ class AsyncCodyClient:
         self._before_tool_hooks: list = before_tool_hooks or []
         self._after_tool_hooks: list = after_tool_hooks or []
 
-        # Storage layer injection (None = use defaults, _BUILDER_UNSET = not set)
+        # Storage layer injection (None = disable, UNSET = use defaults)
         self._injected_session_store = session_store
         self._injected_audit_logger = audit_logger
         self._injected_file_history = file_history
@@ -633,6 +633,7 @@ class AsyncCodyClient:
             if (sdk_cb.enabled != defaults.enabled
                     or sdk_cb.max_tokens != defaults.max_tokens
                     or sdk_cb.max_cost_usd != defaults.max_cost_usd
+                    or sdk_cb.max_steps != defaults.max_steps
                     or sdk_cb.loop_detect_turns != defaults.loop_detect_turns
                     or sdk_cb.loop_similarity_threshold != defaults.loop_similarity_threshold
                     or sdk_cb.model_prices):
@@ -669,9 +670,7 @@ class AsyncCodyClient:
         (ToolCallEvent, ThinkingEvent, etc.) or direct MCP control.
         """
         if self._runner is None:
-            from ..core.runner import AgentRunner, _UNSET
-            # Convert SDK sentinel to runner sentinel
-            mem = _UNSET if self._injected_memory_store is _BUILDER_UNSET else self._injected_memory_store
+            from ..core.runner import AgentRunner
             self._runner = AgentRunner(
                 config=self._get_config(),
                 workdir=self.workdir,
@@ -682,7 +681,7 @@ class AsyncCodyClient:
                 after_tool_hooks=self._after_tool_hooks or None,
                 audit_logger=self._injected_audit_logger,
                 file_history=self._injected_file_history,
-                memory_store=mem,
+                memory_store=self._injected_memory_store,
             )
         return self._runner
 
@@ -851,18 +850,18 @@ class AsyncCodyClient:
                 session_id=session_id,
             ))
 
-        # Start metrics
-        if self._metrics:
-            self._metrics.start_run(
-                str(prompt), session_id, self._config.model.enable_thinking
-            )
-
         try:
             if stream:
                 return self._stream_run(
                     prompt, session_id,
                     include_tools=include_tools, exclude_tools=exclude_tools,
                     cancel_event=cancel_event,
+                )
+
+            # Start metrics (non-streaming only; streaming handles its own)
+            if self._metrics:
+                self._metrics.start_run(
+                    str(prompt), session_id, self._config.model.enable_thinking
                 )
 
             # Emit MODEL_REQUEST before calling the model
@@ -1080,14 +1079,36 @@ class AsyncCodyClient:
     ):
         """Internal streaming run (called when run(stream=True)).
 
-        Delegates to stream() which handles both chunk yielding and event dispatch.
+        Wraps stream() with metrics tracking so that run(stream=True)
+        properly closes the metrics run when the stream completes.
         """
-        async for chunk in self.stream(
-            prompt, session_id=session_id,
-            include_tools=include_tools, exclude_tools=exclude_tools,
-            cancel_event=cancel_event,
-        ):
-            yield chunk
+        if self._metrics:
+            self._metrics.start_run(
+                str(prompt), session_id, self._config.model.enable_thinking
+            )
+        try:
+            last_chunk = None
+            async for chunk in self.stream(
+                prompt, session_id=session_id,
+                include_tools=include_tools, exclude_tools=exclude_tools,
+                cancel_event=cancel_event,
+            ):
+                last_chunk = chunk
+                yield chunk
+        finally:
+            if self._metrics and self._metrics._current_run is not None:
+                # Extract usage from the final done chunk if available
+                usage = TokenUsage(0, 0, 0)
+                if last_chunk and hasattr(last_chunk, 'usage') and last_chunk.usage:
+                    usage = TokenUsage(
+                        input_tokens=last_chunk.usage.input_tokens,
+                        output_tokens=last_chunk.usage.output_tokens,
+                        total_tokens=last_chunk.usage.total_tokens,
+                    )
+                output = ""
+                if last_chunk and hasattr(last_chunk, 'content'):
+                    output = last_chunk.content or ""
+                self._metrics.end_run(output, usage)
 
     # ── Tool ──────────────────────────────────────────────────────────────
 

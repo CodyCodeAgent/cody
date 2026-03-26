@@ -18,11 +18,38 @@ from .skill_manager import SkillManager
 from .storage import AuditLoggerProtocol, FileHistoryProtocol, MemoryStoreProtocol
 from .sub_agent import SubAgentManager
 
-# Hook type aliases (runtime-safe, no TYPE_CHECKING guard needed)
-# BeforeToolHook: async (tool_name, args_dict) -> modified_args | None (None = skip)
-# AfterToolHook: async (tool_name, args_dict, result) -> modified_result
-BeforeToolHook = Any  # Callable[[str, dict], Awaitable[dict | None]]
-AfterToolHook = Any   # Callable[[str, dict, str], Awaitable[str]]
+
+class _UnsetType:
+    """Sentinel type to distinguish 'not passed' from explicit ``None``.
+
+    Use ``UNSET`` (the singleton instance) as default parameter value
+    when ``None`` carries meaning (e.g. "disable this feature").
+    """
+    _instance: "_UnsetType | None" = None
+
+    def __new__(cls) -> "_UnsetType":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+UNSET = _UnsetType()
+"""Shared sentinel — use ``is UNSET`` to check."""
+
+
+# Hook type aliases
+if TYPE_CHECKING:
+    BeforeToolHook = Callable[[str, dict], Awaitable[dict | None]]
+    AfterToolHook = Callable[[str, dict, str], Awaitable[str]]
+else:
+    BeforeToolHook = Any
+    AfterToolHook = Any
 
 
 class ToolContext:

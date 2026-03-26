@@ -7,6 +7,7 @@ Wraps async callables to retry on transient LLM provider errors
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -65,8 +66,9 @@ def is_retryable(exc: Exception) -> bool:
         return False
 
     # Check for retryable HTTP status codes in the message.
+    # Use word boundary to avoid false positives (e.g. "port 5029" matching 502).
     for code in _RETRYABLE_STATUS_CODES:
-        if str(code) in msg:
+        if re.search(rf'\b{code}\b', msg):
             return True
 
     # Check for retryable keywords.

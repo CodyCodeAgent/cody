@@ -223,35 +223,33 @@ class TestInteraction:
 
 def _make_runner(cb_config: CircuitBreakerConfig) -> AgentRunner:
     """Create a minimal AgentRunner with circuit breaker state for testing."""
+    from cody.core.runner import _CircuitBreakerState
     with patch.object(AgentRunner, "__init__", lambda self, **kw: None):
         runner = AgentRunner.__new__(AgentRunner)
         config = Config()
         config.circuit_breaker = cb_config
         runner.config = config
-        runner._cb_total_tokens = 0
-        runner._cb_estimated_cost = 0.0
-        runner._cb_step_count = 0
-        runner._cb_recent_results = []
+        runner._cb = _CircuitBreakerState()
         return runner
 
 
 class TestCheckCircuitBreakerStepLimit:
     """Integration tests: _check_circuit_breaker raises on step_limit."""
 
-    def test_step_limit_trips_when_exceeded(self):
+    def test_step_limit_trips_when_reached(self):
         runner = _make_runner(CircuitBreakerConfig(max_steps=3))
-        # Simulate 4 tool-call steps (exceeds max_steps=3)
-        for i in range(4):
+        # Simulate 3 tool-call steps (reaches max_steps=3, trips on >=)
+        for i in range(3):
             runner._update_circuit_breaker(f"result {i}", None)
 
         with pytest.raises(CircuitBreakerError) as exc_info:
             runner._check_circuit_breaker()
         assert exc_info.value.reason == "step_limit"
 
-    def test_step_limit_ok_at_boundary(self):
+    def test_step_limit_ok_below_boundary(self):
         runner = _make_runner(CircuitBreakerConfig(max_steps=3))
-        # Exactly 3 steps — should NOT trip (trips when > max_steps)
-        for i in range(3):
+        # 2 steps — below max_steps=3, should not trip
+        for i in range(2):
             runner._update_circuit_breaker(f"result {i}", None)
 
         runner._check_circuit_breaker()  # no exception
@@ -271,7 +269,7 @@ class TestCheckCircuitBreakerStepLimit:
 
         runner._check_circuit_breaker()  # no exception — cb disabled
 
-    def test_reset_clears_step_count(self):
+    def test_new_cb_clears_step_count(self):
         runner = _make_runner(CircuitBreakerConfig(max_steps=2))
         for i in range(3):
             runner._update_circuit_breaker(f"result {i}", None)
@@ -280,8 +278,8 @@ class TestCheckCircuitBreakerStepLimit:
         with pytest.raises(CircuitBreakerError):
             runner._check_circuit_breaker()
 
-        # After reset, should be fine
-        runner._reset_circuit_breaker()
+        # After creating new CB state, should be fine
+        runner._new_circuit_breaker()
         runner._check_circuit_breaker()  # no exception
 
     def test_empty_result_text_does_not_increment_step(self):

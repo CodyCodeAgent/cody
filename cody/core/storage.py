@@ -118,6 +118,8 @@ class FileHistoryProtocol(Protocol):
 
     def can_redo(self) -> bool: ...
 
+    def close(self) -> None: ...
+
 
 @runtime_checkable
 class MemoryStoreProtocol(Protocol):

@@ -4,6 +4,9 @@ Prevents individual tool outputs from consuming excessive context window
 tokens. Outputs exceeding the character limit are truncated; the full
 content is written to a temporary file so the model can still read
 specific sections if needed.
+
+Temp files are stored in ``<workdir>/.cody/tmp/`` (created automatically)
+and can be cleaned up via :func:`cleanup_truncation_files`.
 """
 
 import logging
@@ -15,6 +18,25 @@ logger = logging.getLogger(__name__)
 # Default limits — overridden by Config.truncation.*
 DEFAULT_MAX_OUTPUT_CHARS = 120_000   # ~30K tokens (4 chars/token estimate)
 DEFAULT_ENABLED = True
+
+# Subdirectory under workdir for truncation temp files.
+_TRUNCATION_DIR = ".cody/tmp"
+
+
+def _ensure_truncation_dir(workdir: Path | None) -> Path | None:
+    """Return the truncation temp directory, creating it if needed."""
+    if workdir is None:
+        return None
+    d = workdir / _TRUNCATION_DIR
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        # Add to .gitignore if not already present
+        gitignore = workdir / ".cody" / ".gitignore"
+        if not gitignore.exists():
+            gitignore.write_text("tmp/\n")
+    except OSError:
+        return None
+    return d
 
 
 def truncate_output(
@@ -36,14 +58,15 @@ def truncate_output(
 
     original_len = len(output)
 
-    # Write full output to a temp file the model can read later.
+    # Write full output to .cody/tmp/ (or system temp as fallback).
     suffix = f".{tool_name}.txt" if tool_name else ".tool_output.txt"
+    truncation_dir = _ensure_truncation_dir(workdir)
     try:
         fd = tempfile.NamedTemporaryFile(
             mode="w",
             suffix=suffix,
             prefix="cody_truncated_",
-            dir=str(workdir) if workdir else None,
+            dir=str(truncation_dir) if truncation_dir else None,
             delete=False,
         )
         fd.write(output)
@@ -67,3 +90,21 @@ def truncate_output(
         )
 
     return truncated + trailer
+
+
+def cleanup_truncation_files(workdir: Path) -> int:
+    """Remove all truncation temp files from ``.cody/tmp/``.
+
+    Returns the number of files removed.
+    """
+    d = workdir / _TRUNCATION_DIR
+    if not d.exists():
+        return 0
+    count = 0
+    for f in d.glob("cody_truncated_*"):
+        try:
+            f.unlink()
+            count += 1
+        except OSError:
+            pass
+    return count

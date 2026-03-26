@@ -177,14 +177,15 @@ class TestBuilderStateless:
             assert isinstance(kwargs["memory_store"], NullMemoryStore)
 
     def test_non_stateless_passes_none(self):
-        from cody.sdk.client import Cody, AsyncCodyClient, _BUILDER_UNSET
+        from cody.core.deps import UNSET
+        from cody.sdk.client import Cody, AsyncCodyClient
         with patch.object(AsyncCodyClient, "__init__", return_value=None) as mock_init:
             Cody().build()
             _, kwargs = mock_init.call_args
             assert kwargs["session_store"] is None
             assert kwargs["audit_logger"] is None
             assert kwargs["file_history"] is None
-            assert kwargs["memory_store"] is _BUILDER_UNSET
+            assert kwargs["memory_store"] is UNSET
 
 
 # ── Runner memory_store injection ──────────────────────────────────────────

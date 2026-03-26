@@ -140,6 +140,11 @@ from .metrics import (
     SessionMetrics,
 )
 
+# Core types needed by SDK consumers
+from ..core.interaction import InteractionRequest, InteractionResponse
+from ..core.errors import CircuitBreakerError, InteractionTimeoutError
+from ..core.deps import UNSET
+
 # Storage protocols and null implementations
 from ..core.storage import (
     SessionStoreProtocol,
@@ -232,4 +237,10 @@ __all__ = [
     "NullAuditLogger",
     "NullFileHistory",
     "NullMemoryStore",
+    # Core types
+    "InteractionRequest",
+    "InteractionResponse",
+    "CircuitBreakerError",
+    "InteractionTimeoutError",
+    "UNSET",
 ]

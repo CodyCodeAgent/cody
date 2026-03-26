@@ -64,11 +64,10 @@ from .sub_agent import SubAgentManager
 from .user_input import UserInputQueue
 from .model_resolver import resolve_model
 from .project_instructions import load_project_instructions
+from .deps import UNSET
 from . import tools
 
 logger = logging.getLogger(__name__)
-
-_UNSET = object()  # sentinel to distinguish "not passed" from "explicitly None"
 
 
 # ── Result models ──────────────────────────────────────────────────────────
@@ -333,6 +332,19 @@ def _build_allowed_roots(workdir: Path, config_roots: list[str], extra_roots: li
     return result
 
 
+@dataclass
+class _CircuitBreakerState:
+    """Per-run mutable state for circuit breaker checks.
+
+    Isolated as a dataclass so concurrent runs on the same AgentRunner
+    don't interfere with each other's counters.
+    """
+    total_tokens: int = 0
+    estimated_cost: float = 0.0
+    step_count: int = 0
+    recent_results: list[str] = field(default_factory=list)
+
+
 class AgentRunner:
     """Run Cody Agent with full context"""
 
@@ -348,7 +360,7 @@ class AgentRunner:
         after_tool_hooks: list | None = None,
         audit_logger: AuditLoggerProtocol | None = None,
         file_history: FileHistoryProtocol | None = None,
-        memory_store: MemoryStoreProtocol | None = _UNSET,
+        memory_store: MemoryStoreProtocol | None = UNSET,
     ):
         self.workdir = workdir
         self.config = config
@@ -388,11 +400,9 @@ class AgentRunner:
         # Shared todo list for AI task tracking
         self._todo_list: list = []
 
-        # Circuit breaker state (reset per run)
-        self._cb_total_tokens: int = 0
-        self._cb_estimated_cost: float = 0.0
-        self._cb_step_count: int = 0
-        self._cb_recent_results: list[str] = []
+        # Circuit breaker state is now per-run (see _CircuitBreakerState).
+        # _cb is set at the start of each run/run_stream/run_sync call.
+        self._cb: _CircuitBreakerState = _CircuitBreakerState()
 
         # Pending interaction requests (id → Future).
         # Futures are created by consumers (CLI/TUI/Web) when they emit
@@ -414,7 +424,7 @@ class AgentRunner:
         self._after_tool_hooks: list = after_tool_hooks or []
 
         # Project memory (injected or default file-backed)
-        if memory_store is _UNSET:
+        if memory_store is UNSET:
             self._memory_store: Optional[MemoryStoreProtocol] = None
             try:
                 self._memory_store = ProjectMemoryStore.from_workdir(self.workdir)
@@ -815,7 +825,6 @@ class AgentRunner:
     def _compact_history_sync(
         self,
         history: Optional[list[ModelMessage]],
-        max_tokens: int = 100_000,
     ) -> tuple[Optional[list[ModelMessage]], Optional[CompactResult]]:
         """Synchronous compaction — prune first, then truncation (no LLM)."""
         if not history:
@@ -889,51 +898,51 @@ class AgentRunner:
 
     # ── Circuit breaker ────────────────────────────────────────────────────
 
-    def _reset_circuit_breaker(self) -> None:
-        """Reset circuit breaker counters for a new run."""
-        self._cb_total_tokens = 0
-        self._cb_estimated_cost = 0.0
-        self._cb_step_count = 0
-        self._cb_recent_results = []
+    def _new_circuit_breaker(self) -> _CircuitBreakerState:
+        """Create and install a fresh per-run circuit breaker state."""
+        self._cb = _CircuitBreakerState()
+        return self._cb
 
     def _update_circuit_breaker(self, result_text: str, usage: Any) -> None:
         """Update circuit breaker state after a tool call or model response."""
+        cb_state = self._cb
         if usage:
             tokens = getattr(usage, "total_tokens", 0) or 0
-            self._cb_total_tokens = tokens
+            cb_state.total_tokens = tokens
             price = self.config.circuit_breaker.model_prices.get(
                 self.config.model,
                 self.config.circuit_breaker.model_prices.get("default", 0.000003),
             )
-            self._cb_estimated_cost = self._cb_total_tokens * price
+            cb_state.estimated_cost = cb_state.total_tokens * price
 
         if result_text:
-            self._cb_step_count += 1
-            self._cb_recent_results.append(result_text)
+            cb_state.step_count += 1
+            cb_state.recent_results.append(result_text)
             max_keep = self.config.circuit_breaker.loop_detect_turns + 1
-            if len(self._cb_recent_results) > max_keep:
-                self._cb_recent_results = self._cb_recent_results[-max_keep:]
+            if len(cb_state.recent_results) > max_keep:
+                cb_state.recent_results = cb_state.recent_results[-max_keep:]
 
     def _check_circuit_breaker(self) -> None:
         """Check circuit breaker conditions and raise if tripped."""
         if not self.config.circuit_breaker.enabled:
             return
         cb = self.config.circuit_breaker
-        if self._cb_total_tokens > cb.max_tokens:
-            raise CircuitBreakerError("token_limit", self._cb_total_tokens, self._cb_estimated_cost)
-        if self._cb_estimated_cost > cb.max_cost_usd:
-            raise CircuitBreakerError("cost_limit", self._cb_total_tokens, self._cb_estimated_cost)
-        if cb.max_steps > 0 and self._cb_step_count > cb.max_steps:
-            raise CircuitBreakerError("step_limit", self._cb_total_tokens, self._cb_estimated_cost)
+        s = self._cb
+        if s.total_tokens > cb.max_tokens:
+            raise CircuitBreakerError("token_limit", s.total_tokens, s.estimated_cost)
+        if s.estimated_cost > cb.max_cost_usd:
+            raise CircuitBreakerError("cost_limit", s.total_tokens, s.estimated_cost)
+        if cb.max_steps > 0 and s.step_count >= cb.max_steps:
+            raise CircuitBreakerError("step_limit", s.total_tokens, s.estimated_cost)
         if self._is_loop_detected():
-            raise CircuitBreakerError("loop_detected", self._cb_total_tokens, self._cb_estimated_cost)
+            raise CircuitBreakerError("loop_detected", s.total_tokens, s.estimated_cost)
 
     def _is_loop_detected(self) -> bool:
         """Check if recent tool results indicate a loop."""
         n = self.config.circuit_breaker.loop_detect_turns
-        if len(self._cb_recent_results) < n:
+        if len(self._cb.recent_results) < n:
             return False
-        recent = self._cb_recent_results[-n:]
+        recent = self._cb.recent_results[-n:]
         threshold = self.config.circuit_breaker.loop_similarity_threshold
         # All recent results must be similar to each other
         first = recent[0]
@@ -1037,7 +1046,7 @@ class AgentRunner:
             cancel_event: If set and triggered, the run is cancelled and
                 a ``CodyResult`` with output ``"(cancelled)"`` is returned.
         """
-        self._reset_circuit_breaker()
+        self._new_circuit_breaker()
         deps = self._create_deps()
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
@@ -1069,6 +1078,90 @@ class AgentRunner:
         self._update_circuit_breaker("", result.usage() if hasattr(result, 'usage') else None)
         self._check_circuit_breaker()
         return cody_result
+
+    async def _stream_tool_node(
+        self, node, agent_run, interaction_q, drain_interaction_q,
+    ) -> AsyncGenerator:
+        """Stream tool calls/results for a single CallToolsNode.
+
+        Merges tool execution events with interaction events so that
+        InteractionRequestEvents are yielded to the caller even while
+        a tool is blocked waiting for a human response.
+        """
+        # Inject proactive user input alongside tool results.
+        user_messages = self._user_input_queue.drain_all()
+        if user_messages:
+            combined = "\n".join(user_messages)
+            node.user_prompt = combined  # type: ignore[union-attr]
+            yield UserInputReceivedEvent(content=combined)
+
+        _merged_q: asyncio.Queue = asyncio.Queue()
+        _TOOL_STREAM_DONE = object()
+
+        async def _consume_tool_stream():
+            async with node.stream(agent_run.ctx) as tool_stream:
+                async for ev in tool_stream:
+                    await _merged_q.put(("tool", ev))
+            await _merged_q.put(("done", _TOOL_STREAM_DONE))
+
+        async def _forward_interactions():
+            while True:
+                ia_event = await interaction_q.get()
+                await _merged_q.put(("interaction", ia_event))
+
+        _tool_task = asyncio.create_task(_consume_tool_stream())
+        _ia_task = asyncio.create_task(_forward_interactions())
+
+        try:
+            while True:
+                kind, item = await _merged_q.get()
+                if kind == "done":
+                    break
+                if kind == "interaction":
+                    yield item
+                    continue
+                # kind == "tool"
+                event = item
+                if isinstance(event, FunctionToolCallEvent):
+                    part = event.part
+                    args = part.args if isinstance(part.args, dict) else {}
+                    if isinstance(part.args, str):
+                        try:
+                            args = json.loads(part.args)
+                        except (json.JSONDecodeError, TypeError):
+                            args = {"raw": part.args}
+                    yield ToolCallEvent(
+                        tool_name=part.tool_name,
+                        args=args,
+                        tool_call_id=part.tool_call_id,
+                    )
+                elif isinstance(event, FunctionToolResultEvent):
+                    result_part = event.result
+                    if result_part.part_kind == "tool-return":
+                        content = result_part.content
+                        if not isinstance(content, str):
+                            content = str(content)
+                        yield ToolResultEvent(
+                            tool_name=result_part.tool_name,
+                            tool_call_id=result_part.tool_call_id,
+                            result=content,
+                        )
+                        self._update_circuit_breaker(content, None)
+        finally:
+            _ia_task.cancel()
+            try:
+                await _ia_task
+            except asyncio.CancelledError:
+                pass
+            if not _tool_task.done():
+                await _tool_task
+
+        # Drain any remaining interaction events after tool execution
+        for interaction_event in drain_interaction_q():
+            yield interaction_event
+
+        # Check circuit breaker after each tool execution round
+        self._check_circuit_breaker()
 
     @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
     async def run_stream(
@@ -1106,7 +1199,7 @@ class AgentRunner:
         Raises:
           InteractionTimeoutError: if an interaction request times out
         """
-        self._reset_circuit_breaker()
+        self._new_circuit_breaker()
 
         # Side channel for interaction events emitted from within tool execution.
         interaction_q: asyncio.Queue = asyncio.Queue()
@@ -1179,87 +1272,10 @@ class AgentRunner:
                                             yield TextDeltaEvent(content=content)
 
                     elif agent.is_call_tools_node(node):
-                        # Inject proactive user input alongside tool results.
-                        # node.user_prompt is appended after tool return parts
-                        # as a UserPromptPart, so the LLM sees it on the next turn.
-                        user_messages = self._user_input_queue.drain_all()
-                        if user_messages:
-                            combined = "\n".join(user_messages)
-                            node.user_prompt = combined  # type: ignore[union-attr]
-                            yield UserInputReceivedEvent(content=combined)
-
-                        # Stream tool calls and results, merging interaction
-                        # events that may arrive while tools are executing.
-                        # We use a merged queue so that interaction_request events
-                        # are yielded to the caller even when a tool (e.g. question)
-                        # is blocked awaiting a response via its Future.
-                        _merged_q: asyncio.Queue = asyncio.Queue()
-                        _TOOL_STREAM_DONE = object()
-
-                        async def _consume_tool_stream():
-                            async with node.stream(agent_run.ctx) as tool_stream:
-                                async for ev in tool_stream:
-                                    await _merged_q.put(("tool", ev))
-                            await _merged_q.put(("done", _TOOL_STREAM_DONE))
-
-                        async def _forward_interactions():
-                            while True:
-                                ia_event = await interaction_q.get()
-                                await _merged_q.put(("interaction", ia_event))
-
-                        _tool_task = asyncio.create_task(_consume_tool_stream())
-                        _ia_task = asyncio.create_task(_forward_interactions())
-
-                        try:
-                            while True:
-                                kind, item = await _merged_q.get()
-                                if kind == "done":
-                                    break
-                                if kind == "interaction":
-                                    yield item
-                                    continue
-                                # kind == "tool"
-                                event = item
-                                if isinstance(event, FunctionToolCallEvent):
-                                    part = event.part
-                                    args = part.args if isinstance(part.args, dict) else {}
-                                    if isinstance(part.args, str):
-                                        try:
-                                            args = json.loads(part.args)
-                                        except (json.JSONDecodeError, TypeError):
-                                            args = {"raw": part.args}
-                                    yield ToolCallEvent(
-                                        tool_name=part.tool_name,
-                                        args=args,
-                                        tool_call_id=part.tool_call_id,
-                                    )
-                                elif isinstance(event, FunctionToolResultEvent):
-                                    result_part = event.result
-                                    if result_part.part_kind == "tool-return":
-                                        content = result_part.content
-                                        if not isinstance(content, str):
-                                            content = str(content)
-                                        yield ToolResultEvent(
-                                            tool_name=result_part.tool_name,
-                                            tool_call_id=result_part.tool_call_id,
-                                            result=content,
-                                        )
-                                        self._update_circuit_breaker(content, None)
-                        finally:
-                            _ia_task.cancel()
-                            try:
-                                await _ia_task
-                            except asyncio.CancelledError:
-                                pass
-                            if not _tool_task.done():
-                                await _tool_task
-
-                        # Drain any remaining interaction events after tool execution
-                        for interaction_event in _drain_interaction_q():
-                            yield interaction_event
-
-                        # Check circuit breaker after each tool execution round
-                        self._check_circuit_breaker()
+                        async for ev in self._stream_tool_node(
+                            node, agent_run, interaction_q, _drain_interaction_q,
+                        ):
+                            yield ev
 
                     elif isinstance(node, End):
                         # Final result
@@ -1289,7 +1305,7 @@ class AgentRunner:
         Note: LLM compaction is not available in sync mode. Falls back to
         truncation-based compaction regardless of config.compaction.use_llm.
         """
-        self._reset_circuit_breaker()
+        self._new_circuit_breaker()
         # run_sync always auto-approves — interaction requires async
         if self.config.interaction.enabled:
             logger.warning(
