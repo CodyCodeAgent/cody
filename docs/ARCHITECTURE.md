@@ -31,7 +31,7 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │          AgentRunner (core/runner.py)                      │  │
 │  │  - Creates Pydantic AI Agent                              │  │
-│  │  - Registers 28 tools                                     │  │
+│  │  - Registers 28 core + 2 MCP tools                                     │  │
 │  │  - Context compaction (auto)                              │  │
 │  │  - Session-aware run methods                              │  │
 │  │  - Assembles CodyDeps for dependency injection            │  │
@@ -188,7 +188,7 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 
 **Backward compatibility:** `from cody.core.tools import read_file` and `from cody.core import tools; tools.read_file` both work unchanged.
 
-**29+ tools across 12 categories:**
+**30 tools (28 core + 2 MCP) across 12 categories:**
 
 | Category | Tools | Permission |
 |----------|-------|------------|

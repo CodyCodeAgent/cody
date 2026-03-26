@@ -38,6 +38,9 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "model": "claude-sonnet-4-0",
   "model_base_url": null,
   "model_api_key": null,
+  "small_model": null,
+  "small_model_base_url": null,
+  "small_model_api_key": null,
   "enable_thinking": false,
   "thinking_budget": null,
   "auth": {
@@ -61,6 +64,18 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
     "allowed_roots": [],
     "strict_read_boundary": false,
     "require_confirmation": true
+  },
+  "interaction": {
+    "enabled": false,
+    "timeout": 30.0
+  },
+  "circuit_breaker": {
+    "enabled": true,
+    "max_tokens": 200000,
+    "max_cost_usd": 5.0,
+    "max_steps": 0,
+    "loop_detect_turns": 6,
+    "loop_similarity_threshold": 0.9
   },
   "rate_limit": {
     "enabled": false,
@@ -186,6 +201,38 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   "thinking_budget": 10000
 }
 ```
+
+---
+
+#### `small_model`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 用于上下文压缩等轻量任务的小模型。未设置时使用主模型。
+
+```json
+{
+  "small_model": "gpt-4o-mini",
+  "small_model_base_url": "https://api.openai.com/v1",
+  "small_model_api_key": "sk-..."
+}
+```
+
+---
+
+#### `small_model_base_url`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 小模型的 API 地址。未设置时使用 `model_base_url`。
+
+---
+
+#### `small_model_api_key`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 小模型的 API Key。未设置时使用 `model_api_key`。
 
 ---
 
@@ -759,8 +806,92 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 > 上例中 `trigger_ratio=0.75 × context_window_tokens=128000 = 96000`，当 token 超 96k 时触发。
 > `keep_recent_tokens=20000` 保留最近约 20k token 的消息（代替固定 4 条）。
 
-> **注意：** `run_sync()` 同步模式下 LLM 压缩不可用，会自动降级为截断式压缩。
+> **注意：** 同步模式（`CodyClient`）下 LLM 压缩不可用，会自动降级为截断式压缩。
 > 修剪（Pruning）在同步和异步模式下均可用。
+
+---
+
+### 人工交互配置 (`interaction`)
+
+控制 Agent 是否在变更操作（写文件、执行命令等）前暂停等待人类确认。
+
+#### `interaction.enabled`
+
+**类型:** `boolean`
+**默认:** `false`
+**说明:** 启用后，CONFIRM 级别的工具调用和 `question` 工具会暂停等待人类响应。
+
+#### `interaction.timeout`
+
+**类型:** `float`
+**默认:** `30.0`
+**说明:** 等待人类响应的超时时间（秒）。超时后抛出 `InteractionTimeoutError`。设为 `0` 表示无限等待。
+
+```json
+{
+  "interaction": {
+    "enabled": true,
+    "timeout": 60.0
+  }
+}
+```
+
+> **注意：** 同步模式（`CodyClient`）下 interaction 无效，始终自动批准。
+
+---
+
+### 熔断器配置 (`circuit_breaker`)
+
+防止 Agent 失控消耗过多资源。任一条件触发时自动终止运行。
+
+#### `circuit_breaker.enabled`
+
+**类型:** `boolean`
+**默认:** `true`
+**说明:** 是否启用熔断器。
+
+#### `circuit_breaker.max_tokens`
+
+**类型:** `integer`
+**默认:** `200000`
+**说明:** 单次运行最大 token 消耗。超出时终止。
+
+#### `circuit_breaker.max_cost_usd`
+
+**类型:** `float`
+**默认:** `5.0`
+**说明:** 单次运行最大成本（美元）。超出时终止。
+
+#### `circuit_breaker.max_steps`
+
+**类型:** `integer`
+**默认:** `0`（无限制）
+**说明:** 单次运行最大工具调用步数。设为 `0` 表示不限制。
+
+#### `circuit_breaker.loop_detect_turns`
+
+**类型:** `integer`
+**默认:** `6`
+**说明:** 连续多少次相似结果判定为死循环。
+
+#### `circuit_breaker.loop_similarity_threshold`
+
+**类型:** `float`
+**默认:** `0.9`
+**说明:** 死循环检测的相似度阈值（0.0-1.0）。
+
+```json
+{
+  "circuit_breaker": {
+    "enabled": true,
+    "max_tokens": 200000,
+    "max_cost_usd": 5.0,
+    "max_steps": 50,
+    "loop_detect_turns": 6,
+    "loop_similarity_threshold": 0.9
+  }
+}
+```
 
 ---
 

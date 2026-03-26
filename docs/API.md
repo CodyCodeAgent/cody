@@ -136,7 +136,10 @@ data: {"type": "done", "output": "这是文件内容", "thinking": "...", "tool_
 | tool_result | 工具返回结果，包含 `tool_name`、`tool_call_id`、`result` |
 | text_delta | 流式文本片段（增量），`content` 字段 |
 | done | 任务完成，包含 `output`、`thinking`、`tool_traces`、`usage`、`metadata` |
+| compact | 上下文压缩完成，包含 `original_messages`、`compacted_messages`、`estimated_tokens_saved` |
+| prune | 选择性修剪完成，包含 `pruned_count`、`estimated_tokens_saved` |
 | circuit_breaker | 熔断器触发，包含 `reason`、`tokens_used`、`cost_usd` |
+| cancelled | 任务被取消（通过 `cancel_event`），无额外字段 |
 | interaction_request | AI 请求人工输入，包含 `request_id`、`kind`、`prompt`、`options` |
 | user_input_received | 用户主动输入已接收，包含 `content` |
 | error | 错误发生，包含结构化错误信息 |
