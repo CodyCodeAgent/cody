@@ -339,7 +339,21 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
       return;
     }
 
-    if ((!text && pendingImages.length === 0) || streaming) return;
+    if (!text && pendingImages.length === 0) return;
+
+    // If streaming, inject user input into the running agent
+    if (streaming) {
+      if (!text) return;
+      const injectMsg: Message = {
+        role: "user",
+        content: text,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, injectMsg]);
+      setInput("");
+      socketRef.current?.send({ type: "user_input", content: text });
+      return;
+    }
 
     const userMsg: Message = {
       role: "user",
@@ -637,12 +651,14 @@ export default function ChatWindow({ projectId, projectName, sessionId }: Props)
               ? "Configure model in Settings first..."
               : interactionRequest
                 ? "Type your answer..."
-                : "Ask Cody..."
+                : streaming
+                  ? "Send a message to the running agent..."
+                  : "Ask Cody..."
           }
-          disabled={(streaming && !interactionRequest) || configReady === false}
+          disabled={configReady === false}
         />
         <button type="submit" disabled={
-          (streaming && !interactionRequest) || configReady === false || (!input.trim() && pendingImages.length === 0 && !interactionRequest)
+          configReady === false || (!input.trim() && pendingImages.length === 0 && !interactionRequest)
         }>
           Send
         </button>

@@ -19,3 +19,14 @@ def test_chat_ping_pong(test_client, project_store):
         ws.send_text(json.dumps({"type": "ping"}))
         msg = ws.receive_json()
         assert msg["type"] == "pong"
+
+
+def test_chat_user_input_no_active_run(test_client, project_store):
+    """WS user_input returns error when no agent is running"""
+    p = project_store.create_project(name="Test", workdir="/tmp")
+
+    with test_client.websocket_connect(f"/ws/chat/{p.id}") as ws:
+        ws.send_text(json.dumps({"type": "user_input", "content": "hello"}))
+        msg = ws.receive_json()
+        assert msg["type"] == "error"
+        assert "no active run" in msg["message"].lower()

@@ -215,6 +215,20 @@ async def chat_websocket(
                 else:
                     await ws.send_json({"type": "cancelled"})
 
+            elif msg_type == "user_input":
+                content = data.get("content", "")
+                if run.runner and content:
+                    await run.runner.inject_user_input(content)
+                    logger.info(
+                        "Chat WS user_input injected: project=%s len=%d",
+                        project_id, len(content),
+                    )
+                elif not run.runner:
+                    await ws.send_json({
+                        "type": "error",
+                        "message": "No active run — cannot inject user input",
+                    })
+
             elif msg_type == "submit_interaction":
                 request_id = data.get("request_id", "")
                 action = data.get("action", "answer")

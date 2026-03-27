@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [2.0.1] - 2026-03-27
+
+### Added
+
+- **Web 用户输入注入**：WebSocket 新增 `user_input` 消息类型，支持在 Agent 运行过程中向其发送消息。前端输入框在 streaming 时不再禁用，用户可随时追加指令
+
+---
+
 ## [2.0.0] - 2026-03-26
 
 ### Added
