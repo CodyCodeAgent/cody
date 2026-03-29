@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [2.0.2] - 2026-03-29
+
+### Fixed
+
+- **LSP shutdown 顺序**：修复 `_LSPServer.stop()` 中 reader task 被提前取消导致 shutdown 请求 future 永远无法 resolve 的问题，消除最长 15 秒的无效等待，Ctrl+C 现在可以正常退出
+- **第三方 LLM 报错被吞**：`run_stream()` 新增通用异常捕获，未知异常现在会记录完整 traceback 后再往上抛，不再表现为无输出的静默退出
+
+---
+
 ## [2.0.1] - 2026-03-27
 
 ### Added

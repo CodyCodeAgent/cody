@@ -1380,6 +1380,9 @@ class AgentRunner:
                 tokens_used=e.tokens_used,
                 cost_usd=e.cost_usd,
             )
+        except Exception:
+            logger.exception("run_stream failed unexpectedly")
+            raise
 
     @log_elapsed("AgentRunner.run_sync", level=logging.INFO)
     def run_sync(

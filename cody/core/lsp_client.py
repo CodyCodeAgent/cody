@@ -339,8 +339,6 @@ class _LSPServer:
         await self._initialize()
 
     async def stop(self) -> None:
-        await cancel_task_silently(self._reader_task)
-
         if self._process and self._process.returncode is None:
             try:
                 await self.request("shutdown", {})
@@ -348,6 +346,7 @@ class _LSPServer:
                 await asyncio.wait_for(self._process.wait(), timeout=3.0)
             except Exception:
                 await terminate_process(self._process, timeout=3.0)
+        await cancel_task_silently(self._reader_task)
 
     # ── JSON-RPC ─────────────────────────────────────────────────────────────
 
