@@ -2,7 +2,7 @@
 
 ## 项目是什么
 
-Cody 是一个**开源 AI Coding Agent 框架**（Python），让开发者能快速构建、定制和部署自己的 AI 编程 Agent。
+Cody 是一个**开源 AI Agent 框架**（Python），让开发者能快速构建、定制和部署自己的 AI Agent。
 
 - GitHub: https://github.com/CodyCodeAgent/cody
 - PyPI: `pip install cody-ai`

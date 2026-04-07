@@ -1579,7 +1579,7 @@ def build_html_template(article):
     <div class="footer-inner">
       <div class="footer-brand">
         <a href="../index.html" class="nav-logo" style="font-size:1rem"><svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0a0e1a"/><circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/><path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/></svg> Cody</a>
-        <p>开源 AI Coding Agent 框架。</p>
+        <p>开源 AI Agent 框架。</p>
       </div>
       <div class="footer-group"><h4>SDK 教程</h4><ul><li><a href="../sdk.html">全部 13 篇 →</a></li></ul></div>
       <div class="footer-group"><h4>资源</h4><ul><li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li></ul></div>
@@ -1598,7 +1598,7 @@ PROMPT_TEMPLATE = """# Prompt：Cody SDK 教程第 {n} 篇 —— {title}
 
 ## 任务说明
 
-你是技术写作专家，为 Cody 开源 AI Coding Agent 框架编写 SDK 实战教程。
+你是技术写作专家，为 Cody 开源 AI Agent 框架编写 SDK 实战教程。
 
 产出文件：`pages/sdk/{filename}`
 
@@ -1608,7 +1608,7 @@ PROMPT_TEMPLATE = """# Prompt：Cody SDK 教程第 {n} 篇 —— {title}
 
 ## Cody 项目简介
 
-Cody 是开源 AI Coding Agent 框架（Python），`pip install cody-ai`。`AsyncCodyClient` 是主 SDK 入口，直接包装 core 引擎（in-process）。GitHub: https://github.com/CodyCodeAgent/cody
+Cody 是开源 AI Agent 框架（Python），`pip install cody-ai`。`AsyncCodyClient` 是主 SDK 入口，直接包装 core 引擎（in-process）。GitHub: https://github.com/CodyCodeAgent/cody
 
 ---
 
