@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>06. Prompt 定制与多模态 – Cody SDK 教程</title>
+  <meta name="description" content="使用 system_prompt / extra_system_prompt 定制行为，并用 MultimodalPrompt 发送图片。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html" class="active">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>定制篇</span>
+    </div>
+    <h1>Prompt 定制与多模态</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-purple">定制篇</span>
+      <span class="badge badge-green">第 06 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>默认情况下，Cody 会把你当成通用编程助手来组织系统提示。很多场景下，你希望它变成<strong>专用助手</strong>：只做安全审查、只按某种语气回复，或者能「看见」截图里的界面再写代码。本篇用同一条叙事线：先给可运行的完整示例，再拆开讲 <code>system_prompt()</code>、<code>extra_system_prompt()</code> 以及多模态 <code>MultimodalPrompt</code>。</p>
+
+    <div class="callout callout-info">
+      <p>本系列演示模型统一为 <span class="badge badge-blue">qwen3.5-plus</span>。请像第 01 篇那样配置环境变量（<code>CODY_MODEL</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL</code>），下面示例中的 <code>Cody().workdir("...").build()</code> 即可不显式写模型；需要写死模型时可用 <code>.model("qwen3.5-plus").base_url("https://coding.dashscope.aliyuncs.com/v1").api_key("sk-xxx")</code>。</p>
+    </div>
+
+    <h2 id="full-example">先看完整例子：安全审查 + 中文回复</h2>
+    <p>下面这段程序一次性做完两件事：用 <code>system_prompt()</code> 把「人设」换成安全审查员，用 <code>extra_system_prompt()</code> 要求始终用中文回答。跑通之后再读后面各节，会很容易对应上每个 API 在做什么。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    <span class="cm"># 替换默认编程助手人设，并追加「始终中文」约束</span>
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">"."</span>)
+        .<span class="fn">system_prompt</span>(<span class="str">"You are a security reviewer. Focus on injection and secrets."</span>)
+        .<span class="fn">extra_system_prompt</span>(<span class="str">"Always reply in Chinese."</span>)
+        .<span class="fn">build</span>()
+    )
+    result = <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"请快速审查：这段代码有没有明显的安全问题？"</span>)
+    <span class="fn">print</span>(result)
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h2 id="system-prompt"><code>system_prompt()</code>：替换角色</h2>
+    <p><code>system_prompt()</code> 会<strong>替换</strong>默认的通用编程助手 persona（基础系统角色），适合你把 Agent 定义成「只做一类事」的专家，例如安全审查、文档生成、测试编写等。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># system_prompt() —— 替换默认 persona</span>
+client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">system_prompt</span>(<span class="str">"You are a security reviewer."</span>).<span class="fn">build</span>()</pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <p>一旦设置了 <code>system_prompt()</code>，框架不再使用内置的「通用编程助手」那段基础人设；其余与项目、工具、技能相关的内置说明仍会按框架逻辑组装（与「整段系统提示全部手写」不同）。若你只想<strong>加几条规矩</strong>而保留默认人设，请用下一节的 <code>extra_system_prompt()</code>。</p>
+    </div>
+
+    <h2 id="extra-system-prompt"><code>extra_system_prompt()</code>：追加约束</h2>
+    <p><code>extra_system_prompt()</code> 在<strong>所有内置 prompt 之后</strong>再追加一段文字，不会换掉默认编程助手身份。典型用法：输出语言、格式（如 Markdown 标题层级）、语气、合规话术等。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># extra_system_prompt() —— 在所有内置 prompt 后追加</span>
+client = (
+    <span class="fn">Cody</span>()
+    .<span class="fn">workdir</span>(<span class="str">"."</span>)
+    .<span class="fn">extra_system_prompt</span>(<span class="str">"Always reply in Chinese."</span>)
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <h2 id="compare">对比：<code>system_prompt</code> 与 <code>extra_system_prompt</code></h2>
+    <p>两者名字相近，但语义一个是「换身份」，一个是「加备注」。下面表格帮你一次记清。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>维度</th>
+          <th><code>system_prompt()</code></th>
+          <th><code>extra_system_prompt()</code></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>作用</td>
+          <td>替换默认基础人设（persona）</td>
+          <td>在内置系统提示<strong>末尾</strong>追加一段说明</td>
+        </tr>
+        <tr>
+          <td>与内置 prompt 的关系</td>
+          <td>不再使用框架提供的默认「通用编程助手」基础角色</td>
+          <td>保留完整内置系统提示，仅在其后拼接你的约束</td>
+        </tr>
+        <tr>
+          <td>典型场景</td>
+          <td>专用 Agent：安全审计、只写测试、只写文档等</td>
+          <td>全局偏好：语言、格式、风格、禁止事项等</td>
+        </tr>
+        <tr>
+          <td>可多次调用</td>
+          <td>以 Builder 最后一次设置为准（覆盖）</td>
+          <td>以 Builder 最后一次设置为准（覆盖）</td>
+        </tr>
+        <tr>
+          <td>能否同时使用</td>
+          <td colspan="2">可以。常见组合：自定义人设 + 追加语言/格式约束（见下文）。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="combine">组合使用</h2>
+    <p>生产里经常出现「我要专用身份，但还要统一加几条全项目规矩」。这时两个 API 一起用即可：先 <code>system_prompt()</code> 定角色，再 <code>extra_system_prompt()</code> 叠约束。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    <span class="fn">Cody</span>()
+    .<span class="fn">workdir</span>(<span class="str">"."</span>)
+    .<span class="fn">system_prompt</span>(
+        <span class="str">"You are a security reviewer. Prioritize OWASP-style issues and false-positive hints."</span>
+    )
+    .<span class="fn">extra_system_prompt</span>(
+        <span class="str">"Always reply in Chinese. Use Markdown with ## for sections."</span>
+    )
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      <p>若你只写 <code>extra_system_prompt()</code>，用户感知仍是「还是那个 Cody 编程助手，但多了几条家规」；若加上 <code>system_prompt()</code>，对话基调会明显变成你定义的专家角色。</p>
+    </div>
+
+    <h2 id="multimodal">多模态：<code>MultimodalPrompt</code> 与 <code>ImageData</code></h2>
+    <p>有时用户任务不是纯文本，而是一张设计稿或界面截图。Cody 提供 <code>MultimodalPrompt</code>：一段 <code>text</code> 加上若干 <code>ImageData</code>（Base64 字符串 + MIME 类型 + 可选文件名）。<span class="badge badge-yellow">注意</span> 需要模型本身支持视觉（如支持图像输入的 <code>qwen3.5-plus</code> 等多模态模型），否则会失败或表现异常。</p>
+
+    <h3>单图示例</h3>
+    <p>从本地读入 PNG，编码为 Base64，再交给 <code>client.run()</code> 或 <code>client.stream()</code>。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> base64
+
+<span class="kw">from</span> cody.core.prompt <span class="kw">import</span> MultimodalPrompt, ImageData
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">build</span>()
+
+<span class="kw">with</span> <span class="fn">open</span>(<span class="str">"screenshot.png"</span>, <span class="str">"rb"</span>) <span class="kw">as</span> f:
+    b64 = base64.<span class="fn">b64encode</span>(f.<span class="fn">read</span>()).<span class="fn">decode</span>()
+
+prompt = <span class="fn">MultimodalPrompt</span>(
+    text=<span class="str">"实现这个页面"</span>,
+    images=[
+        <span class="fn">ImageData</span>(
+            data=b64,
+            media_type=<span class="str">"image/png"</span>,  <span class="cm"># image/png | image/jpeg | image/webp | image/gif</span>
+            filename=<span class="str">"screenshot.png"</span>,
+        )
+    ],
+)
+
+result = <span class="kw">await</span> client.<span class="fn">run</span>(prompt)</pre>
+    </div>
+
+    <h3>多图与格式</h3>
+    <p><strong>单图与多图的区别</strong>仅在于 <code>images</code> 列表长度：一张图时列表里一个 <code>ImageData</code>；多张图时按顺序放入多个 <code>ImageData</code>，模型会同时看到多张参考图（具体上限取决于模型与服务商）。</p>
+    <p><code>media_type</code> 需与文件真实格式一致，常用取值：</p>
+    <ul>
+      <li><code>image/png</code></li>
+      <li><code>image/jpeg</code></li>
+      <li><code>image/webp</code></li>
+      <li><code>image/gif</code></li>
+    </ul>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 多图：在 images 列表中放多个 ImageData</span>
+prompt = <span class="fn">MultimodalPrompt</span>(
+    text=<span class="str">"对比这两张图，列出 UI 差异并给出改法"</span>,
+    images=[
+        <span class="fn">ImageData</span>(data=b64_a, media_type=<span class="str">"image/png"</span>, filename=<span class="str">"before.png"</span>),
+        <span class="fn">ImageData</span>(data=b64_b, media_type=<span class="str">"image/jpeg"</span>, filename=<span class="str">"after.jpg"</span>),
+    ],
+)
+
+<span class="cm"># 流式同样传入 MultimodalPrompt</span>
+<span class="kw">async for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(prompt):
+    ...</pre>
+    </div>
+
+    <div class="callout callout-info">
+      <p><code>ImageData</code> 的 <code>data</code> 为 Base64 编码的<strong>原始字节</strong>对应的字符串（不要带 <code>data:image/png;base64,</code> 前缀，除非你的接入层另有约定）。<code>filename</code> 便于日志与调试，可按需填写。</p>
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>本篇你掌握了：用 <code>system_prompt()</code> 换掉默认编程助手人设、用 <code>extra_system_prompt()</code> 在内置系统提示后追加约束，以及用 <code>MultimodalPrompt</code> + <code>ImageData</code> 把截图/design 喂给支持视觉的模型。下一篇我们会进入 Skills，让 Agent 按项目约定加载可复用能力，请继续阅读 <a href="07-skills.html">07. 使用 Skills</a>。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="05-custom-tools.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">注册自定义工具</span>
+      </a>
+      <a href="07-skills.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">使用 Skills</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

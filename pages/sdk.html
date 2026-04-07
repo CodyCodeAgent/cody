@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDK 教程 – Cody AI Coding Agent 框架</title>
+  <meta name="description" content="Cody SDK 实战教程：从一次性对话到生产级扩展，13 篇循序渐进的 Python SDK 使用教程。">
+  <meta property="og:title" content="SDK 教程 – Cody AI Coding Agent 框架">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<!-- ============================================================ NAV -->
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="index.html">首页</a></li>
+      <li><a href="docs.html" class="active">文档</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+
+    <div class="nav-actions">
+      <a href="docs.html" class="btn btn-ghost">← 文档中心</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ============================================================ HERO -->
+<div class="sdk-hero">
+  <div class="container">
+    <div class="article-breadcrumb">
+      <a href="docs.html">文档中心</a> / <span>SDK 教程</span>
+    </div>
+    <div class="section-label">SDK 教程</div>
+    <h1>Python SDK 实战教程</h1>
+    <p style="font-size:1.1rem;max-width:560px;margin-top:12px">
+      从零到生产，系统掌握 Cody Python SDK 的全部能力。每篇独立成章，可按需阅读，也可顺序学习。
+    </p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px">
+      <span class="badge badge-blue">Python 3.10+</span>
+      <span class="badge badge-green">13 篇教程</span>
+      <span class="badge badge-purple">循序渐进</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TUTORIAL LIST -->
+<div class="sdk-content">
+  <div class="container">
+
+    <!-- 基础篇 -->
+    <div class="tutorial-group anim">
+      <div class="tutorial-group-header">
+        <h2>基础篇</h2>
+        <span class="badge badge-blue">第 01–03 篇</span>
+        <span class="tutorial-group-header group-desc">安装、核心调用方式与流式输出</span>
+      </div>
+      <div class="tutorial-cards-list">
+
+        <a href="sdk/01-single-run.html" class="tutorial-card">
+          <span class="tutorial-card-num">01</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">一次性对话</div>
+            <div class="tutorial-card-desc">安装 cody-ai、三种客户端创建方式（直接构造 / Builder / Config）、run() 方法详解、RunResult 字段读取</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/02-multi-turn.html" class="tutorial-card">
+          <span class="tutorial-card-num">02</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">多轮对话</div>
+            <div class="tutorial-card-desc">session_id 机制、自动 session 创建、会话的增删查、跨轮次保持上下文的完整用法</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 6 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/03-streaming.html" class="tutorial-card">
+          <span class="tutorial-card-num">03</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">流式输出全解</div>
+            <div class="tutorial-card-desc">stream() / run_stream() 用法、StreamChunk 12 种类型系统、工具调用事件处理、流式取消、思考模式（thinking）</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 12 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- 工具篇 -->
+    <div class="tutorial-group anim anim-delay-1">
+      <div class="tutorial-group-header">
+        <h2>工具篇</h2>
+        <span class="badge badge-green">第 04–05 篇</span>
+        <span class="tutorial-group-header group-desc">直接调用内置工具与注册自定义工具</span>
+      </div>
+      <div class="tutorial-cards-list">
+
+        <a href="sdk/04-tools.html" class="tutorial-card">
+          <span class="tutorial-card-num">04</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">工具直接调用</div>
+            <div class="tutorial-card-desc">tool() 方法调用 28+ 内置工具、工具过滤（include/exclude_tools）、grep/glob/exec_command 等便捷方法与 LSP 工具</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/05-custom-tools.html" class="tutorial-card">
+          <span class="tutorial-card-num">05</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">注册自定义工具</div>
+            <div class="tutorial-card-desc">自定义工具函数签名、docstring 写法、Builder .tool() 注册、before_tool / after_tool 中间件链</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 10 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- 定制篇 -->
+    <div class="tutorial-group anim anim-delay-2">
+      <div class="tutorial-group-header">
+        <h2>定制篇</h2>
+        <span class="badge badge-purple">第 06–08 篇</span>
+        <span class="tutorial-group-header group-desc">改写 Prompt、Skills 系统与 MCP 集成</span>
+      </div>
+      <div class="tutorial-cards-list">
+
+        <a href="sdk/06-prompt.html" class="tutorial-card">
+          <span class="tutorial-card-num">06</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">Prompt 定制与多模态</div>
+            <div class="tutorial-card-desc">system_prompt() vs extra_system_prompt() 的区别与组合、MultimodalPrompt 发送图片、典型定制场景示例</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/07-skills.html" class="tutorial-card">
+          <span class="tutorial-card-num">07</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">使用 Skills</div>
+            <div class="tutorial-card-desc">Agent Skills 开放标准、四层加载优先级、list_skills() / get_skill() 查询、自定义 Skill 目录配置、编写 SKILL.md</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/08-mcp.html" class="tutorial-card">
+          <span class="tutorial-card-num">08</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">集成 MCP</div>
+            <div class="tutorial-card-desc">stdio 与 HTTP 两种传输方式、auto_start_mcp、运行时动态添加 MCP 服务器、mcp_call() 直接调用</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 10 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- 进阶篇 -->
+    <div class="tutorial-group anim anim-delay-3">
+      <div class="tutorial-group-header">
+        <h2>进阶篇</h2>
+        <span class="badge badge-yellow">第 09–13 篇</span>
+        <span class="tutorial-group-header group-desc">安全、可观测性、记忆、人机协同与存储扩展</span>
+      </div>
+      <div class="tutorial-cards-list">
+
+        <a href="sdk/09-security.html" class="tutorial-card">
+          <span class="tutorial-card-num">09</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">安全与控制</div>
+            <div class="tutorial-card-desc">allowed_roots 多目录访问、strict_read_boundary、熔断器（token/cost/步数/死循环检测）、无状态模式</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 10 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/10-events.html" class="tutorial-card">
+          <span class="tutorial-card-num">10</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">事件与可观测性</div>
+            <div class="tutorial-card-desc">EventType 全量事件类型、.on() / .on_async() 注册方式、指标收集 get_metrics()、监控工具调用链路</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/11-memory.html" class="tutorial-card">
+          <span class="tutorial-card-num">11</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">项目记忆</div>
+            <div class="tutorial-card-desc">四类记忆（conventions / patterns / issues / decisions）、add_memory / get_memory / clear_memory、跨会话自动注入原理</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 7 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/12-human-in-loop.html" class="tutorial-card">
+          <span class="tutorial-card-num">12</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">人机协同</div>
+            <div class="tutorial-card-desc">interaction_request chunk 监听、submit_interaction() 响应、question / confirm / feedback 三种场景、超时处理</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+        <a href="sdk/13-storage.html" class="tutorial-card">
+          <span class="tutorial-card-num">13</span>
+          <div class="tutorial-card-body">
+            <div class="tutorial-card-title">存储抽象</div>
+            <div class="tutorial-card-desc">SessionStore / AuditLogger / FileHistory 三个 Protocol、自定义实现接入 PostgreSQL 等、完整错误处理体系</div>
+          </div>
+          <div class="tutorial-card-meta">
+            <span class="reading-time">约 8 min</span>
+          </div>
+          <span class="tutorial-card-arrow">→</span>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="anim" style="margin-top:24px;padding:32px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-xl);text-align:center">
+      <p style="margin-bottom:20px;color:var(--text-secondary)">从第一篇开始，5 分钟内跑通你的第一个 AI 编码任务</p>
+      <a href="sdk/01-single-run.html" class="btn btn-primary btn-lg">开始第 01 篇 →</a>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="sdk/01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="sdk/02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="sdk/03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="sdk.html">查看全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

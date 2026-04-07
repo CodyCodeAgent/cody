@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03. 流式输出全解 – Cody SDK 教程</title>
+  <meta name="description" content="掌握 Cody SDK 的 stream() 与 run_stream()、12 种流式事件、取消与思考模式。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html" class="active">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>基础篇</span>
+    </div>
+    <h1>流式输出全解</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-blue">基础篇</span>
+      <span class="badge badge-green">第 03 篇</span>
+      <span class="reading-time">📖 约 12 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>Agent 任务往往较长：模型要逐段推理、还可能穿插工具调用。若只用一次性 <code>run()</code>，用户要等到整轮结束才能看到输出；<strong>流式</strong>则把过程拆成一条条 <code>StreamChunk</code>，你可以实时刷新终端、Web UI 或日志，并在界面上展示「正在调用哪个工具」——可读性与可调试性都会好得多。</p>
+
+    <p>本篇假设你已按 <a href="01-single-run.html">第 01 篇</a> 配置好环境变量（模型 <code>qwen3.5-plus</code>、<code>CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</code> 等）。下面先给可运行的最小示例，再逐项说明字段与 12 种事件类型。</p>
+
+    <h2 id="basic-stream">最基础的流式示例</h2>
+    <p>下面用 <code>AsyncCodyClient(workdir=".")</code>，不显式传模型，依赖环境变量。循环里我们关心两类分片：正文增量 <code>text_delta</code>，以及结束时的 <code>done</code>（可读取 <code>usage</code>）。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> AsyncCodyClient
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    <span class="cm"># 模型、API Key、Base URL 来自环境变量（见第 01 篇）</span>
+    client = AsyncCodyClient(<span class="nb">workdir</span>=<span class="str">"."</span>)
+    <span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"用一句话说明 Cody 是什么框架"</span>):
+        <span class="kw">if</span> chunk.<span class="nb">type</span> == <span class="str">"text_delta"</span>:
+            <span class="nb">print</span>(chunk.<span class="nb">content</span>, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"done"</span> <span class="kw">and</span> chunk.<span class="nb">usage</span>:
+            <span class="nb">print</span>()
+            <span class="nb">print</span>(
+                <span class="str">f"完成：input={chunk.usage.input_tokens} "</span>
+                <span class="str">f"output={chunk.usage.output_tokens} total={chunk.usage.total_tokens}"</span>
+            )
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <p>流中<strong>第一个</strong>有意义的分片通常是 <code>session_start</code>（携带 <code>session_id</code>），便于与 <a href="02-multi-turn.html">多轮对话</a> 衔接；上面示例未打印它，但你在产品代码里应保存该 id。</p>
+
+    <h2 id="streamchunk-fields"><code>StreamChunk</code> 常用字段</h2>
+    <p><code>StreamChunk</code> 是基类，各事件类型会填充其中一部分字段。除下表外，<code>compact</code> / <code>prune</code> 等还会带上 <code>original_messages</code>、<code>compacted_messages</code>、<code>estimated_tokens_saved</code> 等（见后文分支示例）。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th>类型</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>type</code></td>
+          <td><code>str</code></td>
+          <td>事件类型，用于 <code>if chunk.type == "..."</code> 分支</td>
+        </tr>
+        <tr>
+          <td><code>content</code></td>
+          <td><code>str</code></td>
+          <td>文本增量、工具结果正文、熔断说明、交互提示文案等，依类型而定</td>
+        </tr>
+        <tr>
+          <td><code>session_id</code></td>
+          <td><code>str | None</code></td>
+          <td>当前会话 id</td>
+        </tr>
+        <tr>
+          <td><code>tool_name</code></td>
+          <td><code>str | None</code></td>
+          <td><code>tool_call</code> / <code>tool_result</code> 时的工具名</td>
+        </tr>
+        <tr>
+          <td><code>args</code></td>
+          <td><code>dict | None</code></td>
+          <td><code>tool_call</code> 时的参数</td>
+        </tr>
+        <tr>
+          <td><code>tool_call_id</code></td>
+          <td><code>str | None</code></td>
+          <td>配对同一次调用的 <code>tool_call</code> 与 <code>tool_result</code></td>
+        </tr>
+        <tr>
+          <td><code>usage</code></td>
+          <td><code>Usage | None</code></td>
+          <td><code>done</code> 时 token 用量（<code>input_tokens</code> / <code>output_tokens</code> / <code>total_tokens</code>）</td>
+        </tr>
+        <tr>
+          <td><code>request_id</code></td>
+          <td><code>str | None</code></td>
+          <td><code>interaction_request</code> 时的人机交互请求 id</td>
+        </tr>
+        <tr>
+          <td><code>interaction_kind</code></td>
+          <td><code>str | None</code></td>
+          <td>如 <code>"question"</code> / <code>"confirm"</code> / <code>"feedback"</code></td>
+        </tr>
+        <tr>
+          <td><code>options</code></td>
+          <td><code>list[str] | None</code></td>
+          <td>交互场景下的可选答案列表</td>
+        </tr>
+        <tr>
+          <td><code>retry_attempt</code></td>
+          <td><code>int | None</code></td>
+          <td><code>retry</code> 时：刚失败的是第几次尝试（1-based）</td>
+        </tr>
+        <tr>
+          <td><code>retry_max_attempts</code></td>
+          <td><code>int | None</code></td>
+          <td><code>retry</code> 时：最多尝试次数</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="event-types">12 种流式事件类型</h2>
+    <p>下面按 <code>chunk.type</code> 的值列出教程约定掌握的 12 类（与 SDK 分片一一对应）。此外，实际流中还可能遇到 <code>prune</code>（工具输出裁剪）、<code>user_input_received</code>（人机流程中的用户输入确认）等，处理方式相同：按 <code>type</code> 增加分支即可。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th><code>type</code></th>
+          <th>含义（简述）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>session_start</code></td>
+          <td>始终靠前出现，携带 <code>session_id</code>，标志本轮流开始</td>
+        </tr>
+        <tr>
+          <td><code>text_delta</code></td>
+          <td>模型面向用户的正文增量</td>
+        </tr>
+        <tr>
+          <td><code>thinking</code></td>
+          <td>思考模式下的推理文本增量（需 Builder 开启 <code>thinking</code>）</td>
+        </tr>
+        <tr>
+          <td><code>tool_call</code></td>
+          <td>模型发起工具调用：<code>tool_name</code>、<code>args</code>、<code>tool_call_id</code></td>
+        </tr>
+        <tr>
+          <td><code>tool_result</code></td>
+          <td>工具执行结果：<code>content</code> 为结果文本，并带 <code>tool_call_id</code> 与 <code>tool_name</code></td>
+        </tr>
+        <tr>
+          <td><code>done</code></td>
+          <td>本轮正常结束，带 <code>usage</code>，<code>content</code> 为汇总输出</td>
+        </tr>
+        <tr>
+          <td><code>cancelled</code></td>
+          <td>已通过 <code>cancel_event</code> 取消</td>
+        </tr>
+        <tr>
+          <td><code>compact</code></td>
+          <td>上下文压缩事件，可观测节省了多少消息/ token</td>
+        </tr>
+        <tr>
+          <td><code>retry</code></td>
+          <td>LLM 调用失败且将重试前发出；应清空 UI 中未确认的流式缓冲</td>
+        </tr>
+        <tr>
+          <td><code>circuit_breaker</code></td>
+          <td>熔断触发（token/费用/循环检测等），<code>content</code> 含原因摘要</td>
+        </tr>
+        <tr>
+          <td><code>interaction_request</code></td>
+          <td>需要人工输入：<code>request_id</code>、<code>interaction_kind</code>、<code>options</code></td>
+        </tr>
+        <tr>
+          <td><code>unknown</code>（类名 <code>UnknownChunk</code>）</td>
+          <td>未知或未映射的事件类型，兜底分支</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="handle-all">完整分支：一次处理所有常见事件</h2>
+    <p>产品级代码建议为每种 <code>type</code> 写清分支：这样日志、UI 状态机、指标上报都能对齐。下面示例演示参数形态（含 <code>stream()</code> 的 <code>session_id</code>、<code>include_tools</code> / <code>exclude_tools</code> 占位）。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> AsyncCodyClient
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = AsyncCodyClient(<span class="nb">workdir</span>=<span class="str">"."</span>)
+    <span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(
+        <span class="str">"列出当前目录下的 Python 文件并统计数量"</span>,
+        <span class="nb">session_id</span>=<span class="kw">None</span>,          <span class="cm"># 多轮时传入已有 id</span>
+        <span class="nb">cancel_event</span>=<span class="kw">None</span>,      <span class="cm"># 需要取消时传入 asyncio.Event</span>
+        <span class="nb">include_tools</span>=<span class="kw">None</span>,   <span class="cm"># 非 None 时仅允许列表内工具名</span>
+        <span class="nb">exclude_tools</span>=<span class="kw">None</span>,   <span class="cm"># 非 None 时排除列表内工具</span>
+    ):
+        <span class="kw">if</span> chunk.<span class="nb">type</span> == <span class="str">"session_start"</span>:
+            <span class="nb">print</span>(<span class="str">f"[会话] {chunk.session_id}"</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"text_delta"</span>:
+            <span class="nb">print</span>(chunk.<span class="nb">content</span>, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"thinking"</span>:
+            <span class="nb">print</span>(<span class="str">f"\n[思考] {chunk.content}"</span>, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"tool_call"</span>:
+            <span class="nb">print</span>(<span class="str">f"\n[调用] {chunk.tool_name} id={chunk.tool_call_id} args={chunk.args}"</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"tool_result"</span>:
+            <span class="nb">print</span>(<span class="str">f"\n[结果] {chunk.tool_name} id={chunk.tool_call_id} -&gt; {chunk.content[:200]}..."</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"done"</span>:
+            <span class="nb">print</span>(<span class="str">"\n[完成]"</span>)
+            <span class="kw">if</span> chunk.<span class="nb">usage</span>:
+                <span class="nb">print</span>(<span class="str">f"usage: {chunk.usage}"</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"cancelled"</span>:
+            <span class="nb">print</span>(<span class="str">"\n[已取消]"</span>)
+            <span class="kw">break</span>
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"compact"</span>:
+            <span class="nb">print</span>(
+                <span class="str">f"\n[压缩] {chunk.original_messages}-&gt;{chunk.compacted_messages} "</span>
+                <span class="str">f"saved≈{chunk.estimated_tokens_saved}"</span>
+            )
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"retry"</span>:
+            <span class="nb">print</span>(
+                <span class="str">f"\n[重试] attempt={chunk.retry_attempt}/"</span>
+                <span class="str">f"{chunk.retry_max_attempts} err={chunk.content!r}"</span>
+            )
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"circuit_breaker"</span>:
+            <span class="nb">print</span>(<span class="str">f"\n[熔断] {chunk.content}"</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"interaction_request"</span>:
+            <span class="nb">print</span>(
+                <span class="str">f"\n[交互] kind={chunk.interaction_kind} id={chunk.request_id} "</span>
+                <span class="str">f"options={chunk.options}\n{chunk.content}"</span>
+            )
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"unknown"</span>:
+            <span class="nb">print</span>(<span class="str">f"\n[未知分片] {chunk!r}"</span>)
+        <span class="kw">else</span>:
+            <span class="cm"># prune、user_input_received 等</span>
+            <span class="nb">print</span>(<span class="str">f"\n[其他:{chunk.type}] {chunk.content[:120]!r}"</span>)
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h2 id="tool-events">工具调用事件：<code>tool_call</code> 与 <code>tool_result</code></h2>
+    <p>Agent 执行真实任务时，模型会先发出 <code>tool_call</code>（要调什么、参数是什么），运行器执行后再来 <code>tool_result</code>（结果字符串在 <code>content</code>）。两者通过相同的 <code>tool_call_id</code> 配对，UI 上可以用 id 把「进行中的调用」与「返回结果」连成一条时间线。</p>
+
+    <div class="callout callout-tip">
+      <p><strong>调试建议</strong>：对 <code>tool_result</code> 的 <code>content</code> 做长度截断后再上屏，避免一次打印数万字 JSON；完整内容可写入日志文件。</p>
+    </div>
+
+    <h2 id="cancel">流式取消：<code>cancel_event</code></h2>
+    <p>从 v1.10.3 起，<code>stream(..., cancel_event=asyncio.Event())</code> 可在另一协程里 <code>cancel.set()</code>，运行器会尽快结束并发出 <code>cancelled</code> 分片。消费侧在收到 <code>cancelled</code> 后应 <code>break</code>，避免继续处理旧缓冲。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> AsyncCodyClient
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = AsyncCodyClient(<span class="nb">workdir</span>=<span class="str">"."</span>)
+    cancel = asyncio.Event()
+
+    <span class="kw">async</span> <span class="kw">def</span> <span class="fn">stop_soon</span>() -&gt; <span class="nb">None</span>:
+        <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="str">2.0</span>)
+        cancel.<span class="fn">set</span>()  <span class="cm"># 模拟用户点击「停止」</span>
+
+    stop_task = asyncio.<span class="fn">create_task</span>(<span class="fn">stop_soon</span>())
+    <span class="kw">try</span>:
+        <span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"写一首很长的叙事诗"</span>, <span class="nb">cancel_event</span>=cancel):
+            <span class="kw">if</span> chunk.<span class="nb">type</span> == <span class="str">"text_delta"</span>:
+                <span class="nb">print</span>(chunk.<span class="nb">content</span>, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+            <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"cancelled"</span>:
+                <span class="nb">print</span>(<span class="str">"\n[流已取消]"</span>)
+                <span class="kw">break</span>
+    <span class="kw">finally</span>:
+        stop_task.<span class="fn">cancel</span>()
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h2 id="thinking">思考模式与 <code>thinking</code> 分片</h2>
+
+    <div class="callout callout-info">
+      <p>部分模型支持「思考」内容：与面向用户的 <code>text_delta</code> 分离。通过 Builder <code>.thinking(True, budget=...)</code> 开启后，流中会出现 <code>chunk.type == "thinking"</code>，<code>content</code> 为思考文本增量。下面示例同时演示如何显式指定 <span class="badge badge-purple">qwen3.5-plus</span> 与 DashScope Coding 端点（也可继续只用环境变量）。</p>
+    </div>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = (
+        Cody()
+        .<span class="fn">workdir</span>(<span class="str">"."</span>)
+        .<span class="fn">model</span>(<span class="str">"qwen3.5-plus"</span>)
+        .<span class="fn">base_url</span>(<span class="str">"https://coding.dashscope.aliyuncs.com/v1"</span>)
+        .<span class="fn">api_key</span>(<span class="str">"sk-xxx"</span>)  <span class="cm"># 建议使用环境变量，勿提交密钥</span>
+        .<span class="fn">thinking</span>(<span class="kw">True</span>, <span class="nb">budget</span>=<span class="nb">10000</span>)
+        .<span class="fn">build</span>()
+    )
+    <span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"简要分析采用异步 I/O 的利弊"</span>):
+        <span class="kw">if</span> chunk.<span class="nb">type</span> == <span class="str">"thinking"</span>:
+            <span class="nb">print</span>(<span class="str">f"[思考] {chunk.content}"</span>, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+        <span class="kw">elif</span> chunk.<span class="nb">type</span> == <span class="str">"text_delta"</span>:
+            <span class="nb">print</span>(chunk.<span class="nb">content</span>, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h2 id="retry"><code>retry</code> 事件</h2>
+    <p>当底层 LLM 请求失败且错误属于可重试类型（如限流、5xx）时，运行器在退避等待<strong>之前</strong>会发出 <code>retry</code> 分片。字段含义与 Core 层 <code>RetryEvent</code> 一致：<code>retry_attempt</code> 为刚失败的尝试序号（从 1 开始），<code>retry_max_attempts</code> 为计划中的最多尝试次数，<code>content</code> 为错误信息字符串。</p>
+    <p>收到 <code>retry</code> 后，建议在客户端<strong>丢弃本轮已缓冲的未完成文本/思考/工具状态</strong>，避免重试成功后与旧片段拼接错位。</p>
+
+    <h2 id="stream-vs-run-stream"><code>stream()</code> 与 <code>run_stream()</code></h2>
+    <p>二者<strong>完全等价</strong>：<code>run_stream</code> 仅是 <code>stream</code> 的别名，便于与文档或其它示例命名统一。任选其一即可。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 以下两种写法相同</span>
+<span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"任务"</span>):
+    ...
+<span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">run_stream</span>(<span class="str">"任务"</span>):
+    ...</pre>
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>流式 API 的核心是 <code>async for chunk in client.stream(...)</code>：用 <code>chunk.type</code> 驱动状态机，用 <code>text_delta</code> / <code>thinking</code> 做实时输出，用 <code>tool_call</code> 与 <code>tool_result</code> 展示 Agent 行为，用 <code>done</code> 收 <code>usage</code>，用 <code>cancel_event</code> 与 <code>cancelled</code> 做可中断任务。下一篇 <a href="04-tools.html">工具直接调用</a> 会进一步聚焦如何在代码里精确调用内置工具、与流式事件对照阅读。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="02-multi-turn.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">多轮对话</span>
+      </a>
+      <a href="04-tools.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">工具直接调用</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

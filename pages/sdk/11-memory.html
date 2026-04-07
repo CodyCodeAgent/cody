@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>11. 项目记忆 – Cody SDK 教程</title>
+  <meta name="description" content="使用 add_memory / get_memory / clear_memory 在项目中积累 conventions 与决策等知识。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html" class="active">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>进阶篇</span>
+    </div>
+    <h1>项目记忆</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-yellow">进阶篇</span>
+      <span class="badge badge-green">第 11 篇</span>
+      <span class="reading-time">📖 约 7 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>多轮任务里，模型每次从零读仓库很慢，也容易重复踩坑。<span class="badge badge-blue">项目记忆</span>让你在仓库维度沉淀「怎么写、别碰什么、为何这么定」——下次 <code>run()</code> 时，符合条件的条目会自动注入 system prompt，相当于给 Agent 一份持续更新的项目小抄。</p>
+
+    <div class="callout callout-tip">
+      <p>本篇示例依赖第 01 篇的环境变量：<code>CODY_MODEL=qwen3.5-plus</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</code>。客户端使用 <code>AsyncCodyClient(workdir="...")</code>，不显式传 <code>model</code>。</p>
+    </div>
+
+    <h2 id="full-example">完整示例：写入、读取与清除</h2>
+    <p>下面脚本演示四条不同分类的 <code>add_memory</code>、用 <code>get_memory</code> 按类遍历，以及可选的 <code>clear_memory</code>。先跑通一遍，后面各节再拆开说明字段与存储规则。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody <span class="kw">import</span> AsyncCodyClient
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="kw">async with</span> <span class="fn">AsyncCodyClient</span>(<span class="nb">workdir</span>=<span class="str">"."</span>) <span class="kw">as</span> client:
+        <span class="cm"># 写入四类记忆（至少覆盖三种分类）</span>
+        <span class="kw">await</span> client.<span class="fn">add_memory</span>(
+            <span class="nb">category</span>=<span class="str">"conventions"</span>,
+            <span class="nb">content</span>=<span class="str">"Python 使用 ruff，行宽 100；公开函数必须有类型注解。"</span>,
+            <span class="nb">confidence</span>=<span class="nb">0.9</span>,
+            <span class="nb">tags</span>=[<span class="str">"lint"</span>, <span class="str">"style"</span>],
+        )
+        <span class="kw">await</span> client.<span class="fn">add_memory</span>(
+            <span class="nb">category</span>=<span class="str">"patterns"</span>,
+            <span class="nb">content</span>=<span class="str">"异步测试使用 pytest.mark.asyncio；文件操作用 tmp_path。"</span>,
+            <span class="nb">confidence</span>=<span class="nb">0.85</span>,
+            <span class="nb">tags</span>=[<span class="str">"pytest"</span>, <span class="str">"async"</span>],
+        )
+        <span class="kw">await</span> client.<span class="fn">add_memory</span>(
+            <span class="nb">category</span>=<span class="str">"issues"</span>,
+            <span class="nb">content</span>=<span class="str">"sub_agent 模块顶部不能直接导入 _execute，需延迟导入避免循环依赖。"</span>,
+            <span class="nb">confidence</span>=<span class="nb">0.95</span>,
+            <span class="nb">tags</span>=[<span class="str">"gotcha"</span>],
+        )
+        <span class="kw">await</span> client.<span class="fn">add_memory</span>(
+            <span class="nb">category</span>=<span class="str">"decisions"</span>,
+            <span class="nb">content</span>=<span class="str">"新工具先在 core 实现，经 SDK 暴露，再在 CLI/Web 引用——禁止 core 反向依赖上层。"</span>,
+            <span class="nb">confidence</span>=<span class="nb">0.9</span>,
+            <span class="nb">tags</span>=[<span class="str">"architecture"</span>],
+        )
+
+        <span class="cm"># 读取：按分类拿到列表</span>
+        memory = <span class="kw">await</span> client.<span class="fn">get_memory</span>()
+        <span class="cm"># 结构: {"conventions": [...], "patterns": [...], "issues": [...], "decisions": [...]}</span>
+        <span class="cm"># 每条含 content / confidence / tags / created_at 等字段</span>
+        <span class="kw">for</span> cat <span class="kw">in</span> (<span class="str">"conventions"</span>, <span class="str">"patterns"</span>, <span class="str">"issues"</span>, <span class="str">"decisions"</span>):
+            items = memory.<span class="fn">get</span>(cat) <span class="kw">or</span> []
+            <span class="fn">print</span>(<span class="str">f"=== {cat} ({len(items)} 条) ==="</span>)
+            <span class="kw">for</span> row <span class="kw">in</span> items:
+                <span class="fn">print</span>(row[<span class="str">"content"</span>], <span class="str">"|"</span>, row[<span class="str">"confidence"</span>], row[<span class="str">"tags"</span>])
+
+        <span class="cm"># 清空当前 workdir 下的全部项目记忆（按需取消注释）</span>
+        <span class="cm"># await client.clear_memory()</span>
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+    <h2 id="categories">四类记忆分别是什么</h2>
+    <p>写入时必须使用下面四个 <code>category</code> 字符串之一。可以把它理解成「书架上的四个格子」，方便模型与人类检索。</p>
+    <table class="param-table">
+      <thead>
+        <tr><th>分类</th><th>适合放什么</th><th>示例一句话</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>conventions</code></td><td>格式、命名、Lint、文档风格等团队约定</td><td>「行宽 100，import 顺序交给 ruff」</td></tr>
+        <tr><td><code>patterns</code></td><td>可复用的实现套路、测试写法、目录习惯</td><td><code>tmp_path</code> 做文件测试、异步用 <code>pytest.mark.asyncio</code></td></tr>
+        <tr><td><code>issues</code></td><td>已知坑、易错 API、历史事故</td><td>某模块不能顶层 import，否则会循环依赖</td></tr>
+        <tr><td><code>decisions</code></td><td>架构或流程上的 ADR 式结论</td><td>新功能路径：core → SDK → Web/CLI</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="add-memory"><code>add_memory</code> 参数</h2>
+    <p>与 SDK 一致的签名如下：<code>category</code>、<code>content</code> 为位置参数；<code>confidence</code>、<code>tags</code> 等为关键字参数（另有 <code>source_task_id</code> / <code>source_task_title</code> 可选，用于标注来源任务）。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">await</span> client.<span class="fn">add_memory</span>(
+    <span class="nb">category</span>=<span class="str">"conventions"</span>,   <span class="cm"># "conventions" | "patterns" | "issues" | "decisions"</span>
+    <span class="nb">content</span>=<span class="str">"规范内容描述"</span>,
+    <span class="nb">confidence</span>=<span class="nb">0.9</span>,           <span class="cm"># 0.0–1.0；过低不会注入 prompt（见下文）</span>
+    <span class="nb">tags</span>=[<span class="str">"lint"</span>, <span class="str">"style"</span>],
+)</pre>
+    </div>
+    <table class="param-table">
+      <thead>
+        <tr><th>参数</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>category</code></td><td>四类之一，见上表。</td></tr>
+        <tr><td><code>content</code></td><td>自然语言描述，建议一句一意，便于淘汰旧条时仍可读。</td></tr>
+        <tr><td><code>confidence</code></td><td><code>0.0</code>–<code>1.0</code>；低于 <code>0.3</code> 的条目不会注入 system prompt。</td></tr>
+        <tr><td><code>tags</code></td><td>字符串列表，便于你本地筛选或后续扩展过滤逻辑。</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="get-memory"><code>get_memory</code> 返回值</h2>
+    <p><code>await client.get_memory()</code> 返回一个字典，键为四个分类名，值为该分类下的条目列表。每条记录至少包含：</p>
+    <ul>
+      <li><code>content</code>（<code>str</code>）</li>
+      <li><code>confidence</code>（<code>float</code>）</li>
+      <li><code>tags</code>（<code>list</code>）</li>
+      <li><code>created_at</code>（<code>str</code>）</li>
+    </ul>
+    <p>实现里还可能包含 <code>id</code> 等字段，遍历时代码用 <code>row.get("id")</code> 即可。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>memory = <span class="kw">await</span> client.<span class="fn">get_memory</span>()
+<span class="cm"># {"conventions": [...], "patterns": [...], "issues": [...], "decisions": [...]}</span>
+<span class="kw">for</span> cat, rows <span class="kw">in</span> memory.<span class="fn">items</span>():
+    <span class="kw">for</span> row <span class="kw">in</span> rows:
+        <span class="fn">print</span>(cat, row[<span class="str">"content"</span>], row[<span class="str">"confidence"</span>], row[<span class="str">"tags"</span>], row[<span class="str">"created_at"</span>])</pre>
+    </div>
+
+    <div class="callout callout-info">
+      <p><strong>存储与注入规则：</strong>文件落在 <code>~/.cody/memory/&lt;md5(workdir)&gt;/</code>，按 <code>workdir</code> 隔离不同仓库。每次 <code>run()</code> 时，框架会把符合条件的记忆自动拼进 system prompt。每个分类<strong>最多保留 50 条</strong>，超出时淘汰最旧的条目。<strong>置信度小于 0.3</strong> 的条目不会注入 prompt（仍会写入存储，除非你自行清理）。</p>
+    </div>
+
+    <h2 id="clear-memory"><code>clear_memory</code></h2>
+    <div class="callout callout-warn">
+      <p><code>clear_memory</code> 会删除当前 <code>workdir</code> 在本地存储中的<strong>全部</strong>四类记忆，且无内置「撤销」。执行前请确认已备份或确实需要重置。</p>
+    </div>
+    <p>需要换仓、重置实验或误写入大量噪声时，可一次性清空当前客户端对应 workdir 下的全部项目记忆：</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">await</span> client.<span class="fn">clear_memory</span>()</pre>
+    </div>
+    <p>清除后下一次 <code>run()</code> 将不再携带此前的记忆注入，直到你再次 <code>add_memory</code>。</p>
+
+    <h2 id="onboarding">场景：新人入职，用模型总结规范并写入记忆</h2>
+    <p>可以让 <code>qwen3.5-plus</code> 先阅读 <code>CONTRIBUTING.md</code> / <code>CLAUDE.md</code>（通过对话说明路径），再把结论拆成多条 <code>add_memory</code>。下面是一种极简编排：一次 <code>run()</code> 收集摘要，脚本里把要点固化进 <code>conventions</code> 与 <code>decisions</code>（实战中也可让模型输出 JSON 再解析）。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody <span class="kw">import</span> AsyncCodyClient
+
+<span class="kw">async def</span> <span class="fn">onboard</span>():
+    <span class="kw">async with</span> <span class="fn">AsyncCodyClient</span>(<span class="nb">workdir</span>=<span class="str">"."</span>) <span class="kw">as</span> client:
+        r = <span class="kw">await</span> client.<span class="fn">run</span>(
+            <span class="str">"阅读 CONTRIBUTING.md 与 CLAUDE.md，用三条要点概括代码风格与提交流程，不要改文件。"</span>
+        )
+        <span class="fn">print</span>(<span class="str">"模型摘要:\n"</span>, r.output)
+
+        <span class="cm"># 将已确认的规范写入记忆，供后续所有任务复用</span>
+        <span class="kw">await</span> client.<span class="fn">add_memory</span>(
+            <span class="nb">category</span>=<span class="str">"conventions"</span>,
+            <span class="nb">content</span>=<span class="str">"贡献指南要求：ruff + mypy，提交信息用英文祈使句。"</span>,
+            <span class="nb">confidence</span>=<span class="nb">0.85</span>,
+            <span class="nb">tags</span>=[<span class="str">"onboarding"</span>, <span class="str">"docs"</span>],
+        )
+        <span class="kw">await</span> client.<span class="fn">add_memory</span>(
+            <span class="nb">category</span>=<span class="str">"decisions"</span>,
+            <span class="nb">content</span>=<span class="str">"文档与代码同步更新；合并前必须跑通测试与 lint。"</span>,
+            <span class="nb">confidence</span>=<span class="nb">0.8</span>,
+            <span class="nb">tags</span>=[<span class="str">"onboarding"</span>, <span class="str">"process"</span>],
+        )
+
+asyncio.<span class="fn">run</span>(<span class="fn">onboard</span>())</pre>
+    </div>
+    <div class="callout callout-tip">
+      <p>若只想记录「不确定的猜测」，可把 <code>confidence</code> 设为 <code>0.2</code> 等：仍会占用存储与条数配额，但不会污染后续 <code>run()</code> 的 system prompt。</p>
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>你现在已经会把项目知识拆成 <code>conventions</code> / <code>patterns</code> / <code>issues</code> / <code>decisions</code>，用 <code>add_memory</code> 写入、<code>get_memory</code> 读出，并了解存储目录、<code>run()</code> 自动注入、每类 50 条上限与低置信度过滤；需要重置时调用 <code>clear_memory</code> 即可。下一篇「<a href="12-human-in-loop.html">人机协同</a>」将介绍如何在自动化流程中插入人工确认与审批。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="10-events.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">事件与可观测性</span>
+      </a>
+      <a href="12-human-in-loop.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">人机协同</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

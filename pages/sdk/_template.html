@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- TITLE: "[篇号]. [文章标题] – Cody SDK 教程" -->
+  <title>01. 一次性对话 – Cody SDK 教程</title>
+  <meta name="description" content="[本篇一句话描述]">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<!-- ============================================================ NAV -->
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ============================================================ DOCS LAYOUT -->
+<div class="docs-layout">
+
+  <!-- ======== SIDEBAR ======== -->
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+
+    <!-- 基础篇 -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <!-- 当前篇：加 class="active"；其他篇：不加 -->
+        <li><a href="01-single-run.html" class="active">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+
+    <!-- 工具篇 -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+
+    <!-- 定制篇 -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+
+    <!-- 进阶篇 -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <!-- ======== MAIN CONTENT ======== -->
+  <main class="docs-content" id="main-content">
+
+    <!-- 文章头部（由 AI 按模板填写） -->
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>基础篇</span>
+    </div>
+
+    <h1>一次性对话</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-blue">基础篇</span>
+      <span class="badge badge-green">第 01 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ==========================================
+         ARTICLE CONTENT START
+         将下方注释替换为本篇教程的完整正文内容。
+         可使用的 HTML 组件：
+
+         代码块：
+           <div class="code-block">
+             <button class="copy-btn" aria-label="复制代码">Copy</button>
+             <pre><span class="kw">from</span> cody <span class="kw">import</span> AsyncCodyClient</pre>
+           </div>
+
+         语法高亮类：
+           .kw  → 关键字（红色）  如 from, import, async, await, def, class
+           .fn  → 函数名（紫色）  如 main, run
+           .str → 字符串（蓝色）  如 "hello"
+           .cm  → 注释（灰色斜体）如 # 这是注释
+           .nb  → 内置/参数（橙色）如 print, workdir
+
+         提示框：
+           <div class="callout callout-tip">提示内容</div>
+           <div class="callout callout-info">信息内容</div>
+           <div class="callout callout-warn">警告内容</div>
+
+         参数表：
+           <table class="param-table">
+             <thead><tr><th>参数</th><th>类型</th><th>说明</th></tr></thead>
+             <tbody><tr><td>workdir</td><td>str</td><td>工作目录路径</td></tr></tbody>
+           </table>
+
+         徽章：
+           <span class="badge badge-blue/green/purple/yellow">文字</span>
+
+         内联代码：<code>client.run()</code>
+         ========================================== -->
+
+    <!-- ARTICLE CONTENT START -->
+    <p>（此处为内容占位，由对应 prompt 的 AI 填写）</p>
+    <!-- ARTICLE CONTENT END -->
+
+
+    <!-- 上一篇 / 下一篇导航（按本篇位置修改） -->
+    <div class="article-prev-next">
+      <!-- 第 01 篇没有上一篇，删掉 prev-next-btn.prev 那个 a 标签 -->
+      <a href="#" class="prev-next-btn" style="visibility:hidden">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">占位</span>
+      </a>
+      <a href="02-multi-turn.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">多轮对话</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================ FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

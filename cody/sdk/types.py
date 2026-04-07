@@ -21,6 +21,7 @@ from ..core.runner import (
     DoneEvent,
     InteractionRequestEvent,
     PruneEvent,
+    RetryEvent,
     SessionStartEvent,
     StreamEvent as CoreStreamEvent,
     TaskMetadata,
@@ -88,6 +89,9 @@ class StreamChunk:
     request_id: Optional[str] = None
     interaction_kind: Optional[str] = None
     options: Optional[list[str]] = None
+    # Retry details (populated when type="retry")
+    retry_attempt: Optional[int] = None
+    retry_max_attempts: Optional[int] = None
 
 
 # ── Typed subclasses for isinstance() narrowing ─────────────────────────────
@@ -145,6 +149,12 @@ class DoneChunk(StreamChunk):
 class CancelledChunk(StreamChunk):
     """Stream was cancelled."""
     type: str = "cancelled"
+
+
+@dataclass
+class RetryChunk(StreamChunk):
+    """About to retry a failed LLM call (clear buffered partial output)."""
+    type: str = "retry"
 
 
 @dataclass
@@ -240,6 +250,13 @@ def _event_to_chunk(
         )
     elif isinstance(event, CancelledEvent):
         return CancelledChunk(session_id=session_id)
+    elif isinstance(event, RetryEvent):
+        return RetryChunk(
+            content=event.error,
+            session_id=session_id,
+            retry_attempt=event.attempt,
+            retry_max_attempts=event.max_attempts,
+        )
     elif isinstance(event, SessionStartEvent):
         return SessionStartChunk(session_id=session_id)
     elif isinstance(event, CircuitBreakerEvent):

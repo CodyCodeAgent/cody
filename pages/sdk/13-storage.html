@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>13. 存储抽象 – Cody SDK 教程</title>
+  <meta name="description" content="注入自定义 SessionStore、AuditLogger、FileHistory，并掌握 Cody SDK 异常类型分层处理。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html" class="active">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>进阶篇</span>
+    </div>
+    <h1>存储抽象</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-yellow">进阶篇</span>
+      <span class="badge badge-green">第 13 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>默认情况下，Cody 用本地 <strong>SQLite</strong>（及配套结构）持久化会话、审计与文件历史，适合开发与单机部署。到了生产环境，你往往希望换成 <strong>PostgreSQL</strong>、托管 KV 或公司自研存储。本篇说明如何通过 <span class="badge badge-purple">Protocol</span> 注入自定义实现，并与无状态模式组合；最后梳理 SDK 的异常体系，做到分层捕获。演示模型与全系列一致：<span class="badge badge-blue">qwen3.5-plus</span>（依赖环境变量，见第 01 篇）。</p>
+
+    <h2 id="three-protocols">三大存储 Protocol 与默认实现</h2>
+    <p>核心定义在 <code>cody.core.storage</code>：引擎只认「结构正确」的对象，不必继承任何基类。下表是三类存储的职责对照。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>Protocol</th>
+          <th>默认实现</th>
+          <th>模块位置</th>
+          <th>职责</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>SessionStoreProtocol</code></td>
+          <td><code>SessionStore</code>（SQLite）</td>
+          <td><code>cody/core/session.py</code></td>
+          <td>会话创建、消息追加与查询、列表与删除、压缩检查点（compaction）相关消息区间等。</td>
+        </tr>
+        <tr>
+          <td><code>AuditLoggerProtocol</code></td>
+          <td><code>AuditLogger</code></td>
+          <td><code>cody/core/audit.py</code></td>
+          <td>记录工具调用与关键事件，支持按条件查询、计数与清理。</td>
+        </tr>
+        <tr>
+          <td><code>FileHistoryProtocol</code></td>
+          <td><code>FileHistory</code></td>
+          <td><code>cody/core/file_history.py</code></td>
+          <td>记录文件改写、支持撤销/重做栈与变更列表。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info">
+      <p>另有一个 <code>MemoryStoreProtocol</code>（项目记忆）用于跨会话记忆，在 <a href="11-memory.html">第 11 篇</a> 已有侧重；本篇聚焦上述三类与 SDK 构建器注入。</p>
+    </div>
+
+    <h2 id="full-example">完整示例：自定义 SessionStore（模拟 PostgreSQL）</h2>
+    <p>下面是一段可直接运行的骨架：<code>PostgresStyleSessionStore</code> 用内存字典模拟「库表」，你把其中的读写换成 <code>asyncpg</code> / SQL 即可接入真实 PostgreSQL。客户端通过 <code>Cody().session_store(...).build()</code> 注入，模型仍读环境变量（<code>CODY_MODEL=qwen3.5-plus</code>）。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 完整示例：自定义 SessionStore + 运行一次任务</span>
+<span class="kw">import</span> asyncio
+<span class="kw">import</span> uuid
+<span class="kw">from</span> datetime <span class="kw">import</span> datetime, timezone
+
+<span class="kw">from</span> cody.core.session <span class="kw">import</span> Message, Session
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">class</span> PostgresStyleSessionStore:
+    <span class="cm">"""模拟 PG：内存实现；生产环境把 _sessions/_rows 换成 SQL。"""</span>
+
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="nb">self</span>, dsn: <span class="nb">str</span>) -&gt; <span class="nb">None</span>:
+        <span class="nb">self</span>._dsn = dsn
+        <span class="nb">self</span>._sessions: <span class="nb">dict</span>[<span class="nb">str</span>, Session] = {}
+        <span class="cm"># 每条消息带单调整数 id，语义对齐 SQLite messages.id</span>
+        <span class="nb">self</span>._rows: <span class="nb">dict</span>[<span class="nb">str</span>, <span class="nb">list</span>[<span class="nb">tuple</span>[<span class="nb">int</span>, Message]]] = {}
+
+    <span class="kw">def</span> <span class="fn">close</span>(<span class="nb">self</span>) -&gt; <span class="nb">None</span>:
+        <span class="kw">pass</span>
+
+    <span class="kw">def</span> <span class="fn">create_session</span>(
+        <span class="nb">self</span>, title: <span class="nb">str</span> = <span class="str">"New session"</span>, model: <span class="nb">str</span> = <span class="str">""</span>, workdir: <span class="nb">str</span> = <span class="str">""</span>
+    ) -&gt; Session:
+        now = datetime.now(timezone.utc).isoformat()
+        sid = uuid.uuid4().hex[:<span class="nb">12</span>]
+        s = Session(
+            <span class="nb">id</span>=sid,
+            title=title,
+            messages=[],
+            model=model,
+            workdir=workdir,
+            created_at=now,
+            updated_at=now,
+        )
+        <span class="nb">self</span>._sessions[sid] = s
+        <span class="nb">self</span>._rows[sid] = []
+        <span class="kw">return</span> s
+
+    <span class="kw">def</span> <span class="fn">add_message</span>(
+        <span class="nb">self</span>,
+        session_id: <span class="nb">str</span>,
+        role: <span class="nb">str</span>,
+        content: <span class="nb">str</span>,
+        images=None,
+    ) -&gt; Message:
+        msg = Message(role=role, content=content, images=<span class="nb">list</span>(images <span class="kw">or</span> []))
+        rows = <span class="nb">self</span>._rows.setdefault(session_id, [])
+        new_id = (<span class="nb">max</span>((r[<span class="nb">0</span>] <span class="kw">for</span> r <span class="kw">in</span> rows), default=<span class="nb">0</span>) + <span class="nb">1</span>)
+        rows.append((new_id, msg))
+        s = <span class="nb">self</span>._sessions[session_id]
+        s.updated_at = datetime.now(timezone.utc).isoformat()
+        <span class="kw">return</span> msg
+
+    <span class="kw">def</span> <span class="fn">get_session</span>(<span class="nb">self</span>, session_id: <span class="nb">str</span>) -&gt; Session | <span class="nb">None</span>:
+        s = <span class="nb">self</span>._sessions.get(session_id)
+        <span class="kw">if</span> s <span class="kw">is</span> <span class="kw">None</span>:
+            <span class="kw">return</span> <span class="kw">None</span>
+        msgs = [m <span class="kw">for</span> _, m <span class="kw">in</span> <span class="nb">self</span>._rows.get(session_id, [])]
+        <span class="kw">return</span> Session(
+            <span class="nb">id</span>=s.id,
+            title=s.title,
+            messages=msgs,
+            model=s.model,
+            workdir=s.workdir,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+            message_count=<span class="kw">None</span>,
+            compacted_summary=s.compacted_summary,
+            compacted_up_to=s.compacted_up_to,
+        )
+
+    <span class="kw">def</span> <span class="fn">list_sessions</span>(<span class="nb">self</span>, limit: <span class="nb">int</span> = <span class="nb">20</span>) -&gt; <span class="nb">list</span>[Session]:
+        items = <span class="nb">sorted</span>(
+            <span class="nb">self</span>._sessions.values(),
+            key=<span class="kw">lambda</span> x: x.updated_at,
+            reverse=<span class="kw">True</span>,
+        )[:limit]
+        out = []
+        <span class="kw">for</span> s <span class="kw">in</span> items:
+            cnt = <span class="nb">len</span>(<span class="nb">self</span>._rows.get(s.id, []))
+            out.append(
+                Session(
+                    <span class="nb">id</span>=s.id,
+                    title=s.title,
+                    messages=[],
+                    model=s.model,
+                    workdir=s.workdir,
+                    created_at=s.created_at,
+                    updated_at=s.updated_at,
+                    message_count=cnt,
+                )
+            )
+        <span class="kw">return</span> out
+
+    <span class="kw">def</span> <span class="fn">delete_session</span>(<span class="nb">self</span>, session_id: <span class="nb">str</span>) -&gt; <span class="nb">bool</span>:
+        ok = session_id <span class="kw">in</span> <span class="nb">self</span>._sessions
+        <span class="nb">self</span>._sessions.pop(session_id, <span class="kw">None</span>)
+        <span class="nb">self</span>._rows.pop(session_id, <span class="kw">None</span>)
+        <span class="kw">return</span> ok
+
+    <span class="kw">def</span> <span class="fn">get_latest_session</span>(<span class="nb">self</span>, workdir: <span class="nb">str</span> | <span class="kw">None</span> = <span class="kw">None</span>) -&gt; Session | <span class="kw">None</span>:
+        cand = [
+            s
+            <span class="kw">for</span> s <span class="kw">in</span> <span class="nb">self</span>._sessions.values()
+            <span class="kw">if</span> workdir <span class="kw">is</span> <span class="kw">None</span> <span class="kw">or</span> s.workdir == workdir
+        ]
+        <span class="kw">if</span> <span class="kw">not</span> cand:
+            <span class="kw">return</span> <span class="kw">None</span>
+        latest = <span class="nb">max</span>(cand, key=<span class="kw">lambda</span> x: x.updated_at)
+        <span class="kw">return</span> <span class="nb">self</span>.get_session(latest.id)
+
+    <span class="kw">def</span> <span class="fn">get_message_count</span>(<span class="nb">self</span>, session_id: <span class="nb">str</span>) -&gt; <span class="nb">int</span>:
+        <span class="kw">return</span> <span class="nb">len</span>(<span class="nb">self</span>._rows.get(session_id, []))
+
+    <span class="kw">def</span> <span class="fn">update_title</span>(<span class="nb">self</span>, session_id: <span class="nb">str</span>, title: <span class="nb">str</span>) -&gt; <span class="kw">None</span>:
+        <span class="kw">if</span> s := <span class="nb">self</span>._sessions.get(session_id):
+            s.title = title
+
+    <span class="kw">def</span> <span class="fn">save_compaction</span>(
+        <span class="nb">self</span>, session_id: <span class="nb">str</span>, summary: <span class="nb">str</span>, up_to_message_id: <span class="nb">int</span>
+    ) -&gt; <span class="kw">None</span>:
+        <span class="kw">if</span> s := <span class="nb">self</span>._sessions.get(session_id):
+            s.compacted_summary = summary
+            s.compacted_up_to = up_to_message_id
+            s.updated_at = datetime.now(timezone.utc).isoformat()
+
+    <span class="kw">def</span> <span class="fn">get_messages_after</span>(
+        <span class="nb">self</span>, session_id: <span class="nb">str</span>, after_id: <span class="nb">int</span>
+    ) -&gt; <span class="nb">list</span>[Message]:
+        <span class="kw">return</span> [m <span class="kw">for</span> mid, m <span class="kw">in</span> <span class="nb">self</span>._rows.get(session_id, []) <span class="kw">if</span> mid &gt; after_id]
+
+    <span class="kw">def</span> <span class="fn">get_last_message_id</span>(<span class="nb">self</span>, session_id: <span class="nb">str</span>) -&gt; <span class="nb">int</span> | <span class="kw">None</span>:
+        rows = <span class="nb">self</span>._rows.get(session_id, [])
+        <span class="kw">if</span> <span class="kw">not</span> rows:
+            <span class="kw">return</span> <span class="kw">None</span>
+        <span class="kw">return</span> <span class="nb">max</span>(mid <span class="kw">for</span> mid, _ <span class="kw">in</span> rows)
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="kw">None</span>:
+    store = PostgresStyleSessionStore(<span class="str">"postgresql://user:pass@localhost/cody"</span>)
+    client = (
+        Cody()
+        .workdir(<span class="str">"."</span>)
+        .session_store(store)
+        .build()
+    )
+    <span class="kw">async</span> <span class="kw">with</span> client:
+        r = <span class="kw">await</span> client.run(<span class="str">"用一句话说明当前目录下有哪些文件"</span>)
+        <span class="nb">print</span>(r.output)
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.run(main())</pre>
+    </div>
+
+    <h3>SessionStoreProtocol 必实现方法一览</h3>
+    <p>下列方法与 <code>cody/core/storage.py</code> 中 <code>SessionStoreProtocol</code> 一致；全部实现后，类型检查与运行期行为才能与默认 <code>SessionStore</code> 对齐（含上下文压缩用到的消息 id）。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>方法</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>close()</code></td><td>释放连接或句柄；无持久化时可空实现。</td></tr>
+        <tr><td><code>create_session(title, model, workdir)</code></td><td>创建会话并返回 <code>Session</code>。</td></tr>
+        <tr><td><code>add_message(session_id, role, content, images)</code></td><td>追加消息，返回 <code>Message</code>。</td></tr>
+        <tr><td><code>get_session(session_id)</code></td><td>按 id 取完整会话（含消息列表）；不存在返回 <code>None</code>。</td></tr>
+        <tr><td><code>list_sessions(limit)</code></td><td>最近会话列表，通常不带消息体、可带 <code>message_count</code>。</td></tr>
+        <tr><td><code>delete_session(session_id)</code></td><td>删除成功返回 <code>True</code>。</td></tr>
+        <tr><td><code>get_latest_session(workdir)</code></td><td>可选按工作目录筛选最近更新的会话。</td></tr>
+        <tr><td><code>get_message_count(session_id)</code></td><td>消息条数。</td></tr>
+        <tr><td><code>update_title(session_id, title)</code></td><td>更新标题。</td></tr>
+        <tr><td><code>save_compaction(session_id, summary, up_to_message_id)</code></td><td>写入压缩检查点。</td></tr>
+        <tr><td><code>get_messages_after(session_id, after_id)</code></td><td>取 id 大于 <code>after_id</code> 的消息。</td></tr>
+        <tr><td><code>get_last_message_id(session_id)</code></td><td>当前会话最后一条消息 id；无消息返回 <code>None</code>。</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="injection">在构建器上注入</h2>
+    <p>从 <code>cody.core.storage</code> 导入的是 Protocol 类型，用于标注你自己的类；注入走 <code>Cody</code> 链式 API：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">from</span> cody.core.storage <span class="kw">import</span> (
+    SessionStoreProtocol,
+    AuditLoggerProtocol,
+    FileHistoryProtocol,
+)
+
+client = (
+    Cody()
+    .session_store(my_session_store)
+    .audit_logger(my_audit_logger)
+    .file_history(my_file_history)
+    .build()
+)</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      <p>可以<strong>只替换其中一项</strong>：例如仅自定义 <code>session_store</code>，其余仍为默认 SQLite 实现。按需组合，避免「为了换存储而重写全套」。</p>
+    </div>
+
+    <h2 id="stateless">与 <code>stateless()</code> 的关系</h2>
+    <p><code>Cody().stateless().build()</code> 会为<strong>未显式指定</strong>的存储槽位填入空实现（<code>NullSessionStore</code>、<code>NullAuditLogger</code>、<code>NullFileHistory</code> 等），适合一次性脚本或无需落盘的场景。若在 <code>stateless()</code> 之后再调用 <code>.audit_logger(real_logger)</code>，则只有审计会恢复为真实实现——其余仍为 null。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = Cody().stateless().build()
+client = Cody().stateless().audit_logger(real_logger).build()  <span class="cm"># 仅覆盖审计</span></pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <p>无状态模式下会话不会真正持久化；若你仍注入自定义 <code>session_store</code>，则以你注入的为准（<code>stateless</code> 只处理仍为「未设置」的槽位）。</p>
+    </div>
+
+    <h2 id="errors">SDK 错误类型与分级处理</h2>
+    <p>所有具体异常均继承 <code>CodyError</code>，并带有 <code>message</code>、<code>code</code>、<code>details</code> 等字段。建议<strong>先捕获更具体的子类</strong>，最后再用 <code>CodyError</code> 兜底。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>类型</th>
+          <th>典型场景</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>CodyRateLimitError</code></td><td>模型 API 限流；可读 <code>retry_after</code>。</td></tr>
+        <tr><td><code>CodyToolError</code></td><td>工具执行失败；<code>details["tool_name"]</code>。</td></tr>
+        <tr><td><code>CodyPermissionError</code></td><td>工具或动作权限不足。</td></tr>
+        <tr><td><code>CodyNotFoundError</code></td><td>会话、技能、文件等资源不存在。</td></tr>
+        <tr><td><code>CodySessionError</code></td><td>会话状态异常（如无效 id）。</td></tr>
+        <tr><td><code>CodyModelError</code></td><td>模型调用失败（非限流类）。</td></tr>
+        <tr><td><code>CodyConfigError</code></td><td>配置错误（缺 key、非法项等）。</td></tr>
+        <tr><td><code>CodyTimeoutError</code></td><td>请求超时。</td></tr>
+        <tr><td><code>CodyConnectionError</code></td><td>网络或连接问题。</td></tr>
+        <tr><td><code>CodyError</code></td><td>基类，兜底其他 SDK 错误。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> (
+    CodyError, CodyModelError, CodyToolError, CodyPermissionError,
+    CodyNotFoundError, CodyRateLimitError, CodyConfigError,
+    CodyTimeoutError, CodyConnectionError, CodySessionError,
+)
+
+<span class="kw">try</span>:
+    result = <span class="kw">await</span> client.run(<span class="str">"任务"</span>)
+<span class="kw">except</span> CodyRateLimitError <span class="kw">as</span> e:
+    <span class="kw">await</span> asyncio.sleep(e.retry_after)
+    result = <span class="kw">await</span> client.run(<span class="str">"任务"</span>)
+<span class="kw">except</span> CodyToolError <span class="kw">as</span> e:
+    <span class="nb">print</span>(<span class="str">f"工具 {e.details['tool_name']} 失败: {e.message}"</span>)
+<span class="kw">except</span> CodyPermissionError <span class="kw">as</span> e:
+    <span class="nb">print</span>(<span class="str">f"权限拒绝: {e.message}"</span>)
+<span class="kw">except</span> CodyError <span class="kw">as</span> e:
+    <span class="nb">print</span>(<span class="str">f"[{e.code}] {e.message}"</span>)</pre>
+    </div>
+
+    <div class="callout callout-info">
+      <p>生产代码中应对 <code>retry_after</code> 做 <code>None</code> 判断并设默认退避；限流与模型错误也可配合重试策略与日志上报。</p>
+    </div>
+
+    <h2 id="series-finale">系列总结</h2>
+    <p>恭喜你读完 <strong>Cody SDK 教程</strong>全部 13 篇。你从一次性调用与多轮对话出发，掌握了流式输出、工具与自定义工具、Prompt 与 Skills、MCP、安全与事件、项目记忆、人机协同，直至本篇的存储注入与错误分层——这已经覆盖用 Cody 搭建「自己的 AI 编程 Agent」的主干路径。</p>
+    <p>建议把本系列当作路线图：日常开发先按篇实践，遇到深坑再对照 <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub 仓库</a> 中的 <code>docs/</code>、源码与测试用例。开源的意义在于可 fork、可改、可回馈；如果你在生产里沉淀了更好的存储实现或排错笔记，也欢迎提 PR 与 Issue，让更多人少走弯路。</p>
+    <p>保持好奇、小步验证、把抽象（Protocol、事件、存储）落在真实业务里，你就会越来越顺手。下一程，祝你编码愉快。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="12-human-in-loop.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">人机协同</span>
+      </a>
+      <div></div>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

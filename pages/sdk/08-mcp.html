@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>08. 集成 MCP – Cody SDK 教程</title>
+  <meta name="description" content="通过 stdio 与 HTTP 连接 MCP 服务器，组合多服务器、自动/手动启动与运行时添加。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html" class="active">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>定制篇</span>
+    </div>
+    <h1>集成 MCP</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-purple">定制篇</span>
+      <span class="badge badge-green">第 08 篇</span>
+      <span class="reading-time">📖 约 10 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p><span class="badge badge-blue">Model Context Protocol</span>（MCP）把「外部系统能力」封装成标准工具接口，让模型通过统一协议读写仓库、文档、数据库等。Cody SDK 在进程内连接 MCP 服务器，把远端或本地进程暴露的工具并入 Agent 的工具集；你也可以绕过对话，直接列出并调用这些工具。</p>
+
+    <p>本篇假设你已按第 01 篇设置环境变量（模型使用 <code>qwen3.5-plus</code>）：</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">export</span> CODY_MODEL=qwen3.5-plus
+<span class="kw">export</span> CODY_MODEL_API_KEY=sk-xxx
+<span class="kw">export</span> CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</pre>
+    </div>
+
+    <h2 id="transports">两种传输：stdio 与 HTTP</h2>
+    <p>Cody 支持两类 MCP 传输，分别对应「本地子进程」与「远程 HTTP 端点」：</p>
+    <table class="param-table">
+      <thead>
+        <tr><th>传输</th><th>Builder 方法</th><th>典型场景</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-green">stdio</span></td>
+          <td><code>mcp_stdio_server()</code></td>
+          <td>本机启动 <code>npx</code>、可执行文件等子进程，通过标准输入输出与 MCP 通信（例如官方 GitHub MCP 包）。</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-purple">HTTP</span></td>
+          <td><code>mcp_http_server()</code></td>
+          <td>连接云托管或自建 URL，用请求头传递鉴权（例如飞书 MCP 网关）。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info">
+      <strong>与模型无关。</strong> MCP 只负责工具侧；演示仍用通义千问 <code>qwen3.5-plus</code>。若要在代码里显式指定模型，可用 <code>Cody().model(&quot;qwen3.5-plus&quot;).base_url(...).api_key(...)</code> 链式配置。
+    </div>
+
+    <h2 id="stdio-github">stdio 示例：接入 GitHub MCP</h2>
+    <p>下面是一段可直接运行的脚本：用 <code>npx</code> 拉取 <code>@modelcontextprotocol/server-github</code>，把 <code>GITHUB_TOKEN</code> 注入子进程环境，并开启首次 <code>run()</code> 时自动启动 MCP。跑通后再看各参数含义。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 需要本机已安装 Node.js / npx</span>
+<span class="kw">import</span> asyncio
+
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">&quot;.&quot;</span>)
+        .<span class="fn">mcp_stdio_server</span>(
+            name=<span class="str">&quot;github&quot;</span>,
+            command=<span class="str">&quot;npx&quot;</span>,
+            args=[<span class="str">&quot;-y&quot;</span>, <span class="str">&quot;@modelcontextprotocol/server-github&quot;</span>],
+            env={<span class="str">&quot;GITHUB_TOKEN&quot;</span>: <span class="str">&quot;ghp_xxx&quot;</span>},  <span class="cm"># 换成你的 fine-grained 或 classic token</span>
+        )
+        .<span class="fn">auto_start_mcp</span>(<span class="nb">True</span>)
+        .<span class="fn">build</span>()
+    )
+
+    <span class="kw">async with</span> client:
+        result = <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">&quot;列出我最近的 GitHub Pull Request，简要说明每个 PR 的状态。&quot;</span>)
+        <span class="fn">print</span>(result.output)
+
+
+<span class="kw">if</span> __name__ == <span class="str">&quot;__main__&quot;</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h3>这段代码在做什么</h3>
+    <ul>
+      <li><code>name=&quot;github&quot;</code>：服务器逻辑名，后续工具 ID 会带此前缀，例如 <code>github/list-repos</code>。</li>
+      <li><code>command</code> / <code>args</code>：启动 MCP 进程的命令行；<code>-y</code> 让 npx 无需交互确认即使用包。</li>
+      <li><code>env</code>：子进程环境变量；GitHub MCP 通过 <code>GITHUB_TOKEN</code> 鉴权。</li>
+      <li><code>auto_start_mcp(True)</code>：第一次调用 <code>run()</code> / <code>stream()</code> 前会自动拉起已配置的 MCP，无需手写 <code>start_mcp()</code>。</li>
+    </ul>
+
+    <div class="callout callout-warn">
+      <strong>安全提示。</strong> 不要把真实 token 写进仓库；开发时用环境变量拼接 <code>env={&quot;GITHUB_TOKEN&quot;: os.environ[&quot;GITHUB_TOKEN&quot;]}</code> 更安全。下一篇「安全与控制」会进一步收紧权限与路径策略。
+    </div>
+
+    <h2 id="http-feishu">HTTP 示例：飞书 MCP 端点</h2>
+    <p>远程 MCP 只需 URL 与可选请求头。飞书（Lark）提供托管端点时，通常用自定义头传递 UAT / 令牌：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">&quot;.&quot;</span>)
+        .<span class="fn">mcp_http_server</span>(
+            name=<span class="str">&quot;feishu&quot;</span>,
+            url=<span class="str">&quot;https://mcp.feishu.cn/mcp&quot;</span>,
+            headers={<span class="str">&quot;X-Lark-MCP-UAT&quot;</span>: <span class="str">&quot;token&quot;</span>},  <span class="cm"># 按飞书文档替换为真实令牌</span>
+        )
+        .<span class="fn">build</span>()
+    )
+
+    <span class="cm"># 未设置 auto_start_mcp 时须显式启动（也可改为链式 .auto_start_mcp(True)）</span>
+    <span class="kw">async with</span> client:
+        <span class="kw">await</span> client.<span class="fn">start_mcp</span>()
+        result = <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">&quot;根据我最近的飞书文档，总结本周行动项。&quot;</span>)
+        <span class="fn">print</span>(result.output)
+
+
+<span class="kw">if</span> __name__ == <span class="str">&quot;__main__&quot;</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <p>若省略上面的 <code>start_mcp()</code>，请改为在 Builder 上链式 <code>.auto_start_mcp(True)</code>，否则首次 <code>run()</code> 不会替你连接 MCP（见下文对比表）。</p>
+
+    <h2 id="multi-server">多服务器组合</h2>
+    <p>多个 <code>mcp_stdio_server</code> / <code>mcp_http_server</code> 可以叠在同一 Builder 上，Agent 会同时看到各服务器导出的工具，由模型自行选用：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    <span class="fn">Cody</span>()
+    .<span class="fn">workdir</span>(<span class="str">&quot;.&quot;</span>)
+    .<span class="fn">mcp_stdio_server</span>(
+        name=<span class="str">&quot;github&quot;</span>,
+        command=<span class="str">&quot;npx&quot;</span>,
+        args=[<span class="str">&quot;-y&quot;</span>, <span class="str">&quot;@modelcontextprotocol/server-github&quot;</span>],
+        env={<span class="str">&quot;GITHUB_TOKEN&quot;</span>: <span class="str">&quot;ghp_xxx&quot;</span>},
+    )
+    .<span class="fn">mcp_http_server</span>(
+        name=<span class="str">&quot;feishu&quot;</span>,
+        url=<span class="str">&quot;https://mcp.feishu.cn/mcp&quot;</span>,
+        headers={<span class="str">&quot;X-Lark-MCP-UAT&quot;</span>: <span class="str">&quot;token&quot;</span>},
+    )
+    .<span class="fn">auto_start_mcp</span>(<span class="nb">True</span>)
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      <strong>调试建议。</strong> 若只想确认两端是否都连上，可对 Agent 提问「当前有哪些 MCP 工具？」或下文直接用 <code>mcp_list_tools()</code> 打印清单。
+    </div>
+
+    <h2 id="auto-vs-manual"><code>auto_start_mcp</code> 与 <code>await client.start_mcp()</code></h2>
+    <p>二者解决同一问题（拉起 MCP 连接），时机不同：</p>
+    <table class="param-table">
+      <thead>
+        <tr><th>方式</th><th>行为</th><th>适用</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>auto_start_mcp(True)</code></td>
+          <td>首次 <code>run()</code> / <code>stream()</code> 前由 SDK 自动调用内部启动逻辑。</td>
+          <td>大多数应用代码，少写样板。</td>
+        </tr>
+        <tr>
+          <td><code>await client.start_mcp()</code></td>
+          <td>你在 <code>async with client</code> 体内显式控制启动时刻。</td>
+          <td>需要在对话前预热、先 <code>mcp_list_tools</code>、或严格编排启动顺序时。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    <span class="fn">Cody</span>()
+    .<span class="fn">workdir</span>(<span class="str">&quot;.&quot;</span>)
+    .<span class="fn">mcp_stdio_server</span>(
+        name=<span class="str">&quot;github&quot;</span>,
+        command=<span class="str">&quot;npx&quot;</span>,
+        args=[<span class="str">&quot;-y&quot;</span>, <span class="str">&quot;@modelcontextprotocol/server-github&quot;</span>],
+    )
+    .<span class="fn">build</span>()
+)
+
+<span class="kw">async with</span> client:
+    <span class="kw">await</span> client.<span class="fn">start_mcp</span>()  <span class="cm"># 手动启动，不依赖 auto_start_mcp</span>
+    <span class="cm"># … 此处可安全调用 mcp_list_tools / mcp_call …</span></pre>
+    </div>
+
+    <h2 id="runtime-add">运行时：<code>add_mcp_server</code></h2>
+    <p>配置在构建阶段未知时（例如按租户动态下发），可在已进入异步上下文后追加服务器。<code>transport</code> 为 <code>&quot;stdio&quot;</code> 或 <code>&quot;http&quot;</code>；stdio 用 <code>command</code> / <code>args</code> / <code>env</code>，HTTP 用 <code>url</code> / <code>headers</code>。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">async with</span> client:
+    <span class="kw">await</span> client.<span class="fn">add_mcp_server</span>(
+        name=<span class="str">&quot;notion&quot;</span>,
+        transport=<span class="str">&quot;http&quot;</span>,
+        url=<span class="str">&quot;https://example.com/mcp&quot;</span>,
+        headers={<span class="str">&quot;Authorization&quot;</span>: <span class="str">&quot;Bearer ...&quot;</span>},
+    )
+    <span class="kw">await</span> client.<span class="fn">add_mcp_server</span>(
+        name=<span class="str">&quot;gh&quot;</span>,
+        transport=<span class="str">&quot;stdio&quot;</span>,
+        command=<span class="str">&quot;npx&quot;</span>,
+        args=[<span class="str">&quot;-y&quot;</span>, <span class="str">&quot;@modelcontextprotocol/server-github&quot;</span>],
+        env={<span class="str">&quot;GITHUB_TOKEN&quot;</span>: <span class="str">&quot;ghp_xxx&quot;</span>},
+    )</pre>
+    </div>
+
+    <p>SDK 会把新服务器写入 core 配置并立即尝试启动；默认 <code>transport</code> 为 <code>stdio</code>，因此纯 GitHub 场景也可省略 <code>transport=</code>，与仓库内 <code>cody/sdk/examples/mcp_demo.py</code> 一致。</p>
+
+    <h2 id="list-call"><code>mcp_list_tools</code> 与 <code>mcp_call</code></h2>
+    <p>不必经过大模型，你也可以像调用普通异步 API 一样使用 MCP：<code>mcp_list_tools()</code> 返回已连接服务器上的工具元数据；<code>mcp_call</code> 的第一个参数为 <code>&quot;服务器名/工具名&quot;</code>，第二个为 JSON 参数字典。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">&quot;.&quot;</span>)
+        .<span class="fn">mcp_stdio_server</span>(
+            name=<span class="str">&quot;github&quot;</span>,
+            command=<span class="str">&quot;npx&quot;</span>,
+            args=[<span class="str">&quot;-y&quot;</span>, <span class="str">&quot;@modelcontextprotocol/server-github&quot;</span>],
+        )
+        .<span class="fn">build</span>()
+    )
+
+    <span class="kw">async with</span> client:
+        <span class="kw">await</span> client.<span class="fn">start_mcp</span>()
+
+        tools = <span class="kw">await</span> client.<span class="fn">mcp_list_tools</span>()
+        <span class="cm"># 每项含 name（含 server/ 前缀）、description、input_schema、server 等</span>
+
+        result = <span class="kw">await</span> client.<span class="fn">mcp_call</span>(<span class="str">&quot;github/list-repos&quot;</span>, {<span class="str">&quot;per_page&quot;</span>: <span class="nb">5</span>})
+        <span class="fn">print</span>(result)
+
+
+<span class="kw">if</span> __name__ == <span class="str">&quot;__main__&quot;</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <div class="callout callout-warn">
+      若未配置或未启动任何 MCP，<code>mcp_list_tools()</code> 返回空列表；此时调用 <code>mcp_call</code> 会触发配置错误。请确保已 <code>start_mcp()</code> 或已完成带 MCP 的 <code>run()</code>。
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>你现在已经能够：用 <span class="badge badge-green">stdio</span> 跑 GitHub 官方 MCP、用 <span class="badge badge-purple">HTTP</span> 接飞书类远程端点、把多台服务器拼进同一客户端、在自动与手动启动之间做选择，并在运行时用 <code>add_mcp_server</code> 扩展连接，用 <code>mcp_list_tools</code> / <code>mcp_call</code> 做直连调试。</p>
+    <p>下一篇 <a href="09-security.html">09. 安全与控制</a> 将把 Agent、工具与 MCP 放进更严格的安全与策略语境里——建议连贯阅读。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="07-skills.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">使用 Skills</span>
+      </a>
+      <a href="09-security.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">安全与控制</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

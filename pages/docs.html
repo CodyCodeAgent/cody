@@ -4,9 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>文档 – Cody AI Coding Agent 框架</title>
-  <meta name="description" content="Cody 完整文档：快速开始、SDK API 参考、CLI 命令参考、配置说明。开源 AI Coding Agent 框架。">
+  <meta name="description" content="Cody 文档中心：SDK 教程、CLI 指南、Web 指南、配置参考、API 参考。开源 AI Coding Agent 框架。">
   <meta property="og:title" content="文档 – Cody AI Coding Agent 框架">
-  <meta property="og:description" content="Cody 完整文档：快速开始、SDK API 参考、CLI 命令参考、配置说明。">
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#0a0e1a">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -38,11 +37,11 @@
       <li><a href="index.html">首页</a></li>
       <li><a href="docs.html" class="active">文档</a></li>
       <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
-      <li><a href="https://github.com/CodyCodeAgent/cody/tree/main/docs" target="_blank" rel="noopener">API</a></li>
       <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
     </ul>
 
     <div class="nav-actions">
+      <a href="sdk.html" class="btn btn-ghost">SDK 教程</a>
       <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
         GitHub
@@ -55,580 +54,89 @@
   </div>
 </nav>
 
-<!-- ============================================================ DOCS LAYOUT -->
-<div class="docs-layout">
+<!-- ============================================================ HERO -->
+<div class="docs-hub-hero">
+  <div class="container">
+    <div class="section-label">文档中心</div>
+    <h1>Cody 文档</h1>
+    <p class="hero-subtitle" style="margin:0 auto">选择适合你的文档类型，从入门教程到完整 API 参考，覆盖 Cody 的每个使用场景。</p>
+  </div>
+</div>
 
-  <!-- Sidebar -->
-  <aside class="docs-sidebar" role="complementary" aria-label="文档导航">
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">入门</div>
-      <ul class="sidebar-nav">
-        <li><a href="#quickstart" class="active">快速开始</a></li>
-        <li><a href="#requirements">环境要求</a></li>
-        <li><a href="#installation">安装</a></li>
-        <li><a href="#first-run">第一个示例</a></li>
-      </ul>
-    </div>
+<!-- ============================================================ CATEGORIES -->
+<div class="docs-hub-body">
+  <div class="container">
 
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">SDK 参考</div>
-      <ul class="sidebar-nav">
-        <li><a href="#sdk">AsyncCodyClient</a></li>
-        <li><a href="#sdk-builder">Builder 模式</a></li>
-        <li><a href="#sdk-run">run() / stream()</a></li>
-        <li><a href="#sdk-events">事件系统</a></li>
-        <li><a href="#sdk-custom-tools">自定义工具</a></li>
-      </ul>
-    </div>
+    <div class="doc-categories">
 
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">CLI 参考</div>
-      <ul class="sidebar-nav">
-        <li><a href="#cli">CLI 概览</a></li>
-        <li><a href="#cli-run">cody run</a></li>
-        <li><a href="#cli-chat">cody chat</a></li>
-        <li><a href="#cli-config">cody config</a></li>
-        <li><a href="#cli-skills">cody skills</a></li>
-      </ul>
-    </div>
+      <!-- SDK 教程 -->
+      <a href="sdk.html" class="doc-category-card anim">
+        <div class="feature-icon">📖</div>
+        <h3>SDK 教程</h3>
+        <p>循序渐进掌握 Cody Python SDK 的全部能力。从第一次调用到生产级扩展，共 13 篇实战教程。</p>
+        <div class="card-footer">
+          <span class="card-count">13 篇 · 基础 → 进阶</span>
+          <span class="card-cta">开始学习 →</span>
+        </div>
+      </a>
 
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">配置</div>
-      <ul class="sidebar-nav">
-        <li><a href="#config">配置项说明</a></li>
-        <li><a href="#config-env">环境变量</a></li>
-        <li><a href="#config-security">安全配置</a></li>
-        <li><a href="#config-models">模型配置</a></li>
-      </ul>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">进阶</div>
-      <ul class="sidebar-nav">
-        <li><a href="#skills">Agent Skills</a></li>
-        <li><a href="#circuit-breaker">熔断器</a></li>
-        <li><a href="#mcp">MCP 集成</a></li>
-        <li><a href="#sub-agents">子代理系统</a></li>
-      </ul>
-    </div>
-  </aside>
-
-  <!-- Main content -->
-  <main class="docs-content" id="main-content">
-
-    <!-- Hero -->
-    <div class="docs-hero">
-      <div class="section-label">文档</div>
-      <h1>Cody 文档</h1>
-      <p>开源 AI Coding Agent 框架 · v2.0.2 · Python 3.10+</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
-        <span class="badge badge-blue">v2.0.2</span>
-        <span class="badge badge-green">Python 3.10+</span>
-        <span class="badge badge-purple">MIT License</span>
-        <span class="badge badge-yellow">Beta</span>
+      <!-- CLI 指南 -->
+      <div class="doc-category-card disabled anim anim-delay-1">
+        <div class="feature-icon">⌨️</div>
+        <h3>CLI 指南</h3>
+        <p>通过命令行快速使用 Cody 执行编码任务、管理会话和配置模型。</p>
+        <div class="card-footer">
+          <span class="card-count">即将推出</span>
+          <span class="badge badge-yellow">Coming Soon</span>
+        </div>
       </div>
+
+      <!-- Web 指南 -->
+      <div class="doc-category-card disabled anim anim-delay-2">
+        <div class="feature-icon">🌐</div>
+        <h3>Web 指南</h3>
+        <p>使用浏览器界面与 Cody 交互，HTTP API 集成与 WebSocket 流式输出完整说明。</p>
+        <div class="card-footer">
+          <span class="card-count">即将推出</span>
+          <span class="badge badge-yellow">Coming Soon</span>
+        </div>
+      </div>
+
+      <!-- 配置参考 -->
+      <a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener" class="doc-category-card anim anim-delay-1">
+        <div class="feature-icon">⚙️</div>
+        <h3>配置参考</h3>
+        <p>所有配置项详解：环境变量、安全边界、模型切换、熔断器参数、MCP 服务器配置。</p>
+        <div class="card-footer">
+          <span class="card-count">GitHub 文档</span>
+          <span class="card-cta">查看 →</span>
+        </div>
+      </a>
+
+      <!-- API 参考 -->
+      <a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener" class="doc-category-card anim anim-delay-2">
+        <div class="feature-icon">📋</div>
+        <h3>API 参考</h3>
+        <p>Web 后端 HTTP 接口完整文档，适合构建自己的前端或将 Cody 集成到现有工具链。</p>
+        <div class="card-footer">
+          <span class="card-count">GitHub 文档</span>
+          <span class="card-cta">查看 →</span>
+        </div>
+      </a>
+
+      <!-- 架构设计 -->
+      <a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener" class="doc-category-card anim anim-delay-3">
+        <div class="feature-icon">🏗️</div>
+        <h3>架构设计</h3>
+        <p>深入了解 Cody 的分层架构、数据流、工具注册机制，适合框架贡献者和深度定制场景。</p>
+        <div class="card-footer">
+          <span class="card-count">GitHub 文档</span>
+          <span class="card-cta">查看 →</span>
+        </div>
+      </a>
+
     </div>
-
-    <!-- ======================================== QUICKSTART -->
-    <h2 id="quickstart">快速开始</h2>
-
-    <p>本指南帮助你在 5 分钟内运行第一个 Cody 任务。</p>
-
-    <h3 id="requirements">环境要求</h3>
-    <ul>
-      <li>Python <strong>3.10 或更高版本</strong>（支持 3.10 / 3.11 / 3.12 / 3.13）</li>
-      <li>至少一个 AI 模型的 API Key（推荐 Anthropic Claude 或 OpenAI）</li>
-      <li><code>pip</code> 或 <code>uv</code>（推荐使用 uv 更快）</li>
-    </ul>
-
-    <h3 id="installation">安装</h3>
-
-    <p>根据使用场景选择安装方式：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># 仅 SDK（最小依赖，适合嵌入到应用中）</span>
-pip install cody-ai
-
-<span class="cm"># SDK + CLI（终端用户）</span>
-pip install cody-ai[cli]
-
-<span class="cm"># SDK + CLI + TUI（全屏终端）</span>
-pip install cody-ai[tui]
-
-<span class="cm"># SDK + Web 后端（浏览器界面）</span>
-pip install cody-ai[web]
-
-<span class="cm"># 全部安装</span>
-pip install cody-ai[all]</pre>
-    </div>
-
-    <div class="callout callout-tip">
-      推荐使用 <code>uv</code> 安装：<code>uv add cody-ai[all]</code>，速度更快且依赖隔离更好。
-    </div>
-
-    <h3 id="first-run">第一个示例</h3>
-
-    <p>安装后配置 API Key，然后运行第一个任务：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># 方式一：环境变量</span>
-export CODY_MODEL_API_KEY='sk-ant-...'
-
-<span class="cm"># 方式二：交互式配置向导（推荐首次使用）</span>
-cody config setup</pre>
-    </div>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="kw">import</span> asyncio
-<span class="kw">from</span> cody <span class="kw">import</span> AsyncCodyClient
-
-<span class="kw">async def</span> <span class="fn">main</span>():
-    <span class="kw">async with</span> AsyncCodyClient(<span class="nb">workdir</span>=<span class="str">"."</span>) <span class="kw">as</span> client:
-        result = <span class="kw">await</span> client.run(<span class="str">"列出当前目录的所有 Python 文件"</span>)
-        <span class="nb">print</span>(result.output)
-
-asyncio.run(main())</pre>
-    </div>
-
-    <p>运行后，你会看到 AI 调用工具、列出文件，并输出结果。</p>
-
-    <!-- ======================================== SDK -->
-    <h2 id="sdk">SDK 参考：AsyncCodyClient</h2>
-
-    <p><code>AsyncCodyClient</code> 是 Cody 的主要 Python SDK 入口，直接包装核心引擎（in-process，无 HTTP 开销）。</p>
-
-    <h3 id="sdk-builder">Builder 模式</h3>
-
-    <p>推荐使用 Builder 链式配置，灵活且类型安全：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="kw">from</span> cody <span class="kw">import</span> Cody
-
-client = (
-    Cody()
-    .workdir(<span class="str">"/path/to/project"</span>)
-    .model(<span class="str">"claude-sonnet-4-0"</span>)
-    .circuit_breaker(max_tokens=<span class="nb">100_000</span>, max_cost_usd=<span class="nb">1.0</span>)
-    .before_tool(<span class="kw">lambda</span> name, args: <span class="nb">print</span>(<span class="str">f"Tool: {name}"</span>))
-    .build()
-)</pre>
-    </div>
-
-    <h3 id="sdk-run">run() 和 stream() 方法</h3>
-
-    <table class="param-table">
-      <thead>
-        <tr>
-          <th>参数</th>
-          <th>类型</th>
-          <th>说明</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>prompt</td>
-          <td>str | MultimodalPrompt</td>
-          <td>任务描述，支持纯文本或含图片的多模态提示</td>
-        </tr>
-        <tr>
-          <td>session_id</td>
-          <td>str | None</td>
-          <td>会话 ID，不传时自动创建新会话</td>
-        </tr>
-        <tr>
-          <td>include_tools</td>
-          <td>list[str] | None</td>
-          <td>白名单：只启用指定工具（如 <code>["read_file", "grep"]</code>）</td>
-        </tr>
-        <tr>
-          <td>exclude_tools</td>
-          <td>list[str] | None</td>
-          <td>黑名单：排除指定工具（如 <code>["exec_command"]</code>）</td>
-        </tr>
-        <tr>
-          <td>cancel_event</td>
-          <td>asyncio.Event | None</td>
-          <td>取消信号，设置后 run() 与取消事件竞速</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="kw">async with</span> AsyncCodyClient(<span class="nb">workdir</span>=<span class="str">"."</span>) <span class="kw">as</span> client:
-    <span class="cm"># 非流式运行</span>
-    result = <span class="kw">await</span> client.run(<span class="str">"重构 auth.py 的错误处理"</span>)
-    <span class="nb">print</span>(result.output)
-    <span class="nb">print</span>(<span class="str">f"Token 用量: {result.usage.total_tokens}"</span>)
-    <span class="nb">print</span>(<span class="str">f"会话 ID: {result.session_id}"</span>)
-
-    <span class="cm"># 流式输出（逐 chunk 处理）</span>
-    <span class="kw">async for</span> chunk <span class="kw">in</span> client.run_stream(<span class="str">"解释这段代码"</span>):
-        <span class="kw">if</span> chunk.type == <span class="str">"text_delta"</span>:
-            <span class="nb">print</span>(chunk.content, end=<span class="str">""</span>, flush=<span class="nb">True</span>)
-        <span class="kw">elif</span> chunk.type == <span class="str">"tool_call"</span>:
-            <span class="nb">print</span>(<span class="str">f"\n[工具调用: {chunk.tool_name}]"</span>)
-
-    <span class="cm"># 工具过滤：只允许读操作</span>
-    result = <span class="kw">await</span> client.run(
-        <span class="str">"分析代码质量"</span>,
-        include_tools=[<span class="str">"read_file"</span>, <span class="str">"grep"</span>, <span class="str">"glob"</span>]
-    )</pre>
-    </div>
-
-    <h3 id="sdk-events">事件系统</h3>
-
-    <p>通过 Builder <code>.on()</code> 注册事件处理器，监听工具调用、错误等事件：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="kw">from</span> cody <span class="kw">import</span> Cody, EventType
-
-client = (
-    Cody()
-    .workdir(<span class="str">"."</span>)
-    .on(EventType.TOOL_CALL, <span class="kw">lambda</span> chunk: <span class="nb">print</span>(<span class="str">f"→ {chunk.tool_name}"</span>))
-    .on(EventType.TOOL_RESULT, <span class="kw">lambda</span> chunk: <span class="nb">print</span>(<span class="str">f"← {chunk.tool_name} done"</span>))
-    .on(EventType.DONE, <span class="kw">lambda</span> chunk: <span class="nb">print</span>(<span class="str">f"完成，tokens={chunk.usage.total_tokens}"</span>))
-    .build()
-)</pre>
-    </div>
-
-    <h3 id="sdk-custom-tools">自定义工具</h3>
-
-    <p>通过 Builder <code>.tool()</code> 注册自定义异步工具函数，与内置工具享有相同的错误重试机制：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="kw">import</span> httpx
-
-<span class="kw">async def</span> <span class="fn">fetch_jira_ticket</span>(ticket_id: str) -> str:
-    <span class="str">"""从 Jira 获取工单详情"""</span>
-    <span class="kw">async with</span> httpx.AsyncClient() <span class="kw">as</span> c:
-        resp = <span class="kw">await</span> c.get(<span class="str">f"https://your.jira.com/rest/api/2/issue/{ticket_id}"</span>)
-        <span class="kw">return</span> resp.text
-
-client = (
-    Cody()
-    .workdir(<span class="str">"."</span>)
-    .tool(fetch_jira_ticket)
-    .build()
-)</pre>
-    </div>
-
-    <!-- ======================================== CLI -->
-    <h2 id="cli">CLI 参考</h2>
-
-    <p>CLI 提供命令行方式调用 Cody，适合在终端中快速执行任务或集成到脚本中。</p>
-
-    <div class="callout callout-info">
-      安装：<code>pip install cody-ai[cli]</code>
-    </div>
-
-    <h3 id="cli-run">cody run</h3>
-
-    <p>执行单次任务，完成后退出。</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre>cody run [OPTIONS] PROMPT
-
-<span class="cm">选项：</span>
-  --model TEXT          指定模型（如 claude-sonnet-4-0）
-  --workdir TEXT        工作目录（默认当前目录）
-  --image PATH          附带图片（可重复使用，多模态）
-  --session TEXT        续接已有会话
-  --continue            续接最近一次会话
-  --include-tools TEXT  逗号分隔的工具白名单
-  --exclude-tools TEXT  逗号分隔的工具黑名单
-  --max-tokens INT      Token 上限（熔断）
-  --max-cost FLOAT      成本上限 USD（熔断）
-  --max-steps INT       工具调用步数上限
-  -v, --verbose         输出详细日志
-
-<span class="cm">示例：</span>
-  cody run "为 api.py 添加类型注解"
-  cody run --image screenshot.png "修复这个 bug"
-  cody run --include-tools grep,read_file "分析代码质量"
-  cody run --max-tokens 50000 "重构整个模块"</pre>
-    </div>
-
-    <h3 id="cli-chat">cody chat</h3>
-
-    <p>交互式多轮对话，支持流式输出。</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre>cody chat [OPTIONS]
-
-<span class="cm">选项：</span>
-  --model TEXT      指定模型
-  --workdir TEXT    工作目录
-  --session TEXT    恢复已有会话
-
-<span class="cm">内置命令（对话中输入）：</span>
-  /exit   退出
-  /clear  清空对话历史
-  /save   保存当前会话
-
-<span class="cm">示例：</span>
-  cody chat
-  cody chat --session ses_abc123  # 恢复对话</pre>
-    </div>
-
-    <h3>cody tui</h3>
-
-    <p>全屏终端 UI（基于 Textual），适合长时间交互任务。安装：<code>pip install cody-ai[tui]</code></p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre>cody tui [OPTIONS]
-
-<span class="cm">TUI 内置斜杠命令：</span>
-  /image &lt;path&gt; &lt;msg&gt;   发送图片给 AI（多模态）
-  /skills               列出可用 Skills
-  /skills enable X      启用指定 Skill
-  /skills disable X     禁用指定 Skill
-  /settings             查看当前设置
-  /settings model X     切换模型
-  /settings thinking on|off  切换思考模式</pre>
-    </div>
-
-    <h3 id="cli-config">cody config</h3>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># 交互式配置向导（首次使用推荐）</span>
-cody config setup
-
-<span class="cm"># 查看当前配置（API Key 自动脱敏）</span>
-cody config show
-
-<span class="cm"># 设置单项配置</span>
-cody config set model claude-sonnet-4-0
-cody config set enable_thinking true
-cody config set thinking_budget 10000</pre>
-    </div>
-
-    <h3 id="cli-skills">cody skills</h3>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># 列出所有可用 Skills</span>
-cody skills list
-
-<span class="cm"># 查看 Skill 详情</span>
-cody skills show git
-
-<span class="cm"># 初始化项目（生成 CODY.md）</span>
-cody init</pre>
-    </div>
-
-    <!-- ======================================== CONFIG -->
-    <h2 id="config">配置项说明</h2>
-
-    <p>Cody 的配置存储在 <code>~/.cody/config.json</code>（全局）和 <code>.cody/config.json</code>（项目级，优先级更高）。</p>
-
-    <h3 id="config-env">环境变量</h3>
-
-    <table class="param-table">
-      <thead>
-        <tr><th>环境变量</th><th>说明</th><th>示例值</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>CODY_MODEL</td><td>主模型名称</td><td>claude-sonnet-4-0</td></tr>
-        <tr><td>CODY_MODEL_API_KEY</td><td>主模型 API Key</td><td>sk-ant-...</td></tr>
-        <tr><td>CODY_MODEL_BASE_URL</td><td>主模型 API Base URL（OpenAI 兼容）</td><td>https://api.openai.com/v1</td></tr>
-        <tr><td>CODY_SMALL_MODEL</td><td>小模型（用于压缩/摘要，成本低）</td><td>claude-haiku-3-5</td></tr>
-        <tr><td>CODY_CODING_PLAN_KEY</td><td>阿里百炼 Coding Plan Key</td><td>sk-sp-xxxxx</td></tr>
-        <tr><td>CODY_ENABLE_THINKING</td><td>开启思考模式</td><td>true</td></tr>
-        <tr><td>CODY_THINKING_BUDGET</td><td>思考 Token 预算</td><td>10000</td></tr>
-        <tr><td>CODY_SKILL_DIRS</td><td>额外 Skill 搜索目录（逗号分隔）</td><td>/my/skills,/team/skills</td></tr>
-        <tr><td>CODY_CORS_ORIGINS</td><td>Web 后端 CORS 白名单</td><td>http://localhost:3000</td></tr>
-      </tbody>
-    </table>
-
-    <h3 id="config-security">安全配置</h3>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># .cody/config.json</span>
-{
-  <span class="str">"security"</span>: {
-    <span class="str">"allowed_roots"</span>: [<span class="str">"/data"</span>, <span class="str">"/shared"</span>],
-    <span class="str">"strict_read_boundary"</span>: true,
-    <span class="str">"blocked_commands"</span>: [<span class="str">"rm -rf"</span>, <span class="str">"curl | sh"</span>]
-  }
-}</pre>
-    </div>
-
-    <ul>
-      <li><strong>allowed_roots</strong>：除 workdir 外还允许访问的目录列表（绝对路径）</li>
-      <li><strong>strict_read_boundary</strong>：开启后，读操作（read_file、grep 等）也受边界限制</li>
-      <li><strong>blocked_commands</strong>：自定义禁用命令模式（exec_command 检查）</li>
-    </ul>
-
-    <h3 id="config-models">多模型配置示例</h3>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># Claude（默认）</span>
-export CODY_MODEL_API_KEY='sk-ant-...'
-
-<span class="cm"># OpenAI</span>
-export CODY_MODEL='openai:gpt-4o'
-export CODY_MODEL_API_KEY='sk-...'
-
-<span class="cm"># DeepSeek</span>
-export CODY_MODEL='deepseek:deepseek-coder'
-export CODY_MODEL_API_KEY='sk-...'
-
-<span class="cm"># 智谱 GLM（OpenAI 兼容）</span>
-export CODY_MODEL='glm-4'
-export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
-export CODY_MODEL_API_KEY='sk-...'
-
-<span class="cm"># 阿里通义千问</span>
-export CODY_MODEL='qwen-coder-plus'
-export CODY_MODEL_BASE_URL='https://dashscope.aliyuncs.com/compatible-mode/v1'
-export CODY_MODEL_API_KEY='sk-...'</pre>
-    </div>
-
-    <!-- ======================================== SKILLS -->
-    <h2 id="skills">Agent Skills</h2>
-
-    <p>Skills 是 AI 的专业知识模块，遵循 <a href="https://agentskills.io/" target="_blank" rel="noopener">agentskills.io</a> 开放标准，可跨 Claude Code、Cursor 等 26+ 平台复用。</p>
-
-    <div class="callout callout-info">
-      Cody 内置 11 个 Skills：git、github、docker、npm、python、rust、go、java、web、cicd、testing。
-    </div>
-
-    <p>创建自定义 Skill：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># 项目级 Skill（优先级最高）</span>
-mkdir -p .cody/skills
-cat &gt; .cody/skills/my-skill.md &lt;&lt;'EOF'
----
-name: my-skill
-description: 描述这个 Skill 的用途，AI 根据此决定何时加载
-metadata:
-  author: your-name
-  version: "1.0"
----
-# 我的自定义 Skill
-
-AI 代理的操作指南...
-
-## 示例
-- 步骤一：...
-- 步骤二：...
-EOF</pre>
-    </div>
-
-    <p>Skill 加载优先级：<code>.cody/skills/</code>（项目）> <code>~/.cody/skills/</code>（用户）> 内置 Skills。</p>
-
-    <!-- ======================================== CIRCUIT BREAKER -->
-    <h2 id="circuit-breaker">熔断器</h2>
-
-    <p>熔断器防止失控 Agent 消耗过多资源，支持 Token 上限、成本上限和死循环检测：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="kw">from</span> cody <span class="kw">import</span> Cody, CircuitBreakerConfig
-
-client = (
-    Cody()
-    .workdir(<span class="str">"."</span>)
-    .circuit_breaker(
-        max_tokens=<span class="nb">100_000</span>,        <span class="cm"># Token 上限</span>
-        max_cost_usd=<span class="nb">2.0</span>,           <span class="cm"># 成本上限（USD）</span>
-        max_steps=<span class="nb">50</span>,               <span class="cm"># 工具调用步数上限</span>
-        loop_detect_turns=<span class="nb">5</span>,        <span class="cm"># 死循环检测窗口</span>
-        loop_similarity_threshold=<span class="nb">0.85</span>  <span class="cm"># 相似度阈值</span>
-    )
-    .build()
-)
-
-<span class="kw">try</span>:
-    result = <span class="kw">await</span> client.run(<span class="str">"复杂任务..."</span>)
-<span class="kw">except</span> CircuitBreakerError <span class="kw">as</span> e:
-    <span class="nb">print</span>(<span class="str">f"熔断触发: {e.reason}"</span>)  <span class="cm"># token_limit / cost_limit / loop / step_limit</span></pre>
-    </div>
-
-    <!-- ======================================== MCP -->
-    <h2 id="mcp">MCP 集成</h2>
-
-    <p>通过 MCP（Model Context Protocol）连接外部服务器，扩展 Agent 能力（GitHub、数据库等）：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># stdio 传输（本地进程）</span>
-client = (
-    Cody()
-    .workdir(<span class="str">"."</span>)
-    .mcp_stdio_server(
-        name=<span class="str">"github"</span>,
-        command=<span class="str">"npx"</span>,
-        args=[<span class="str">"@modelcontextprotocol/server-github"</span>],
-        env={<span class="str">"GITHUB_TOKEN"</span>: <span class="str">"ghp_..."</span>}
-    )
-    .build()
-)
-
-<span class="cm"># HTTP 传输（远程服务器，如飞书）</span>
-client = (
-    Cody()
-    .workdir(<span class="str">"."</span>)
-    .mcp_http_server(
-        name=<span class="str">"lark"</span>,
-        url=<span class="str">"https://mcp.feishu.cn/sse"</span>
-    )
-    .build()
-)</pre>
-    </div>
-
-    <!-- ======================================== SUB-AGENTS -->
-    <h2 id="sub-agents">子代理系统</h2>
-
-    <p>Cody 支持孵化专业子代理（code / research / test / generic），asyncio 并发执行，最多 5 个并发：</p>
-
-    <div class="code-block">
-      <button class="copy-btn">Copy</button>
-      <pre><span class="cm"># Agent 会自动使用 spawn_agent 工具</span>
-result = <span class="kw">await</span> client.run(
-    <span class="str">"""
-    请并发执行以下任务：
-    1. 分析 src/ 目录的代码质量（research agent）
-    2. 运行所有测试并生成报告（test agent）
-    3. 重构 utils.py 的错误处理（code agent）
-    """</span>
-)
-
-<span class="cm"># SDK 直接管理子代理</span>
-agent_id = <span class="kw">await</span> client.spawn_agent(
-    task=<span class="str">"分析安全漏洞"</span>,
-    agent_type=<span class="str">"research"</span>
-)
-status = <span class="kw">await</span> client.get_agent_status(agent_id)</pre>
-    </div>
-
-    <div class="callout callout-tip">
-      子代理支持恢复（resume）：调用 <code>client.resume_agent(agent_id)</code> 可从上次中断处继续。
-    </div>
-
-    <!-- Bottom nav -->
-    <div style="margin-top:56px;padding-top:32px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
-      <a href="index.html" class="btn btn-ghost">← 返回首页</a>
-      <a href="https://github.com/CodyCodeAgent/cody/tree/main/docs" class="btn btn-outline" target="_blank" rel="noopener">查看完整文档 →</a>
-    </div>
-
-  </main>
+  </div>
 </div>
 
 <!-- ============================================================ FOOTER -->
@@ -650,22 +158,22 @@ status = <span class="kw">await</span> client.get_agent_status(agent_id)</pre>
       </div>
 
       <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="sdk.html">SDK 教程</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">架构设计</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-group">
         <h4>产品</h4>
         <ul>
           <li><a href="index.html#features">功能特性</a></li>
           <li><a href="index.html#install">快速安装</a></li>
           <li><a href="index.html#models">多模型支持</a></li>
           <li><a href="index.html#tools">工具生态</a></li>
-        </ul>
-      </div>
-
-      <div class="footer-group">
-        <h4>文档</h4>
-        <ul>
-          <li><a href="#quickstart">快速开始</a></li>
-          <li><a href="#sdk">SDK 指南</a></li>
-          <li><a href="#cli">CLI 参考</a></li>
-          <li><a href="#config">配置说明</a></li>
         </ul>
       </div>
 

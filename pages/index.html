@@ -39,8 +39,8 @@
     <ul class="nav-links" role="list">
       <li><a href="index.html" class="active">首页</a></li>
       <li><a href="docs.html">文档</a></li>
+      <li><a href="sdk.html">SDK 教程</a></li>
       <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
-      <li><a href="https://github.com/CodyCodeAgent/cody/tree/main/docs" target="_blank" rel="noopener">API</a></li>
       <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
     </ul>
 
@@ -205,7 +205,9 @@
 <span class="t-prompt">$ </span>pip install cody-ai
 
 <span class="cm"># 配置 API Key</span>
-<span class="t-prompt">$ </span>export CODY_MODEL_API_KEY='sk-ant-...'</pre>
+<span class="t-prompt">$ </span>export CODY_MODEL=<span class="str">qwen3.5-plus</span>
+<span class="t-prompt">$ </span>export CODY_MODEL_API_KEY=<span class="str">sk-xxx</span>
+<span class="t-prompt">$ </span>export CODY_MODEL_BASE_URL=<span class="str">https://coding.dashscope.aliyuncs.com/v1</span></pre>
         </div>
 
         <div class="code-block" style="margin-top:16px">
@@ -335,16 +337,22 @@ asyncio.run(main())</pre>
     </div>
 
     <div class="anim anim-delay-2" style="margin-top:32px">
-      <div class="code-block" style="max-width:600px">
+      <div class="code-block" style="max-width:640px">
         <button class="copy-btn" aria-label="复制代码">Copy</button>
-        <pre><span class="cm"># 切换到 DeepSeek</span>
-<span class="kw">export</span> CODY_MODEL=<span class="str">'deepseek:deepseek-coder'</span>
-<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">'sk-...'</span>
+        <pre><span class="cm"># 通义千问 qwen3.5-plus（阿里云 Coding 专属端点）</span>
+<span class="kw">export</span> CODY_MODEL=<span class="str">qwen3.5-plus</span>
+<span class="kw">export</span> CODY_MODEL_BASE_URL=<span class="str">https://coding.dashscope.aliyuncs.com/v1</span>
+<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">sk-xxx</span>
 
-<span class="cm"># 切换到智谱 GLM（OpenAI 兼容）</span>
-<span class="kw">export</span> CODY_MODEL=<span class="str">'glm-4'</span>
-<span class="kw">export</span> CODY_MODEL_BASE_URL=<span class="str">'https://open.bigmodel.cn/api/paas/v4/'</span>
-<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">'sk-...'</span></pre>
+<span class="cm"># 切换到 DeepSeek</span>
+<span class="kw">export</span> CODY_MODEL=<span class="str">deepseek-chat</span>
+<span class="kw">export</span> CODY_MODEL_BASE_URL=<span class="str">https://api.deepseek.com/v1</span>
+<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">sk-xxx</span>
+
+<span class="cm"># 切换到智谱 GLM</span>
+<span class="kw">export</span> CODY_MODEL=<span class="str">glm-4</span>
+<span class="kw">export</span> CODY_MODEL_BASE_URL=<span class="str">https://open.bigmodel.cn/api/paas/v4/</span>
+<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">sk-xxx</span></pre>
       </div>
     </div>
   </div>
@@ -448,10 +456,10 @@ asyncio.run(main())</pre>
       <div class="footer-group">
         <h4>文档</h4>
         <ul>
-          <li><a href="docs.html#quickstart">快速开始</a></li>
-          <li><a href="docs.html#sdk">SDK 指南</a></li>
-          <li><a href="docs.html#cli">CLI 参考</a></li>
-          <li><a href="docs.html#config">配置说明</a></li>
+          <li><a href="docs.html">文档中心</a></li>
+          <li><a href="sdk.html">SDK 教程</a></li>
+          <li><a href="sdk/01-single-run.html">快速开始</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置说明</a></li>
         </ul>
       </div>
 

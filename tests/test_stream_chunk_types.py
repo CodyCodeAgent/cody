@@ -11,6 +11,7 @@ from cody.sdk.types import (
     PruneChunk,
     DoneChunk,
     CancelledChunk,
+    RetryChunk,
     CircuitBreakerChunk,
     InteractionRequestChunk,
     UserInputReceivedChunk,
@@ -192,6 +193,19 @@ class TestEventConversion:
         assert chunk.estimated_tokens_saved == 5000
         assert chunk.session_id == "s1"
 
+    def test_retry_event(self):
+        from cody.core.runner import RetryEvent
+        from cody.sdk.types import _event_to_chunk
+
+        event = RetryEvent(attempt=1, max_attempts=3, error="rate limited")
+        chunk = _event_to_chunk(event, session_id="s1")
+        assert isinstance(chunk, RetryChunk)
+        assert chunk.type == "retry"
+        assert chunk.content == "rate limited"
+        assert chunk.retry_attempt == 1
+        assert chunk.retry_max_attempts == 3
+        assert chunk.session_id == "s1"
+
     def test_unknown_event(self):
         from cody.sdk.types import _event_to_chunk
 
@@ -220,7 +234,13 @@ class TestExports:
         assert PC is PruneChunk
 
     def test_importable_from_client_shim(self):
-        from cody.client import StreamChunk as SC, TextDeltaChunk as TDC, PruneChunk as PC
+        from cody.client import (
+            StreamChunk as SC,
+            TextDeltaChunk as TDC,
+            PruneChunk as PC,
+            RetryChunk as RC,
+        )
         assert SC is StreamChunk
         assert TDC is TextDeltaChunk
         assert PC is PruneChunk
+        assert RC is RetryChunk

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>04. 工具直接调用 – Cody SDK 教程</title>
+  <meta name="description" content="学习用 tool() 直接调用内置工具、run/stream 中的工具过滤，以及便捷方法与 LSP。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html" class="active">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>工具篇</span>
+    </div>
+    <h1>工具直接调用</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-green">工具篇</span>
+      <span class="badge badge-green">第 04 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>在 Cody 里，「工具」既能交给模型在 <code>run</code> / <code>stream</code> 里按需自动调用，也能由你的代码通过 <code>tool()</code> <strong>直接调用</strong>。前者适合对话式 Agent，后者特别适合自动化脚本、单测、CI 流水线，以及你需要完全掌控每一步副作用的场景。本篇假定你已按第 01 篇配置好环境变量（模型使用 <span class="badge badge-blue">qwen3.5-plus</span>，不显式写在代码里）。</p>
+
+    <div class="callout callout-info">
+      <strong>本篇目标：</strong>会用 <code>await client.tool(name, params)</code> 调用任意内置工具；会在 <code>run</code> / <code>stream</code> 里用 <code>include_tools</code> / <code>exclude_tools</code> 限制工具范围；会选用 <code>read_file</code> 等便捷方法简化常见操作。
+    </div>
+
+    <h2 id="two-modes">两种工具使用方式</h2>
+    <p><strong>模型自动调用</strong>：你发起 <code>client.run("请分析项目结构")</code>，Runner 把注册好的工具交给大模型，由模型决定何时调用 <code>list_directory</code>、<code>grep</code> 等。</p>
+    <p><strong>你手动调用</strong>：<code>result = await client.tool("read_file", {"path": "main.py"})</code>，不经过模型推理，立即得到工具输出。工具名与参数与 core 中注册的 Python 函数一致（见下表）。</p>
+
+    <h2 id="full-example">完整示例：<code>tool()</code> 串联内置工具</h2>
+    <p>下面这段脚本可以单独运行：先读文件、再按正则搜索、列出目录、最后执行一条 shell。跑通之后，我们再拆解释。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 依赖环境变量：CODY_MODEL=qwen3.5-plus 等（见第 01 篇）</span>
+<span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> AsyncCodyClient
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = <span class="fn">AsyncCodyClient</span>(workdir=<span class="str">"."</span>)
+
+    <span class="cm"># 读取单个文件</span>
+    r1 = <span class="kw">await</span> client.<span class="fn">tool</span>(<span class="str">"read_file"</span>, {<span class="str">"path"</span>: <span class="str">"main.py"</span>})
+    <span class="fn">print</span>(<span class="str">"--- read_file ---"</span>, r1.result[:<span class="nb">200</span>], sep=<span class="str">"\n"</span>)
+
+    <span class="cm"># 在目录中 grep（正则 + 可选文件名 glob）</span>
+    r2 = <span class="kw">await</span> client.<span class="fn">tool</span>(
+        <span class="str">"grep"</span>,
+        {<span class="str">"pattern"</span>: <span class="str">r"def main"</span>, <span class="str">"include"</span>: <span class="str">"*.py"</span>, <span class="str">"path"</span>: <span class="str">"."</span>},
+    )
+    <span class="fn">print</span>(<span class="str">"--- grep ---"</span>, r2.result[:<span class="nb">500</span>], sep=<span class="str">"\n"</span>)
+
+    <span class="cm"># 列出目录</span>
+    r3 = <span class="kw">await</span> client.<span class="fn">tool</span>(<span class="str">"list_directory"</span>, {<span class="str">"path"</span>: <span class="str">"."</span>})
+    <span class="fn">print</span>(<span class="str">"--- list_directory ---"</span>, r3.result[:<span class="nb">500</span>], sep=<span class="str">"\n"</span>)
+
+    <span class="cm"># 执行命令（注意权限与安全策略）</span>
+    r4 = <span class="kw">await</span> client.<span class="fn">tool</span>(<span class="str">"exec_command"</span>, {<span class="str">"command"</span>: <span class="str">"ls -la"</span>})
+    <span class="fn">print</span>(<span class="str">"--- exec_command ---"</span>, r4.result[:<span class="nb">500</span>], sep=<span class="str">"\n"</span>)
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h3>返回值：<code>ToolResult</code> 与 <code>result</code></h3>
+    <p><code>await client.tool(...)</code> 返回 <code>ToolResult</code>。你关心的文本输出在 <code>result.result</code>，类型为 <code>str</code>（成功时为工具格式化后的字符串；失败时 SDK 会抛出 <code>CodyToolError</code>）。这与模型在对话里「看到」的工具输出是同一条路径，便于你对照调试。</p>
+
+    <p>同一套接口还能调用写入、编辑、glob、拉取网页等（参数名与 core 工具函数一致）：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">await</span> client.<span class="fn">tool</span>(<span class="str">"write_file"</span>, {<span class="str">"path"</span>: <span class="str">"out.py"</span>, <span class="str">"content"</span>: <span class="str">"print('hello')"</span>})
+<span class="kw">await</span> client.<span class="fn">tool</span>(
+    <span class="str">"edit_file"</span>,
+    {<span class="str">"path"</span>: <span class="str">"main.py"</span>, <span class="str">"old_text"</span>: <span class="str">"..."</span>, <span class="str">"new_text"</span>: <span class="str">"..."</span>},
+)
+<span class="kw">await</span> client.<span class="fn">tool</span>(<span class="str">"glob"</span>, {<span class="str">"pattern"</span>: <span class="str">"**/*.py"</span>})
+<span class="kw">await</span> client.<span class="fn">tool</span>(<span class="str">"webfetch"</span>, {<span class="str">"url"</span>: <span class="str">"https://example.com"</span>})</pre>
+    </div>
+
+    <h2 id="tool-catalog">28+ 内置工具分类一览</h2>
+    <p>主 Agent 默认注册 <strong>28</strong> 个核心工具（名称即 Python 函数名，与 <code>tool()</code> 的第一个参数一致）。若启用 MCP，还会额外挂上 <code>mcp_list_tools</code>、<code>mcp_call</code>（见 <a href="08-mcp.html">第 08 篇</a>）。下表按用途归纳，便于查阅。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>分类</th>
+          <th>工具名</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>文件 I/O</td>
+          <td><code>read_file</code>、<code>write_file</code>、<code>edit_file</code>、<code>list_directory</code></td>
+          <td>读/写/精确替换编辑/列目录，受工作目录与安全策略约束</td>
+        </tr>
+        <tr>
+          <td>搜索与补丁</td>
+          <td><code>grep</code>、<code>glob</code>、<code>patch</code>、<code>search_files</code></td>
+          <td>正则搜索、路径匹配、应用补丁、语义/文件名搜索</td>
+        </tr>
+        <tr>
+          <td>命令执行</td>
+          <td><code>exec_command</code></td>
+          <td>在受控环境中执行 shell 命令</td>
+        </tr>
+        <tr>
+          <td>Web</td>
+          <td><code>webfetch</code>、<code>websearch</code></td>
+          <td>抓取 URL、联网搜索（视配置而定）</td>
+        </tr>
+        <tr>
+          <td>LSP</td>
+          <td><code>lsp_diagnostics</code>、<code>lsp_definition</code>、<code>lsp_references</code>、<code>lsp_hover</code></td>
+          <td>诊断、跳转定义、引用、悬停信息（需语言服务器）</td>
+        </tr>
+        <tr>
+          <td>文件历史</td>
+          <td><code>undo_file</code>、<code>redo_file</code>、<code>list_file_changes</code></td>
+          <td>基于会话内历史的撤销/重做与变更列表</td>
+        </tr>
+        <tr>
+          <td>任务列表</td>
+          <td><code>todo_write</code>、<code>todo_read</code></td>
+          <td>读写 Agent 任务清单</td>
+        </tr>
+        <tr>
+          <td>Skills</td>
+          <td><code>list_skills</code>、<code>read_skill</code></td>
+          <td>发现与读取已安装的 Skill 文档</td>
+        </tr>
+        <tr>
+          <td>子代理</td>
+          <td><code>spawn_agent</code>、<code>get_agent_status</code>、<code>kill_agent</code>、<code>resume_agent</code></td>
+          <td>并行子任务、查状态、终止、恢复</td>
+        </tr>
+        <tr>
+          <td>记忆</td>
+          <td><code>save_memory</code></td>
+          <td>写入项目级记忆条目</td>
+        </tr>
+        <tr>
+          <td>用户交互</td>
+          <td><code>question</code></td>
+          <td>向用户发起澄清问题（人机协同流程）</td>
+        </tr>
+        <tr>
+          <td>MCP（可选）</td>
+          <td><code>mcp_list_tools</code>、<code>mcp_call</code></td>
+          <td>连接外部 MCP 服务时注册；不在默认 28 之内</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="filter-tools">在 <code>run</code> / <code>stream</code> 里过滤工具</h2>
+    <p>当你仍希望由 <code>qwen3.5-plus</code> 自主推理，但只想缩小工具面（例如禁止执行 shell），可以在每次 <code>run</code> 或 <code>stream</code> 传入：</p>
+    <ul>
+      <li><code>include_tools</code>：白名单，仅注册列表中的工具；</li>
+      <li><code>exclude_tools</code>：黑名单，排除列表中的工具。</li>
+    </ul>
+
+    <div class="callout callout-tip">
+      <strong>互斥：</strong><code>include_tools</code> 与 <code>exclude_tools</code> 不要同时使用。内部实现是「有 include 则只保留这些；否则若有 exclude 则去掉这些」。
+    </div>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 只允许读文件 + 搜索</span>
+<span class="kw">await</span> client.<span class="fn">run</span>(
+    <span class="str">"总结 src 下的 Python 入口"</span>,
+    include_tools=[<span class="str">"read_file"</span>, <span class="str">"grep"</span>, <span class="str">"list_directory"</span>],
+)
+
+<span class="cm"># 禁止执行命令，其它工具保留</span>
+<span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"只做静态分析，不要跑 shell"</span>, exclude_tools=[<span class="str">"exec_command"</span>])
+
+<span class="cm"># 流式同样支持</span>
+<span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"你的任务说明"</span>, exclude_tools=[<span class="str">"exec_command"</span>]):
+    <span class="kw">pass</span>  <span class="cm"># 处理 chunk</span></pre>
+    </div>
+
+    <h2 id="shortcuts">便捷方法</h2>
+    <p>高频工具在 <code>AsyncCodyClient</code> 上有薄封装：返回值直接是 <code>str</code>，等价于 <code>(await client.tool(...)).result</code>，写起来更短。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>便捷方法</th>
+          <th>典型用途</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>read_file(path)</code></td>
+          <td>读取文件内容</td>
+        </tr>
+        <tr>
+          <td><code>write_file(path, content)</code></td>
+          <td>覆盖写入</td>
+        </tr>
+        <tr>
+          <td><code>edit_file(path, old_text, new_text)</code></td>
+          <td>精确替换一段文本</td>
+        </tr>
+        <tr>
+          <td><code>list_directory(path=".")</code></td>
+          <td>列目录</td>
+        </tr>
+        <tr>
+          <td><code>glob(pattern)</code></td>
+          <td>路径 glob</td>
+        </tr>
+        <tr>
+          <td><code>grep(pattern, include="*")</code></td>
+          <td>在工作区内按正则搜索（<code>include</code> 过滤扩展名）</td>
+        </tr>
+        <tr>
+          <td><code>exec_command(command)</code></td>
+          <td>执行命令并取输出</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>content = <span class="kw">await</span> client.<span class="fn">read_file</span>(<span class="str">"main.py"</span>)
+<span class="kw">await</span> client.<span class="fn">write_file</span>(<span class="str">"hello.py"</span>, <span class="str">"print('hello')"</span>)
+<span class="kw">await</span> client.<span class="fn">edit_file</span>(<span class="str">"main.py"</span>, <span class="str">"old"</span>, <span class="str">"new"</span>)
+files = <span class="kw">await</span> client.<span class="fn">glob</span>(<span class="str">"**/*.py"</span>)
+matches = <span class="kw">await</span> client.<span class="fn">grep</span>(<span class="str">"pattern"</span>, include=<span class="str">"*.py"</span>)
+output = <span class="kw">await</span> client.<span class="fn">exec_command</span>(<span class="str">"ls -la"</span>)
+dirs = <span class="kw">await</span> client.<span class="fn">list_directory</span>(<span class="str">"."</span>)</pre>
+    </div>
+
+    <h2 id="lsp">LSP 工具与便捷方法</h2>
+    <p>语言服务器协议相关调用在自动化里同样常用：例如 CI 里先拉诊断再决定是否失败。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>diags = <span class="kw">await</span> client.<span class="fn">lsp_diagnostics</span>(<span class="str">"main.py"</span>)
+defn = <span class="kw">await</span> client.<span class="fn">lsp_definition</span>(<span class="str">"main.py"</span>, line=<span class="nb">10</span>, column=<span class="nb">5</span>)
+refs = <span class="kw">await</span> client.<span class="fn">lsp_references</span>(<span class="str">"main.py"</span>, line=<span class="nb">10</span>, column=<span class="nb">5</span>)
+hover = <span class="kw">await</span> client.<span class="fn">lsp_hover</span>(<span class="str">"main.py"</span>, line=<span class="nb">10</span>, column=<span class="nb">5</span>)</pre>
+    </div>
+
+    <div class="callout callout-info">
+      上述接口依赖本机已安装并能在工作区启动的<strong>语言服务器</strong>。例如 Python 常见选择是 <strong>pylsp</strong>（<code>pip install python-lsp-server</code>），具体命令与 Cody 配置见项目文档；未就绪时工具可能返回错误或空结果。
+    </div>
+
+    <p>需要最底层控制时，仍可用 <code>await client.tool("lsp_diagnostics", {"file_path": "main.py"})</code>、<code>await client.tool("lsp_definition", {"file_path": "main.py", "line": 10, "character": 5})</code> 等形式（参数名与 <code>cody.core.tools.lsp</code> 中函数一致；列号字段为 <code>character</code>）。</p>
+
+    <h2 id="summary">小结</h2>
+    <p>你现在已经掌握两条线：<strong>手动</strong> <code>tool()</code> 精确驱动内置能力，以及 <strong>自动</strong> <code>run</code>/<code>stream</code> 配合 <code>include_tools</code> / <code>exclude_tools</code> 收紧模型可见的工具集。下一篇 <a href="05-custom-tools.html">第 05 篇 · 注册自定义工具</a> 会讲如何把自有函数挂进同一套工具系统，让模型与你的业务 API 对话。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="03-streaming.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">流式输出全解</span>
+      </a>
+      <a href="05-custom-tools.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">注册自定义工具</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

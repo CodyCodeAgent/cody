@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>09. 安全与控制 – Cody SDK 教程</title>
+  <meta name="description" content="配置 allowed_roots、strict_read_boundary、熔断器与无状态模式，安全运行 Agent。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html" class="active">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>进阶篇</span>
+    </div>
+    <h1>安全与控制</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-yellow">进阶篇</span>
+      <span class="badge badge-green">第 09 篇</span>
+      <span class="reading-time">📖 约 10 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>Cody Agent 能读写文件、跑终端命令、接 MCP——能力越大，越要把<strong>访问边界</strong>、<strong>用量熔断</strong>和<strong>持久化策略</strong>想清楚。本篇用一条「先跑通、再拆细节」的路线，把 <code>allowed_roots</code>、<code>strict_read_boundary</code>、熔断器与 <code>stateless()</code> 串起来；模型仍默认使用 <span class="badge badge-blue">qwen3.5-plus</span>（环境变量，见第 01 篇），不在示例里硬编码密钥。</p>
+
+    <div class="callout callout-info">
+      <p>请已配置：<code>CODY_MODEL=qwen3.5-plus</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</code>。若要在代码里显式指定，可使用 <code>Cody().model(&quot;qwen3.5-plus&quot;).base_url(...).api_key(...)</code>。</p>
+    </div>
+
+    <h2 id="full-example">从一整段脚本开始</h2>
+    <p>下面把本篇要点写进同一个异步入口：多根目录、严格读边界、熔断、以及流式里识别熔断 chunk。跑通后再看各小节解释每个调用在防什么。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+<span class="kw">from</span> cody.core.errors <span class="kw">import</span> CircuitBreakerError
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="cm"># Monorepo：主仓在 app，另允许 shared / proto；strict 限制读也在这些根下</span>
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">"/workspace/app"</span>)
+        .<span class="fn">allowed_root</span>(<span class="str">"/workspace/shared"</span>)
+        .<span class="fn">allowed_roots</span>([<span class="str">"/workspace/shared"</span>, <span class="str">"/workspace/proto"</span>])
+        .<span class="fn">strict_read_boundary</span>()
+        .<span class="fn">circuit_breaker</span>(
+            <span class="nb">max_tokens</span>=500_000,
+            <span class="nb">max_cost_usd</span>=5.0,
+            <span class="nb">max_steps</span>=50,
+            <span class="nb">loop_detect_turns</span>=5,
+        )
+        .<span class="fn">build</span>()
+    )
+
+    <span class="kw">async with</span> client:
+        <span class="cm"># run()：超限直接抛 CircuitBreakerError</span>
+        <span class="kw">try</span>:
+            result = <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"列出 proto 目录下的 README 并总结"</span>)
+            <span class="fn">print</span>(result.output)
+        <span class="kw">except</span> CircuitBreakerError <span class="kw">as</span> e:
+            <span class="fn">print</span>(<span class="str">"熔断:"</span>, e.reason, e.tokens_used, e.cost_usd)
+
+        <span class="cm"># stream()：熔断以 chunk 形式到达</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"同上，流式输出"</span>):
+            <span class="kw">if</span> chunk.type == <span class="str">"circuit_breaker"</span>:
+                <span class="fn">print</span>(chunk.content)
+                <span class="kw">break</span>
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      <p><code>allowed_root</code> 会往列表里<strong>追加</strong>路径；若再调用 <code>allowed_roots([...])</code>，会<strong>整体替换</strong>为传入列表。生产里通常只用 <code>allowed_roots</code> 一次性写全，或连续多次 <code>allowed_root</code>。</p>
+    </div>
+
+    <h2 id="allowed-roots"><code>allowed_roots</code>：Monorepo 多目录边界</h2>
+    <p><code>workdir</code> 是主工作区；当 Agent 需要读写到其他包（例如公共库、IDL 仓库）时，用 <code>allowed_root</code> / <code>allowed_roots</code> 声明<strong>额外允许的根路径</strong>。工具层会据此拒绝越界路径，避免「任务在 app，却顺手改了 <code>/etc</code>」这类事故。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    <span class="fn">Cody</span>()
+    .<span class="fn">workdir</span>(<span class="str">"/workspace/app"</span>)
+    .<span class="fn">allowed_root</span>(<span class="str">"/workspace/shared"</span>)
+    .<span class="fn">allowed_roots</span>([<span class="str">"/workspace/shared"</span>, <span class="str">"/workspace/proto"</span>])
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+    <p>路径请使用真实绝对路径；与第 01 篇一致，模型仍依赖环境变量中的 <code>qwen3.5-plus</code> 配置。</p>
+
+    <h2 id="strict-read"><code>strict_read_boundary</code>：读也锁在边界内</h2>
+    <p>默认情况下，写操作受根边界约束更严；从 <span class="badge badge-purple">v1.9.2+</span> 起，链上 <code>strict_read_boundary()</code>（或传 <code>enabled=False</code> 关闭）后，<strong>读文件</strong>同样只能发生在 <code>workdir</code> 与 <code>allowed_roots</code> 并集内，减少敏感文件被「无意浏览」的风险。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">strict_read_boundary</span>().<span class="fn">build</span>()</pre>
+    </div>
+
+    <h2 id="circuit-breaker">熔断器：用量与死循环护栏</h2>
+    <p>熔断在<strong>单次 <code>run</code> / <code>stream</code></strong> 过程中累计 token、估算费用、工具步数，并在检测到循环模式时中止。可通过 <code>Cody().circuit_breaker(...)</code> 覆盖；也可传入 <code>CircuitBreakerConfig</code> 对象（见 <code>cody.sdk.config</code>）。</p>
+
+    <div class="callout callout-warn">
+      <p>引擎内置默认值与 Builder 关键字默认值<strong>不一致</strong>：未调用 <code>circuit_breaker()</code> 时走配置合并后的 core 默认；一旦在 Builder 里调用 <code>circuit_breaker()</code> 且使用参数默认值，则采用 SDK 侧那一套。下表分两列便于你对照。</p>
+    </div>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>触发维度</th>
+          <th>含义</th>
+          <th>Core 典型默认</th>
+          <th><code>Cody().circuit_breaker()</code> 参数默认</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>max_tokens</code></td>
+          <td>单次运行累计 token 超过则熔断（多轮工具调用会快速堆高）。</td>
+          <td>约 <code>1_000_000</code></td>
+          <td><code>200_000</code></td>
+        </tr>
+        <tr>
+          <td><code>max_cost_usd</code></td>
+          <td>按 <code>model_prices</code> 估算费用，超过美元阈值则熔断。</td>
+          <td><code>10.0</code></td>
+          <td><code>5.0</code></td>
+        </tr>
+        <tr>
+          <td><code>max_steps</code></td>
+          <td>工具调用步数上限；<code>0</code> 表示不限制。</td>
+          <td><code>0</code>（无上限）</td>
+          <td><code>0</code>（无上限）</td>
+        </tr>
+        <tr>
+          <td><code>loop_detect_turns</code></td>
+          <td>连续若干轮工具输出高度相似时视为死循环并熔断。</td>
+          <td><code>6</code></td>
+          <td><code>6</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3><code>run()</code>：捕获 <code>CircuitBreakerError</code></h3>
+    <p>同步语义下，熔断表现为异常。<code>reason</code> 取值包括 <code>token_limit</code>、<code>cost_limit</code>、<code>step_limit</code>，以及循环检测触发的 <code>loop_detected</code>。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">from</span> cody.core.errors <span class="kw">import</span> CircuitBreakerError
+
+client = <span class="fn">Cody</span>().<span class="fn">circuit_breaker</span>(
+    <span class="nb">max_tokens</span>=500_000,
+    <span class="nb">max_cost_usd</span>=5.0,
+    <span class="nb">max_steps</span>=50,
+    <span class="nb">loop_detect_turns</span>=5,
+).<span class="fn">build</span>()
+
+<span class="kw">try</span>:
+    result = <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"任务"</span>)
+<span class="kw">except</span> CircuitBreakerError <span class="kw">as</span> e:
+    <span class="cm"># e.reason: token_limit / cost_limit / step_limit / loop_detected</span>
+    e.reason
+    e.tokens_used
+    e.cost_usd</pre>
+    </div>
+
+    <h3><code>stream()</code>：处理 <code>circuit_breaker</code> chunk</h3>
+    <p>流式路径下Runner 可能发出类型为 <code>circuit_breaker</code> 的 chunk，而不是让异常直接冒泡到应用层；读到后应结束消费或提示用户。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">async for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"任务"</span>):
+    <span class="kw">if</span> chunk.type == <span class="str">"circuit_breaker"</span>:
+        <span class="fn">print</span>(chunk.content)
+        <span class="kw">break</span></pre>
+    </div>
+
+    <h2 id="stateless"><code>stateless()</code>：CI 与无状态服务</h2>
+    <p><span class="badge badge-green">v1.11.0+</span> 起，链式调用 <code>stateless()</code> 可启用无状态模式：<strong>不向磁盘写入</strong>会话库、审计、文件历史、项目记忆等持久化数据。适合 GitHub Actions、短时 Serverless、或「每次任务独立、不落盘」的网关形态。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">stateless</span>().<span class="fn">build</span>()
+<span class="cm"># 不写入任何磁盘文件（可按需在 stateless 之后再挂自定义 audit 等）</span></pre>
+    </div>
+    <div class="callout callout-tip">
+      <p>若在无状态基础上仍要可观测性，可在 <code>stateless()</code> 之后用 Builder 再注入自定义 <code>audit_logger</code> 等（内存或远端），与「默认不写本地 sqlite」不冲突。</p>
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>本篇覆盖了：<strong>多根目录</strong>（<code>allowed_roots</code>）、<strong>严格读边界</strong>（<code>strict_read_boundary</code>）、<strong>熔断</strong>（表格中的四维阈值与 <code>run</code>/<code>stream</code> 两种处理面），以及 <strong>无状态</strong>（<code>stateless()</code>）。下一步建议阅读 <a href="10-events.html">第 10 篇 · 事件与可观测性</a>，把运行过程挂到日志与指标上。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="08-mcp.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">集成 MCP</span>
+      </a>
+      <a href="10-events.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">事件与可观测性</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

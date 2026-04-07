@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10. 事件与可观测性 – Cody SDK 教程</title>
+  <meta name="description" content="用 Builder.on 订阅运行事件，区分 EventType，并启用 metrics 采集 token 与耗时。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html" class="active">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>进阶篇</span>
+    </div>
+    <h1>事件与可观测性</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-yellow">进阶篇</span>
+      <span class="badge badge-green">第 10 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>把 Agent 接进生产环境时，你往往需要回答两类问题：一次运行里<strong>发生了什么</strong>（工具调了几次、流式片段何时结束），以及<strong>花了多少代价</strong>（token、耗时、工具调用次数）。Cody SDK 用事件钩子（<code>.on()</code> / <code>.on_async()</code>）解决前者，用 <code>enable_metrics()</code> 与 <code>get_metrics()</code> 汇总后者。下面先给一份可直接跑的完整脚本，再逐项拆开。</p>
+
+    <div class="callout callout-info">
+      <p>本系列演示模型统一为 <span class="badge badge-blue">qwen3.5-plus</span>。请已按第 01 篇配置环境变量（<code>CODY_MODEL</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL</code>）；本例使用 <code>AsyncCodyClient</code> 不显式传模型，由环境变量生效。</p>
+    </div>
+
+    <h2 id="full-example">完整示例：事件 + 指标</h2>
+    <p>这段代码在 Builder 上链式注册 <code>TOOL_CALL</code>、<code>TOOL_RESULT</code>、<code>RUN_END</code>，打开指标采集，跑完一次任务后打印 <code>get_metrics()</code> 返回的摘要字典。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">import</span> logging
+
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody, EventType
+
+logging.<span class="fn">basicConfig</span>(<span class="nb">level</span>=logging.INFO)
+log = logging.<span class="fn">getLogger</span>(<span class="str">"cody.demo"</span>)
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">"."</span>)
+        .<span class="fn">enable_metrics</span>()
+        .<span class="fn">on</span>(<span class="str">"tool_call"</span>, <span class="kw">lambda</span> e: log.<span class="fn">info</span>(<span class="str">"TOOL_CALL %s args=%s"</span>, e.tool_name, e.args))
+        .<span class="fn">on</span>(EventType.TOOL_RESULT, <span class="kw">lambda</span> e: log.<span class="fn">info</span>(<span class="str">"TOOL_RESULT %s"</span>, e.tool_name))
+        .<span class="fn">on</span>(EventType.RUN_END, <span class="kw">lambda</span> e: log.<span class="fn">info</span>(<span class="str">"RUN_END 输出长度=%s"</span>, <span class="fn">len</span>(e.result <span class="kw">or</span> <span class="str">""</span>)))
+        .<span class="fn">build</span>()
+    )
+    <span class="kw">async</span> <span class="kw">with</span> client:
+        <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"用一句话说明当前工作目录里大概有什么文件"</span>)
+
+    metrics = client.<span class="fn">get_metrics</span>()
+    <span class="kw">if</span> metrics:
+        log.<span class="fn">info</span>(
+            <span class="str">"指标 total_tokens=%s total_tool_calls=%s total_duration=%.2fs"</span>,
+            metrics[<span class="str">"total_tokens"</span>],
+            metrics[<span class="str">"total_tool_calls"</span>],
+            metrics[<span class="str">"total_duration"</span>],
+        )
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h3>这段脚本在做什么</h3>
+    <ul>
+      <li><code>.on(...)</code> 在 Builder 上会<strong>自动打开事件系统</strong>（等效于显式 <code>enable_events()</code>），无需再手写一遍。</li>
+      <li><code>TOOL_CALL</code> 与 <code>TOOL_RESULT</code> 的回调里，典型字段是 <code>tool_name</code>；调用阶段还有 <code>args</code>，结果阶段有 <code>result</code>。</li>
+      <li><code>RUN_END</code> 对应一次 <code>run()</code> 正常结束，<code>RunEvent</code> 上可读 <code>result</code>。</li>
+      <li><code>enable_metrics()</code> 让客户端在运行过程中累积数据；<code>get_metrics()</code> 返回聚合后的字典（未开启指标时为 <code>None</code>）。</li>
+    </ul>
+
+    <h2 id="events-basics">事件基础：<code>Cody().on()</code></h2>
+    <p>除了在 Builder 上注册，也可以在 <code>build()</code> 之后、且配置里已启用事件时，对实例调用 <code>client.on(...)</code>：</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody, EventType
+
+client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">enable_events</span>().<span class="fn">build</span>()
+client.<span class="fn">on</span>(EventType.RUN_END, <span class="kw">lambda</span> e: <span class="fn">print</span>(e.result))</pre>
+    </div>
+    <p>与 Builder 链式写法等价的核心是：<strong>必须先启用事件</strong>（<code>.on()</code> 链式调用会自动启用，或手动 <code>enable_events()</code>），否则实例上的 <code>on</code> / <code>on_async</code> 会报错。</p>
+
+    <h2 id="eventtype-table"><code>EventType</code> 枚举全表</h2>
+    <p>下列与 <code>cody.sdk.events</code> 中的定义一致。第三列说明该类型事件对象上<strong>常用</strong>的字段（具体类型为 <code>RunEvent</code>、<code>ToolEvent</code> 等，均带 <code>event_type</code>、<code>timestamp</code>、<code>data</code>）。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>枚举成员</th>
+          <th>字符串值</th>
+          <th>典型字段（查阅事件对象）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>RUN_START</code></td>
+          <td><code>run_start</code></td>
+          <td><code>RunEvent</code>：<code>prompt</code></td>
+        </tr>
+        <tr>
+          <td><code>RUN_END</code></td>
+          <td><code>run_end</code></td>
+          <td><code>RunEvent</code>：<code>result</code></td>
+        </tr>
+        <tr>
+          <td><code>RUN_ERROR</code></td>
+          <td><code>run_error</code></td>
+          <td><code>RunEvent</code>：<code>error</code></td>
+        </tr>
+        <tr>
+          <td><code>STREAM_START</code></td>
+          <td><code>stream_start</code></td>
+          <td><code>StreamEvent</code>：<code>chunk_type</code>、<code>content</code></td>
+        </tr>
+        <tr>
+          <td><code>STREAM_CHUNK</code></td>
+          <td><code>stream_chunk</code></td>
+          <td><code>StreamEvent</code>：<code>content</code></td>
+        </tr>
+        <tr>
+          <td><code>STREAM_END</code></td>
+          <td><code>stream_end</code></td>
+          <td><code>StreamEvent</code>：<code>chunk_type</code>、<code>content</code></td>
+        </tr>
+        <tr>
+          <td><code>TOOL_CALL</code></td>
+          <td><code>tool_call</code></td>
+          <td><code>ToolEvent</code>：<code>tool_name</code>、<code>args</code></td>
+        </tr>
+        <tr>
+          <td><code>TOOL_RESULT</code></td>
+          <td><code>tool_result</code></td>
+          <td><code>ToolEvent</code>：<code>tool_name</code>、<code>result</code></td>
+        </tr>
+        <tr>
+          <td><code>TOOL_ERROR</code></td>
+          <td><code>tool_error</code></td>
+          <td><code>ToolEvent</code>：<code>tool_name</code>、<code>error</code></td>
+        </tr>
+        <tr>
+          <td><code>THINKING_START</code></td>
+          <td><code>thinking_start</code></td>
+          <td><code>ThinkingEvent</code>：<code>content</code>、<code>is_start</code></td>
+        </tr>
+        <tr>
+          <td><code>THINKING_CHUNK</code></td>
+          <td><code>thinking_chunk</code></td>
+          <td><code>ThinkingEvent</code>：<code>content</code></td>
+        </tr>
+        <tr>
+          <td><code>THINKING_END</code></td>
+          <td><code>thinking_end</code></td>
+          <td><code>ThinkingEvent</code>：<code>content</code>、<code>is_end</code></td>
+        </tr>
+        <tr>
+          <td><code>SESSION_CREATE</code></td>
+          <td><code>session_create</code></td>
+          <td><code>SessionEvent</code>：<code>session_id</code>、<code>title</code></td>
+        </tr>
+        <tr>
+          <td><code>SESSION_CLOSE</code></td>
+          <td><code>session_close</code></td>
+          <td><code>SessionEvent</code>：<code>session_id</code>、<code>title</code></td>
+        </tr>
+        <tr>
+          <td><code>MODEL_REQUEST</code></td>
+          <td><code>model_request</code></td>
+          <td><code>ModelEvent</code>：<code>model</code>、<code>provider</code>、<code>input_tokens</code> 等</td>
+        </tr>
+        <tr>
+          <td><code>MODEL_RESPONSE</code></td>
+          <td><code>model_response</code></td>
+          <td><code>ModelEvent</code>：<code>output_tokens</code> 等</td>
+        </tr>
+        <tr>
+          <td><code>MODEL_ERROR</code></td>
+          <td><code>model_error</code></td>
+          <td><code>ModelEvent</code>：<code>error</code></td>
+        </tr>
+        <tr>
+          <td><code>CONTEXT_COMPACT</code></td>
+          <td><code>context_compact</code></td>
+          <td><code>ContextCompactEvent</code>：<code>original_messages</code>、<code>compacted_messages</code>、<code>tokens_saved</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="string-vs-enum">字符串与枚举两种写法</h2>
+    <p><code>client.on()</code> 与 Builder 的 <code>.on()</code> 都接受<strong>事件名字符串</strong>或 <code>EventType</code>。字符串须与枚举的<strong>值</strong>一致（例如 <code>"tool_call"</code>，不是驼峰名）。</p>
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>方式</th>
+          <th>示例</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>字符串</td>
+          <td><code>.on("tool_call", handler)</code></td>
+          <td>简短；拼写错误会在运行时表现为无法匹配或构造失败</td>
+        </tr>
+        <tr>
+          <td>枚举</td>
+          <td><code>.on(EventType.TOOL_RESULT, handler)</code></td>
+          <td>IDE 可补全、重构更安全</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>实例方法侧会把字符串转成 <code>EventType(event_type)</code>，因此两种注册方式最终一致。</p>
+
+    <h2 id="on-async">异步处理器：<code>on_async</code></h2>
+    <p>若回调里需要 <code>await</code>（写数据库、发 HTTP），用 <code>on_async</code> 注册；分发时会先跑同步处理器，再 <code>await</code> 各异步处理器。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody, EventType
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">async_handler</span>(e):
+    <span class="cm"># 例如 await audit_log.write(...)</span>
+    <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="nb">0</span>)
+
+
+client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">enable_events</span>().<span class="fn">build</span>()
+client.<span class="fn">on_async</span>(EventType.TOOL_CALL, async_handler)</pre>
+    </div>
+    <div class="callout callout-tip">
+      <p>异步处理器中的异常会被 SDK 记录到日志，不会默默吞掉；生产环境仍建议在处理器内自行捕获可预期的错误。</p>
+    </div>
+
+    <h2 id="metrics">指标：<code>enable_metrics</code> 与 <code>get_metrics</code></h2>
+    <p>在 Builder 上调用 <code>enable_metrics()</code> 后，客户端内部会挂载指标收集器；每次 <code>run()</code> / 流式运行结束后，可通过 <code>get_metrics()</code> 读取<strong>截至当前、跨多次运行聚合</strong>的摘要（字典）。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+client = <span class="fn">Cody</span>().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">enable_metrics</span>().<span class="fn">build</span>()
+metrics = client.<span class="fn">get_metrics</span>()
+<span class="cm"># 主要键：total_tokens, total_tool_calls, total_duration</span>
+<span class="cm"># 另有 total_runs, input_tokens, output_tokens, avg_run_duration,</span>
+<span class="cm"># avg_tokens_per_run, tool_metrics, session_count 等</span></pre>
+    </div>
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th>键</th>
+          <th>含义</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>total_tokens</code></td>
+          <td>累计 token（输入+输出合计后的总数）</td>
+        </tr>
+        <tr>
+          <td><code>total_tool_calls</code></td>
+          <td>累计工具调用次数</td>
+        </tr>
+        <tr>
+          <td><code>total_duration</code></td>
+          <td>各次运行耗时之和（秒，浮点）</td>
+        </tr>
+        <tr>
+          <td><code>input_tokens</code> / <code>output_tokens</code></td>
+          <td>分项累计</td>
+        </tr>
+        <tr>
+          <td><code>tool_metrics</code></td>
+          <td>按工具名聚合的调用次数、成功率、平均耗时</td>
+        </tr>
+        <tr>
+          <td><code>total_runs</code>、<code>session_count</code> 等</td>
+          <td>运行次数、涉及会话数等辅助统计</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="logging-practice">实战：把所有工具调用写入 <code>logging</code></h2>
+    <p>下面在单独章节把「可观测性」落到标准库日志：对 <code>TOOL_CALL</code> / <code>TOOL_RESULT</code> / <code>TOOL_ERROR</code> 分级记录，便于接入 ELK、Loki 等。</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">import</span> logging
+
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody, EventType
+
+logging.<span class="fn">basicConfig</span>(<span class="nb">level</span>=logging.INFO)
+log = logging.<span class="fn">getLogger</span>(<span class="str">"cody.tools"</span>)
+
+
+<span class="kw">def</span> <span class="fn">log_tool_call</span>(e):
+    log.<span class="fn">info</span>(<span class="str">"调用工具 name=%s args=%s"</span>, e.tool_name, e.args)
+
+
+<span class="kw">def</span> <span class="fn">log_tool_result</span>(e):
+    body = (e.result <span class="kw">or</span> <span class="str">""</span>)[:<span class="nb">500</span>]
+    log.<span class="fn">info</span>(<span class="str">"工具返回 name=%s result_prefix=%s"</span>, e.tool_name, body)
+
+
+<span class="kw">def</span> <span class="fn">log_tool_error</span>(e):
+    log.<span class="fn">warning</span>(<span class="str">"工具失败 name=%s error=%s"</span>, e.tool_name, e.error)
+
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>():
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">"."</span>)
+        .<span class="fn">on</span>(EventType.TOOL_CALL, log_tool_call)
+        .<span class="fn">on</span>(EventType.TOOL_RESULT, log_tool_result)
+        .<span class="fn">on</span>(EventType.TOOL_ERROR, log_tool_error)
+        .<span class="fn">build</span>()
+    )
+    <span class="kw">async</span> <span class="kw">with</span> client:
+        <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"当前目录下有哪些 Python 文件？"</span>)
+
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+    <div class="callout callout-warn">
+      <p>日志里打印完整 <code>result</code> 可能包含文件内容或密钥片段；生产环境请做截断、脱敏或仅记录哈希与长度。</p>
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>你现在已经会用 <code>.on()</code> / <code>.on_async()</code> 订阅 <code>EventType</code>，能对照全表找到每种事件常用的字段，并会用 <code>enable_metrics()</code> 与 <code>get_metrics()</code> 做 token、耗时、工具调用维度的汇总。下一篇「<a href="11-memory.html">项目记忆</a>」将介绍如何在多轮任务中持久化与检索项目上下文。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="09-security.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">安全与控制</span>
+      </a>
+      <a href="11-memory.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">项目记忆</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

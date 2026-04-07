@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>12. 人机协同 – Cody SDK 教程</title>
+  <meta name="description" content="开启 interaction，在流式输出中处理 interaction_request 并用 submit_interaction 完成人机闭环。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html" class="active">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>进阶篇</span>
+    </div>
+    <h1>人机协同</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-yellow">进阶篇</span>
+      <span class="badge badge-green">第 12 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>在真实产品里，你往往不希望在用户不知情时直接<strong>删除文件</strong>、<strong>覆盖写入</strong>或执行高危命令。Cody 把人机协同做成一等公民：模型可以通过 <code>question</code> 工具向你追问上下文，也可以在命中 <span class="badge badge-blue">CONFIRM</span> 级别的内置工具（如 <code>exec_command</code>、<code>write_file</code>、<code>edit_file</code> 等）时暂停，等你用 <code>submit_interaction()</code> 表态后再继续。本篇沿用系列约定：模型依赖环境变量中的 <span class="badge badge-purple">qwen3.5-plus</span>，不显式写死在代码里。</p>
+
+    <div class="callout callout-tip">
+      <p>若尚未配置，可在 shell 中导出（与第 01 篇一致）：<code>CODY_MODEL=qwen3.5-plus</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</code>。需要写死时可用 <code>Cody().model(&quot;qwen3.5-plus&quot;).base_url(...).api_key(...)</code>。</p>
+    </div>
+
+    <h2 id="full-example">完整示例：流式里接住每一次暂停</h2>
+    <p>下面是一段可直接改编进应用的骨架：<code>async for</code> 遍历 <code>client.stream()</code>，遇到 <code>chunk.type == &quot;interaction_request&quot;</code> 就读取 <code>request_id</code>、<code>interaction_kind</code>、<code>content</code>、<code>options</code>，再调用 <code>await client.submit_interaction(...)</code> 把人的选择送回 runner。其余 chunk 类型（例如 <code>text_delta</code>）按你的 UI 处理即可。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+<span class="kw">from</span> cody.core.errors <span class="kw">import</span> InteractionTimeoutError
+
+<span class="kw">async</span> <span class="kw">def</span> <span class="fn">main</span>():
+    <span class="cm"># 开启人机协同：超时秒数内必须 submit，否则抛 InteractionTimeoutError</span>
+    client = (
+        <span class="fn">Cody</span>()
+        .<span class="fn">workdir</span>(<span class="str">"."</span>)
+        .<span class="fn">interaction</span>(<span class="nb">enabled</span>=<span class="kw">True</span>, <span class="nb">timeout</span>=<span class="nb">30</span>)
+        .<span class="fn">build</span>()
+    )
+    <span class="kw">async</span> <span class="kw">with</span> client:
+        <span class="kw">try</span>:
+            <span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"在改代码前先问我是否要备份"</span>):
+                <span class="kw">if</span> chunk.type == <span class="str">"interaction_request"</span>:
+                    <span class="cm"># 与 submit_interaction 成对：request_id 必填</span>
+                    rid = chunk.request_id
+                    kind = chunk.interaction_kind
+                    text = chunk.content
+                    opts = chunk.options
+                    <span class="fn">print</span>(<span class="str">f"[人机] {kind}: {text}"</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+                    <span class="kw">if</span> opts:
+                        <span class="fn">print</span>(<span class="str">"选项:"</span>, opts, <span class="nb">flush</span>=<span class="kw">True</span>)
+                    <span class="cm"># 演示：按 kind 分支（真实产品里接 UI / CLI 输入）</span>
+                    <span class="kw">if</span> kind == <span class="str">"question"</span>:
+                        <span class="kw">await</span> client.<span class="fn">submit_interaction</span>(
+                            <span class="nb">request_id</span>=rid,
+                            <span class="nb">action</span>=<span class="str">"answer"</span>,
+                            <span class="nb">content</span>=<span class="str">"先备份再修改"</span>,
+                        )
+                    <span class="kw">elif</span> kind == <span class="str">"confirm"</span>:
+                        <span class="kw">await</span> client.<span class="fn">submit_interaction</span>(
+                            <span class="nb">request_id</span>=rid,
+                            <span class="nb">action</span>=<span class="str">"approve"</span>,
+                            <span class="nb">content</span>=<span class="str">""</span>,
+                        )
+                    <span class="kw">else</span>:
+                        <span class="cm"># feedback：结构化批复（approve / reject / revise）</span>
+                        <span class="kw">await</span> client.<span class="fn">submit_interaction</span>(
+                            <span class="nb">request_id</span>=rid,
+                            <span class="nb">action</span>=<span class="str">"revise"</span>,
+                            <span class="nb">content</span>=<span class="str">"请改用 pathlib 处理路径"</span>,
+                        )
+                <span class="kw">elif</span> chunk.type == <span class="str">"text_delta"</span>:
+                    <span class="fn">print</span>(chunk.content, <span class="nb">end</span>=<span class="str">""</span>, <span class="nb">flush</span>=<span class="kw">True</span>)
+        <span class="kw">except</span> InteractionTimeoutError:
+            <span class="fn">print</span>(<span class="str">"\n人机交互超时，运行已终止"</span>)
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <h2 id="triggers">两种触发方式</h2>
+    <p>流里出现的 <code>interaction_request</code>，背后对应两类业务场景：</p>
+    <ul>
+      <li><strong><code>question</code> 工具</strong>：模型主动向你提问或要选项，适合补充需求、澄清歧义。若工具调用里带了选项列表，你会在 <code>chunk.options</code> 里收到字符串列表（可能为 <code>None</code>）。</li>
+      <li><strong>CONFIRM 级工具</strong>：权限系统把某些工具标为需确认时，在实际执行前会先发 <code>interaction_kind=&quot;confirm&quot;</code>，<code>chunk.content</code> 通常是工具名加参数摘要，便于你在 UI 里展示「即将执行什么」。</li>
+    </ul>
+
+    <h2 id="config">开启与默认行为</h2>
+    <p>在 Builder 上链接 <code>.interaction(enabled=True, timeout=30)</code> 即可。其中 <code>timeout</code> 表示：从请求推送到流中开始，若在这么多秒内没有匹配的 <code>submit_interaction</code>，运行会以 <code>InteractionTimeoutError</code> 结束。</p>
+
+    <div class="callout callout-warn">
+      <p>默认 <code>interaction(enabled=False)</code>：CONFIRM 级工具会<strong>自动批准</strong>，不会暂停，也不会给你处理 <code>interaction_request</code> 的机会。只有显式打开后，人机闭环才生效。</p>
+    </div>
+
+    <h2 id="interaction-kinds"><code>interaction_kind</code> 三种场景对照</h2>
+    <p>核心类型在引擎里统一为 <code>&quot;question&quot; | &quot;confirm&quot; | &quot;feedback&quot;</code>。下表归纳常见含义与你在 <code>submit_interaction</code> 里常用的 <code>action</code>（完整取值以 SDK 为准：<code>&quot;answer&quot; | &quot;approve&quot; | &quot;reject&quot; | &quot;revise&quot;</code>）。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr>
+          <th><code>interaction_kind</code></th>
+          <th>典型场景</th>
+          <th><code>content</code> / <code>options</code></th>
+          <th>常用 <code>action</code></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>question</code></td>
+          <td>模型通过 <code>question</code> 工具追问或让你选方案</td>
+          <td><code>content</code> 为问题正文；<code>options</code> 为候选列表或 <code>None</code></td>
+          <td><code>answer</code>（把用户文字放进 <code>content</code>）；也可用 <code>approve</code> / <code>reject</code> 让工具侧返回简短标记</td>
+        </tr>
+        <tr>
+          <td><code>confirm</code></td>
+          <td>CONFIRM 工具（如写文件、执行命令）执行前的闸门</td>
+          <td>多为「工具名 + 参数摘要」的提示文案</td>
+          <td><code>approve</code> 放行；<code>reject</code> 拒绝执行（会按权限错误处理）</td>
+        </tr>
+        <tr>
+          <td><code>feedback</code></td>
+          <td>框架预留的「结构化批复」通道，与 <code>approve</code>/<code>reject</code>/<code>revise</code> 语义对齐</td>
+          <td>依具体调用方填充的提示与上下文</td>
+          <td><code>approve</code>、<code>reject</code>、<code>revise</code>（<code>revise</code> 时常把修改意见写在 <code>content</code>）</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="submit-params"><code>submit_interaction</code> 参数</h2>
+    <p>异步客户端方法签名为 <code>await client.submit_interaction(request_id, action=&quot;answer&quot;, content=&quot;&quot;)</code>。三个参数分工如下：</p>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>参数</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>request_id</code></td><td>必须与当前 <code>interaction_request</code> chunk 上的 <code>chunk.request_id</code> 一致，用于把响应挂回正确的挂起请求。</td></tr>
+        <tr><td><code>action</code></td><td><code>answer</code>（回答问题）、<code>approve</code>（批准）、<code>reject</code>（拒绝）、<code>revise</code>（要求修订并常配合 <code>content</code>）。</td></tr>
+        <tr><td><code>content</code></td><td>用户可见的答复或说明；例如 <code>question</code> 场景下传入完整回答，纯确认场景常留空字符串。</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info">
+      <p>处理完一次 <code>interaction_request</code> 后，流会继续推进；同一轮任务里可能出现多次暂停，因此分支里务必<strong>每次</strong>使用当次 chunk 提供的 <code>request_id</code>，不要缓存错配。</p>
+    </div>
+
+    <h2 id="timeout">超时：<code>InteractionTimeoutError</code></h2>
+    <p>若在 <code>interaction(..., timeout=30)</code> 指定的时间内未调用 <code>submit_interaction</code> 完成响应，异步流会终止并抛出 <code>InteractionTimeoutError</code>（从 <code>cody.core.errors</code> 导入）。建议在 <code>async for</code> 外层用 <code>try/except</code> 捕获，向用户提示「等待输入超时」并做清理或重试。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">from</span> cody.core.errors <span class="kw">import</span> InteractionTimeoutError
+
+<span class="kw">try</span>:
+    <span class="kw">async</span> <span class="kw">for</span> chunk <span class="kw">in</span> client.<span class="fn">stream</span>(<span class="str">"任务"</span>):
+        ...
+<span class="kw">except</span> InteractionTimeoutError:
+    <span class="cm"># 超时后运行已终止，在此记录日志或更新 UI</span>
+    ...</pre>
+    </div>
+
+    <h2 id="sync-client">同步 <code>CodyClient</code> 的限制</h2>
+
+    <div class="callout callout-warn">
+      <p>同步包装类 <code>CodyClient</code> 与底层 <code>run_sync</code> 路径<strong>不会</strong>为你保留「边跑边等人」的交互语义：相关请求会被<strong>自动批准</strong>，无法像异步 <code>stream()</code> 那样在事件间隙调用 <code>submit_interaction</code>。要实现人机闭环，请使用 <code>AsyncCodyClient</code> 的 <code>async for client.stream(...)</code>。</p>
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>你已经学会用 <code>.interaction(enabled=True, timeout=...)</code> 打开人机协同，在流式 chunk 中识别 <code>interaction_request</code>，按 <code>question</code> / <code>confirm</code> / <code>feedback</code> 选择 <code>action</code>，并通过 <code>submit_interaction</code> 关闭等待环；也了解了默认关闭时的自动批准行为、超时异常，以及同步客户端不适用该模式的原因。下一篇「<a href="13-storage.html">存储抽象</a>」将介绍如何把会话与产物接到你自己的存储后端。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="11-memory.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">项目记忆</span>
+      </a>
+      <a href="13-storage.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">存储抽象</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

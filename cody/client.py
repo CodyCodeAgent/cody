@@ -33,6 +33,7 @@ from .sdk.types import (  # noqa: F401
     PruneChunk,
     DoneChunk,
     CancelledChunk,
+    RetryChunk,
     CircuitBreakerChunk,
     InteractionRequestChunk,
     UserInputReceivedChunk,

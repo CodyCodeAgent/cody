@@ -140,12 +140,12 @@ client = (
     .build()
 )
 
-# 通义千问（阿里云百炼）
+# 通义千问（阿里云 Coding 专属端点）
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("qwen-plus")
-    .base_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
+    .model("qwen3.5-plus")
+    .base_url("https://coding.dashscope.aliyuncs.com/v1")
     .api_key("sk-xxx")
     .build()
 )

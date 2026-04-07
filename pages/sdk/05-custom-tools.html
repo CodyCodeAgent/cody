@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>05. 注册自定义工具 – Cody SDK 教程</title>
+  <meta name="description" content="用 async 函数注册自定义工具，并用 before_tool / after_tool 中间件拦截与改写调用。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html" class="active">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>工具篇</span>
+    </div>
+    <h1>注册自定义工具</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-green">工具篇</span>
+      <span class="badge badge-green">第 05 篇</span>
+      <span class="reading-time">📖 约 10 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>内置工具能覆盖常见编程任务，但真实产品里往往还有 Jira、内部 API、专有数据库——这些都要靠<strong>自定义工具</strong>接进来。把业务函数注册给模型后，AI 就能在对话中按需调用；再配合 <code>before_tool</code> / <code>after_tool</code>，你可以在调用前后做审计、鉴权与输出脱敏。</p>
+
+    <div class="callout callout-info">
+      <p>本系列演示模型统一为 <strong>通义千问 qwen3.5-plus</strong>。请已按第 01 篇配置环境变量（<code>CODY_MODEL</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL</code>）。下面示例使用 <code>Cody().workdir("...").build()</code>，不显式写模型名即可继承环境配置。</p>
+    </div>
+
+    <p>若不想依赖环境变量，可在 Builder 上显式指定 Qwen 端点：</p>
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    Cody()
+    .<span class="fn">workdir</span>(<span class="str">"."</span>)
+    .<span class="fn">model</span>(<span class="str">"qwen3.5-plus"</span>)
+    .<span class="fn">base_url</span>(<span class="str">"https://coding.dashscope.aliyuncs.com/v1"</span>)
+    .<span class="fn">api_key</span>(<span class="str">"sk-xxx"</span>)
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <h2 id="signature">工具函数：签名里藏着契约</h2>
+    <p>Cody 通过 PydanticAI 暴露工具，因此函数形态需要满足框架约定：必须是 <span class="badge badge-blue">async</span>，第一个参数固定为 <code>ctx: RunContext[CodyDeps]</code>，返回值类型为 <code>str</code>（模型读到的就是这段字符串）。其余参数由模型根据对话填入，类型注解会参与 schema 生成。</p>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>要求</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>async def</code></td><td>工具在异步上下文中执行，便于 <code>await</code> IO。</td></tr>
+        <tr><td>首参 <code>ctx</code></td><td><code>RunContext[CodyDeps]</code>，注入运行期依赖（工作目录、配置等）。</td></tr>
+        <tr><td><code>-&gt; str</code></td><td>统一返回字符串，作为工具结果写回对话。</td></tr>
+        <tr><td>docstring</td><td>人类与模型共读的「说明书」，直接影响工具是否被选中、参数怎么填。</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="full-example">完整示例：先跑通一条链路</h2>
+    <p>下面用虚构的 <code>fetch_jira_ticket</code> 演示端到端流程：定义工具 → <code>Cody().tool(...).build()</code> → <code>run()</code>。先把可运行骨架立起来，再逐段拆开讲。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">import</span> asyncio
+<span class="kw">from</span> pydantic_ai <span class="kw">import</span> RunContext
+<span class="kw">from</span> cody.core.deps <span class="kw">import</span> CodyDeps
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async def</span> <span class="fn">fetch_jira_ticket</span>(<span class="nb">ctx</span>: RunContext[CodyDeps], ticket_key: <span class="nb">str</span>) -&gt; <span class="nb">str</span>:
+    <span class="cm">"""根据 Jira 工单号拉取摘要（演示用：未接真实 API 时返回占位文本）。
+
+    参数:
+        ticket_key: 工单号，例如 PROJ-123。
+
+    适用场景:
+        用户提到具体工单、需要状态/标题/经办人等信息时调用。
+    """</span>
+    <span class="cm"># 演示：生产环境在此调用 Jira REST API</span>
+    <span class="kw">return</span> <span class="str">f"Ticket {ticket_key}: Open · 修复登录超时 · assignee=alice"</span>
+
+
+<span class="kw">async def</span> <span class="fn">main</span>() -&gt; <span class="nb">None</span>:
+    client = (
+        Cody()
+        .<span class="fn">workdir</span>(<span class="str">"."</span>)
+        .<span class="fn">tool</span>(fetch_jira_ticket)
+        .<span class="fn">build</span>()
+    )
+    <span class="kw">async with</span> client:
+        result = <span class="kw">await</span> client.<span class="fn">run</span>(<span class="str">"PROJ-456 这个单子现在什么情况？"</span>)
+        <span class="fn">print</span>(result.output)
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(main())</pre>
+    </div>
+
+    <p>模型若判断需要查工单，会生成对 <code>fetch_jira_ticket</code> 的调用；你的函数执行后返回的字符串会进入后续推理。工作目录仍由 <code>workdir</code> 约束，与内置工具一致。</p>
+
+    <h2 id="multiple-tools">注册多个工具</h2>
+    <p>链式多次 <code>.tool()</code> 即可。顺序只影响 Builder 可读性，不影响运行时行为。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    Cody()
+    .<span class="fn">workdir</span>(<span class="str">"."</span>)
+    .<span class="fn">tool</span>(fetch_jira_ticket)
+    .<span class="fn">tool</span>(another_tool)
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <h2 id="docstring">docstring：模型的「选型说明书」</h2>
+
+    <div class="callout callout-warn">
+      <p><strong>docstring 是模型决定是否调用、如何传参的主要依据之一。</strong>若只写一行模糊描述，模型容易误选工具或填错参数。请写清：做什么、每个参数含义、何时该用、返回的大致形态（仍通过 <code>str</code> 返回即可）。</p>
+    </div>
+
+    <h2 id="before-tool"><code>before_tool</code>：放行、改参或拒绝</h2>
+    <p>签名：<code>async (tool_name: str, args: dict) -&gt; dict | None</code>。返回 <code>dict</code> 表示继续执行——可以返回修改后的 <code>args</code>；返回 <code>None</code> 表示拒绝本次调用（例如未通过安全策略）。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">async def</span> <span class="fn">before</span>(<span class="nb">tool_name</span>: <span class="nb">str</span>, <span class="nb">args</span>: <span class="nb">dict</span>) -&gt; <span class="nb">dict</span> | <span class="nb">None</span>:
+    <span class="fn">print</span>(<span class="str">f"调用 {tool_name}"</span>)
+    <span class="kw">return</span> args  <span class="cm"># 放行；若需改参可返回 {"字段": 新值, ...}</span>
+
+
+client = Cody().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">before_tool</span>(before).<span class="fn">build</span>()</pre>
+    </div>
+
+    <p>典型用途：结构化日志、限流、对敏感参数做校验。下面示例组合「打印调用信息」与「禁止调用危险工具名」两种逻辑（拆成两个函数更符合单一职责，下一节会链式注册）。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">async def</span> <span class="fn">log_tool</span>(<span class="nb">tool_name</span>: <span class="nb">str</span>, <span class="nb">args</span>: <span class="nb">dict</span>) -&gt; <span class="nb">dict</span> | <span class="nb">None</span>:
+    <span class="fn">print</span>(<span class="str">f"[audit] {tool_name} args={args}"</span>)
+    <span class="kw">return</span> args
+
+
+<span class="kw">async def</span> <span class="fn">security_check</span>(<span class="nb">tool_name</span>: <span class="nb">str</span>, <span class="nb">args</span>: <span class="nb">dict</span>) -&gt; <span class="nb">dict</span> | <span class="nb">None</span>:
+    <span class="kw">if</span> tool_name == <span class="str">"dangerous_admin_action"</span>:
+        <span class="kw">return</span> <span class="nb">None</span>  <span class="cm"># 拒绝调用</span>
+    <span class="kw">return</span> args</pre>
+    </div>
+
+    <h2 id="after-tool"><code>after_tool</code>：改写返回给模型的文本</h2>
+    <p>签名：<code>async (tool_name: str, args: dict, result: str) -&gt; str</code>。常用于日志归档、格式统一，或对 <code>result</code> 脱敏后再交给模型，避免密钥、token 进入后续上下文。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">async def</span> <span class="fn">after</span>(<span class="nb">tool_name</span>: <span class="nb">str</span>, <span class="nb">args</span>: <span class="nb">dict</span>, <span class="nb">result</span>: <span class="nb">str</span>) -&gt; <span class="nb">str</span>:
+    <span class="kw">return</span> result.<span class="fn">replace</span>(<span class="str">"secret"</span>, <span class="str">"***"</span>)
+
+
+client = Cody().<span class="fn">workdir</span>(<span class="str">"."</span>).<span class="fn">after_tool</span>(after).<span class="fn">build</span>()</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      <p>脱敏规则尽量可测试：对固定关键字、正则或结构化字段做替换，并注意大小写与多种拼写变体。</p>
+    </div>
+
+    <h2 id="hook-chain">中间件链：按注册顺序执行</h2>
+    <p>多个 <code>before_tool</code> 会按注册顺序依次执行；前一个返回的 <code>dict</code> 会作为下一个的输入 <code>args</code>（若某步返回 <code>None</code>，调用中止）。<code>after_tool</code> 同样按顺序包裹结果，像洋葱从外到内再返回。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">async def</span> <span class="fn">redact_output</span>(<span class="nb">tool_name</span>: <span class="nb">str</span>, <span class="nb">args</span>: <span class="nb">dict</span>, <span class="nb">result</span>: <span class="nb">str</span>) -&gt; <span class="nb">str</span>:
+    <span class="kw">return</span> result.<span class="fn">replace</span>(<span class="str">"password="</span>, <span class="str">"password=***"</span>)
+
+
+client = (
+    Cody()
+    .<span class="fn">before_tool</span>(log_tool)
+    .<span class="fn">before_tool</span>(security_check)
+    .<span class="fn">after_tool</span>(redact_output)
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <p><code>redact_output</code> 与上文 <code>after</code> 同属 <code>after_tool</code> 形态，可按业务替换为更复杂的正则或结构化脱敏，签名保持与 SDK 一致即可。</p>
+
+    <h2 id="summary">小结</h2>
+    <p>自定义工具 = <strong>async + <code>ctx</code> + <code>-&gt; str</code> + 高质量 docstring</strong>，用 <code>Cody().tool(...).build()</code> 挂到客户端。<code>before_tool</code> 管准入与参数，<code>after_tool</code> 管出站内容。下一篇 <a href="06-prompt.html">06. Prompt 定制与多模态</a> 将在此基础上讲解如何定制系统提示与多模态输入，让模型更稳地配合你的工具集。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="04-tools.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">工具直接调用</span>
+      </a>
+      <a href="06-prompt.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">Prompt 定制与多模态</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>

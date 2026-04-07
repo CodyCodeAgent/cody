@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>07. 使用 Skills – Cody SDK 教程</title>
+  <meta name="description" content="理解 Skills 加载优先级、查询内置与自定义 Skill，以及 SKILL.md 格式与目录配置。">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+    <ul class="nav-links" role="list">
+      <li><a href="../index.html">首页</a></li>
+      <li><a href="../docs.html" class="active">文档</a></li>
+      <li><a href="../sdk.html">SDK 教程</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+    <div class="nav-actions">
+      <a href="../sdk.html" class="btn btn-ghost">← SDK 教程</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <aside class="docs-sidebar" role="complementary" aria-label="教程导航">
+
+    <div class="tutorial-back-link">
+      <a href="../sdk.html">← 返回 SDK 教程</a>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">基础篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="01-single-run.html">01. 一次性对话</a></li>
+        <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+        <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">工具篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="04-tools.html">04. 工具直接调用</a></li>
+        <li><a href="05-custom-tools.html">05. 注册自定义工具</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">定制篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="06-prompt.html">06. Prompt 定制与多模态</a></li>
+        <li><a href="07-skills.html" class="active">07. 使用 Skills</a></li>
+        <li><a href="08-mcp.html">08. 集成 MCP</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">进阶篇</div>
+      <ul class="sidebar-nav">
+        <li><a href="09-security.html">09. 安全与控制</a></li>
+        <li><a href="10-events.html">10. 事件与可观测性</a></li>
+        <li><a href="11-memory.html">11. 项目记忆</a></li>
+        <li><a href="12-human-in-loop.html">12. 人机协同</a></li>
+        <li><a href="13-storage.html">13. 存储抽象</a></li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <main class="docs-content" id="main-content">
+
+    <div class="article-breadcrumb">
+      <a href="../docs.html">文档中心</a> / <a href="../sdk.html">SDK 教程</a> / <span>定制篇</span>
+    </div>
+    <h1>使用 Skills</h1>
+
+    <div class="article-meta">
+      <span class="badge badge-purple">定制篇</span>
+      <span class="badge badge-green">第 07 篇</span>
+      <span class="reading-time">📖 约 8 分钟</span>
+    </div>
+
+    <!-- ARTICLE CONTENT START -->
+    <p>在 Cody 里，<strong>Skills</strong> 是把项目或团队知识打包成可发现文档的一种方式：每个 Skill 对应一份 <code>SKILL.md</code>，框架会在构建对话上下文时按规则加载，让模型在合适的任务上「自带说明书」。本篇先给一段可直接运行的查询示例，再拆开讲四层优先级、内置列表、自定义文件格式与目录配置。</p>
+
+    <h2 id="full-example">完整示例：列出并读取一个 Skill</h2>
+    <p>下面假设你已按第 01 篇设置好环境变量（本系列演示模型统一为 <span class="badge badge-blue">qwen3.5-plus</span>）。客户端不显式传模型名，由 <code>CODY_MODEL</code> 等环境变量决定。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># list_skills_get_skill_demo.py</span>
+<span class="kw">import</span> asyncio
+<span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="cm"># workdir 指向你的项目根目录；模型来自环境变量（如 qwen3.5-plus）</span>
+    client = Cody().workdir(<span class="str">"."</span>).<span class="fn">build</span>()
+
+    skills = <span class="kw">await</span> client.<span class="fn">list_skills</span>()
+    <span class="kw">for</span> s <span class="kw">in</span> skills:
+        <span class="fn">print</span>(s[<span class="str">"name"</span>], <span class="str">"|"</span>, s[<span class="str">"source"</span>], <span class="str">"|"</span>, s[<span class="str">"enabled"</span>])
+
+    skill = <span class="kw">await</span> client.<span class="fn">get_skill</span>(<span class="str">"git"</span>)
+    <span class="fn">print</span>(<span class="str">"--- documentation 预览 ---"</span>)
+    <span class="fn">print</span>(skill[<span class="str">"documentation"</span>][:<span class="nb">500</span>])
+
+
+<span class="kw">if</span> __name__ == <span class="str">"__main__"</span>:
+    asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    </div>
+
+    <p>运行后你会看到每条 Skill 的名称、来源与是否启用；<code>get_skill</code> 则返回 <code>documentation</code> 字段（整份 <code>SKILL.md</code> 文本），便于你在 UI 或调试脚本里展示。</p>
+
+    <h2 id="loading">加载机制：四层优先级与 11 个内置 Skill</h2>
+    <p>Cody 按固定顺序合并 Skill 来源，<strong>高优先级覆盖低优先级</strong>中同名 Skill。记忆口诀：</p>
+    <p style="text-align:center;font-weight:600;margin:1rem 0;"><code>custom</code> &gt; <code>project</code> &gt; <code>global</code> &gt; <code>builtin</code></p>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>层级</th><th>典型路径 / 含义</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge badge-yellow">custom</span></td><td>通过 <code>.skill_dir()</code> / <code>.skill_dirs()</code> 或 <code>CODY_SKILL_DIRS</code> 指定</td><td>团队共享目录、多仓库共用规范等</td></tr>
+        <tr><td><span class="badge badge-green">project</span></td><td>项目下 <code>.cody/skills/</code></td><td>随仓库版本化的项目 Skill</td></tr>
+        <tr><td><span class="badge badge-blue">global</span></td><td>用户目录 <code>~/.cody/skills/</code></td><td>本机所有项目可复用的个人 Skill</td></tr>
+        <tr><td><span class="badge badge-purple">builtin</span></td><td>框架内置</td><td>开箱即用，可被上层同名 Skill 覆盖</td></tr>
+      </tbody>
+    </table>
+
+    <p>内置共 <strong>11</strong> 个 Skill，名称如下（与 SDK 约定一致）：</p>
+    <p><code>git</code>、<code>github</code>、<code>docker</code>、<code>npm</code>、<code>python</code>、<code>rust</code>、<code>go</code>、<code>java</code>、<code>web</code>、<code>cicd</code>、<code>testing</code>。</p>
+
+    <h2 id="query-api">查询 API：<code>list_skills</code> 与 <code>get_skill</code></h2>
+    <h3><code>list_skills</code></h3>
+    <p>异步方法 <code>await client.list_skills()</code> 返回 <code>list[dict]</code>，每个元素字段为：</p>
+    <table class="param-table">
+      <thead>
+        <tr><th>字段</th><th>类型</th><th>含义</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>name</code></td><td><code>str</code></td><td>Skill 标识（小写、连字符）</td></tr>
+        <tr><td><code>description</code></td><td><code>str</code></td><td>一句话摘要，供模型判断是否相关</td></tr>
+        <tr><td><code>enabled</code></td><td><code>bool</code></td><td>是否启用</td></tr>
+        <tr><td><code>source</code></td><td><code>str</code></td><td>来源（如 custom / project / builtin 等实现细节）</td></tr>
+      </tbody>
+    </table>
+
+    <h3><code>get_skill</code></h3>
+    <p><code>await client.get_skill(skill_name)</code> 返回单个 <code>dict</code>，在列表字段基础上增加：</p>
+    <table class="param-table">
+      <thead>
+        <tr><th>字段</th><th>类型</th><th>含义</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>documentation</code></td><td><code>str</code></td><td><code>SKILL.md</code> 文件的完整文本（含 YAML frontmatter 与正文）</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-info">
+      若名称不存在，SDK 会抛出 <code>CodyNotFoundError</code>（<code>code="SKILL_NOT_FOUND"</code>）。需要开关启停时可进一步了解 <code>enable_skill</code> / <code>disable_skill</code>（会写回配置文件）。
+    </div>
+
+    <h2 id="skill-md">自定义 Skill：完整的 <code>SKILL.md</code></h2>
+    <p>每个 Skill 目录下放一个 <code>SKILL.md</code>。<strong>Frontmatter 必填</strong> <code>name</code> 与 <code>description</code>：<code>name</code> 必须为小写字母与连字符；<code>description</code> 要写得让模型能判断「何时该读这篇文档」。可选 <code>metadata</code> 存放作者、版本等。</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="cm"># 示例：.cody/skills/internal-api/SKILL.md</span>
+---
+name: internal-api
+description: 当用户询问本公司内部 HTTP API 的鉴权与错误码约定时使用本 Skill。
+metadata:
+  author: platform-team
+  version: "1.0"
+---
+
+# 内部 API 约定
+
+## 鉴权
+- 所有请求头携带 `Authorization: Bearer &lt;token&gt;`。
+- 开发环境 Base URL：`https://api.dev.example.com`。
+
+## 常见错误
+| HTTP | 含义 |
+|------|------|
+| 401 | Token 无效或过期 |
+| 429 | 触发限流，应指数退避重试 |
+
+## 禁止事项
+- 勿在日志中打印完整 Token。</pre>
+    </div>
+
+    <p>正文部分使用普通 Markdown 即可；Cody 会把内容与描述一并纳入技能管理器，供系统提示与检索逻辑使用。</p>
+
+    <h2 id="dirs">目录配置：<code>.skill_dir()</code>、<code>.skill_dirs()</code> 与 <code>CODY_SKILL_DIRS</code></h2>
+    <p>在 Builder 上追加自定义扫描目录的写法如下（与 SDK 一致）：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">from</span> cody.sdk <span class="kw">import</span> Cody
+
+client = (
+    Cody()
+    .workdir(<span class="str">"."</span>)
+    .skill_dir(<span class="str">"/shared/team-skills"</span>)
+    .skill_dirs([<span class="str">"/dir1"</span>, <span class="str">"/dir2"</span>])  <span class="cm"># 批量</span>
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <div class="callout callout-warn">
+      注意：调用 <code>.skill_dirs([...])</code> 会用新列表<strong>整体替换</strong>当前已收集的自定义目录。若需要同时保留 <code>/shared/team-skills</code> 与 <code>/dir1</code>、<code>/dir2</code>，请把前者一并放进 <code>.skill_dirs([...])</code> 的列表，或只使用多次 <code>.skill_dir(...)</code> 追加。
+    </div>
+
+    <p>环境变量方式适合容器或 CI，多个路径用冒号分隔（与文档约定一致）：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre><span class="kw">export</span> CODY_SKILL_DIRS=/shared/team-skills:/home/user/my-skills</pre>
+    </div>
+
+    <p>如需在代码里显式指定通义千问（与第 01 篇一致），可使用：</p>
+
+    <div class="code-block">
+      <button class="copy-btn" aria-label="复制代码">Copy</button>
+      <pre>client = (
+    Cody()
+    .workdir(<span class="str">"."</span>)
+    .<span class="fn">model</span>(<span class="str">"qwen3.5-plus"</span>)
+    .<span class="fn">base_url</span>(<span class="str">"https://coding.dashscope.aliyuncs.com/v1"</span>)
+    .<span class="fn">api_key</span>(<span class="str">"sk-xxx"</span>)
+    .<span class="fn">build</span>()
+)</pre>
+    </div>
+
+    <div class="callout callout-tip">
+      Skills 由框架在构建 Agent 上下文时<strong>自动注入</strong>到系统提示相关逻辑中，无需在业务代码里手动「打开 Skill 开关」。你只要把 <code>SKILL.md</code> 放对目录、写好 <code>description</code>，并保证对应 Skill 处于启用状态即可。
+    </div>
+
+    <h2 id="summary">小结</h2>
+    <p>本篇覆盖了 Skills 的四层优先级、11 个内置名称、<code>list_skills</code> / <code>get_skill</code> 的返回字段，以及自定义 <code>SKILL.md</code> 与 <code>skill_dir</code> / <code>CODY_SKILL_DIRS</code> 的配置方式。下一步建议在真实项目里加一个 <code>.cody/skills/</code> 目录试跑，再阅读 <a href="08-mcp.html">第 08 篇 · 集成 MCP</a>，把外部工具与文档能力接到同一套 Agent 上。</p>
+    <!-- ARTICLE CONTENT END -->
+
+    <div class="article-prev-next">
+      <a href="06-prompt.html" class="prev-next-btn">
+        <span class="direction">← 上一篇</span>
+        <span class="pn-title">Prompt 定制与多模态</span>
+      </a>
+      <a href="08-mcp.html" class="prev-next-btn next">
+        <span class="direction">下一篇 →</span>
+        <span class="pn-title">集成 MCP</span>
+      </a>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="../index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+      <div class="footer-group">
+        <h4>SDK 教程</h4>
+        <ul>
+          <li><a href="01-single-run.html">01. 一次性对话</a></li>
+          <li><a href="02-multi-turn.html">02. 多轮对话</a></li>
+          <li><a href="03-streaming.html">03. 流式输出全解</a></li>
+          <li><a href="../sdk.html">全部 13 篇 →</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="../docs.html">文档中心</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/CONFIG.md" target="_blank" rel="noopener">配置参考</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/docs/API.md" target="_blank" rel="noopener">API 参考</a></li>
+        </ul>
+      </div>
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="../script.js"></script>
+</body>
+</html>
