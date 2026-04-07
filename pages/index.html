@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cody – 开源 AI Coding Agent 框架</title>
+  <meta name="description" content="构建、定制和部署你自己的 AI 编程 Agent。30 个内置工具、Agent Skills 开放标准、多模型支持、完整安全体系。MIT 开源。">
+  <meta property="og:title" content="Cody – 开源 AI Coding Agent 框架">
+  <meta property="og:description" content="构建、定制和部署你自己的 AI 编程 Agent。30 个内置工具、Skills 系统、多模型支持、可私有部署。">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://CodyCodeAgent.github.io/cody/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+
+<!-- ============================================================ NAV -->
+<nav class="navbar" role="navigation" aria-label="主导航">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo" aria-label="Cody 首页">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+        <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+        <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+        <line x1="21" y1="32" x2="26" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+        <line x1="38" y1="32" x2="43" y2="32" stroke="#52c4f7" stroke-width="1.5" opacity="0.6"/>
+      </svg>
+      Cody
+    </a>
+
+    <ul class="nav-links" role="list">
+      <li><a href="index.html" class="active">首页</a></li>
+      <li><a href="docs.html">文档</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody/tree/main/docs" target="_blank" rel="noopener">API</a></li>
+      <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub ↗</a></li>
+    </ul>
+
+    <div class="nav-actions">
+      <a href="docs.html" class="btn btn-ghost">快速开始</a>
+      <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-primary" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+
+    <button class="hamburger" aria-label="切换菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</nav>
+
+<!-- ============================================================ HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-inner">
+      <!-- Left copy -->
+      <div class="hero-copy">
+        <div class="hero-badge">
+          <span class="dot"></span>
+          v2.0.2 · MIT 开源
+        </div>
+
+        <h1 class="hero-title">
+          构建你自己的<br>
+          <span class="accent">AI Coding Agent</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Cody 是开源 AI 编程 Agent 框架，提供 30 个内置工具、Agent Skills 开放标准、多模型支持和完整安全体系。用 SDK 嵌入任何 Python 应用，或通过 CLI / Web 开箱即用。
+        </p>
+
+        <div class="hero-actions">
+          <a href="docs.html" class="btn btn-primary btn-lg">快速开始</a>
+          <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-ghost btn-lg" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            Star on GitHub
+          </a>
+        </div>
+
+        <div class="hero-stats">
+          <div>
+            <div class="hero-stat-value" data-count="30" data-suffix="+">30+</div>
+            <div class="hero-stat-label">内置工具</div>
+          </div>
+          <div>
+            <div class="hero-stat-value" data-count="673" data-suffix="+">673+</div>
+            <div class="hero-stat-label">测试用例</div>
+          </div>
+          <div>
+            <div class="hero-stat-value" data-count="26" data-suffix="+">26+</div>
+            <div class="hero-stat-label">Skills 兼容平台</div>
+          </div>
+          <div>
+            <div class="hero-stat-value" data-count="7">7</div>
+            <div class="hero-stat-label">支持的模型提供商</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right terminal -->
+      <div class="terminal-wrap">
+        <div class="terminal" role="img" aria-label="Cody 使用演示终端">
+          <div class="terminal-bar">
+            <span class="terminal-dot red"></span>
+            <span class="terminal-dot yellow"></span>
+            <span class="terminal-dot green"></span>
+            <span class="terminal-title">cody-demo.py</span>
+          </div>
+          <div class="terminal-body" aria-live="polite">
+            <!-- Animated by script.js -->
+            <span style="color:#4ade80;display:block">$ </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FEATURES -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="anim">
+      <div class="section-label">框架能力</div>
+      <h2 class="section-title">一个框架，覆盖 AI Agent 全栈需求</h2>
+      <p class="section-subtitle">从工具调用到安全审计，从多模型切换到跨任务记忆，Cody 提供 AI 编程 Agent 所需的完整基础设施。</p>
+    </div>
+
+    <div class="features-grid">
+      <!-- Card 1 -->
+      <div class="feature-card anim anim-delay-1">
+        <div class="feature-icon">🔧</div>
+        <h3>30 个内置工具</h3>
+        <p>文件 I/O、正则搜索（grep/glob）、Shell 执行、LSP 代码智能、Web 抓取、任务管理——覆盖日常编码任务的完整工具链，开箱即用。</p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="feature-card anim anim-delay-2">
+        <div class="feature-icon">🧩</div>
+        <h3>Agent Skills 开放标准</h3>
+        <p>兼容 <a href="https://agentskills.io/" target="_blank" rel="noopener">agentskills.io</a> 开放标准，Skills 可跨 Claude Code、Cursor、GitHub Copilot 等 26+ 平台复用。YAML frontmatter + Markdown，按需加载。</p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="feature-card anim anim-delay-3">
+        <div class="feature-icon">🤖</div>
+        <h3>多模型支持</h3>
+        <p>原生支持 Claude、OpenAI GPT、Google Gemini、DeepSeek、智谱 GLM、阿里通义千问，以及任何 OpenAI 兼容 API，一行代码切换模型。</p>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="feature-card anim anim-delay-1">
+        <div class="feature-icon">🛡️</div>
+        <h3>完整安全体系</h3>
+        <p>工具级权限控制（allow/deny/confirm）、路径遍历保护、危险命令检测、SQLite 审计日志、速率限制、文件修改 undo/redo 全面守护。</p>
+      </div>
+
+      <!-- Card 5 -->
+      <div class="feature-card anim anim-delay-2">
+        <div class="feature-icon">⚡</div>
+        <h3>熔断器 + 跨任务记忆</h3>
+        <p>Token/成本上限 + 死循环检测自动终止失控 Agent。ProjectMemory 跨任务积累项目经验（conventions/patterns/decisions），自动注入后续会话。</p>
+      </div>
+
+      <!-- Card 6 -->
+      <div class="feature-card anim anim-delay-3">
+        <div class="feature-icon">🏗️</div>
+        <h3>四种接入方式</h3>
+        <p>SDK 嵌入（<code>pip install cody-ai</code>，仅 4 个核心依赖）、CLI 命令行、TUI 全屏终端、Web 浏览器界面，共享同一个核心引擎。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ INSTALL -->
+<section class="install" id="install">
+  <div class="container">
+    <div class="anim">
+      <div class="section-label">快速开始</div>
+      <h2 class="section-title">从安装到运行，不到 5 行代码</h2>
+      <p class="section-subtitle">选择你的接入方式，Cody 的核心引擎始终一致。</p>
+    </div>
+
+    <div class="install-block anim anim-delay-1">
+      <div class="install-tabs">
+        <button class="tab-btn active" data-tab="sdk">Python SDK</button>
+        <button class="tab-btn" data-tab="cli">CLI</button>
+        <button class="tab-btn" data-tab="web">Web</button>
+        <button class="tab-btn" data-tab="all">全部安装</button>
+      </div>
+
+      <!-- SDK -->
+      <div class="tab-panel active" data-panel="sdk">
+        <div class="code-block">
+          <button class="copy-btn" aria-label="复制代码">Copy</button>
+          <pre><span class="cm"># 安装（仅 4 个核心依赖）</span>
+<span class="t-prompt">$ </span>pip install cody-ai
+
+<span class="cm"># 配置 API Key</span>
+<span class="t-prompt">$ </span>export CODY_MODEL_API_KEY='sk-ant-...'</pre>
+        </div>
+
+        <div class="code-block" style="margin-top:16px">
+          <button class="copy-btn" aria-label="复制代码">Copy</button>
+          <pre><span class="kw">from</span> cody <span class="kw">import</span> AsyncCodyClient
+<span class="kw">import</span> asyncio
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="kw">async with</span> AsyncCodyClient(<span class="nb">workdir</span>=<span class="str">"/path/to/project"</span>) <span class="kw">as</span> client:
+        <span class="cm"># 执行单次任务</span>
+        result = <span class="kw">await</span> client.run(<span class="str">"为 utils.py 添加类型注解"</span>)
+        <span class="nb">print</span>(result.output)
+
+        <span class="cm"># 多轮对话（自动 session 管理）</span>
+        r1 = <span class="kw">await</span> client.run(<span class="str">"创建 Flask 应用"</span>)
+        <span class="kw">await</span> client.run(<span class="str">"添加 /health 端点"</span>, session_id=r1.session_id)
+
+        <span class="cm"># 流式输出</span>
+        <span class="kw">async for</span> chunk <span class="kw">in</span> client.run_stream(<span class="str">"解释这段代码"</span>):
+            <span class="nb">print</span>(chunk.content, end=<span class="str">""</span>)
+
+asyncio.run(main())</pre>
+        </div>
+      </div>
+
+      <!-- CLI -->
+      <div class="tab-panel" data-panel="cli">
+        <div class="code-block">
+          <button class="copy-btn" aria-label="复制代码">Copy</button>
+          <pre><span class="cm"># 安装 CLI</span>
+<span class="t-prompt">$ </span>pip install cody-ai[cli]
+
+<span class="cm"># 首次配置（交互式向导）</span>
+<span class="t-prompt">$ </span>cody config setup
+
+<span class="cm"># 执行编码任务</span>
+<span class="t-prompt">$ </span>cody run "创建一个 FastAPI hello world 应用"
+
+<span class="cm"># 多模态：附带截图</span>
+<span class="t-prompt">$ </span>cody run --image screenshot.png "修复这个 bug"
+
+<span class="cm"># 交互式对话</span>
+<span class="t-prompt">$ </span>cody chat
+
+<span class="cm"># 全屏终端 UI</span>
+<span class="t-prompt">$ </span>cody tui</pre>
+        </div>
+      </div>
+
+      <!-- Web -->
+      <div class="tab-panel" data-panel="web">
+        <div class="code-block">
+          <button class="copy-btn" aria-label="复制代码">Copy</button>
+          <pre><span class="cm"># 安装 Web</span>
+<span class="t-prompt">$ </span>pip install cody-ai[web]
+
+<span class="cm"># 开发模式启动（含 Vite HMR）</span>
+<span class="t-prompt">$ </span>cody-web --dev
+
+<span class="cm"># 生产模式</span>
+<span class="t-prompt">$ </span>cody-web --port 8000
+
+<span class="cm"># 浏览器访问</span>
+<span class="t-prompt">$ </span>open http://localhost:8000</pre>
+        </div>
+      </div>
+
+      <!-- All -->
+      <div class="tab-panel" data-panel="all">
+        <div class="code-block">
+          <button class="copy-btn" aria-label="复制代码">Copy</button>
+          <pre><span class="cm"># 一次安装全部（SDK + CLI + TUI + Web）</span>
+<span class="t-prompt">$ </span>pip install cody-ai[all]
+
+<span class="cm"># 或从源码安装（开发模式）</span>
+<span class="t-prompt">$ </span>git clone https://github.com/CodyCodeAgent/cody.git
+<span class="t-prompt">$ </span>cd cody
+<span class="t-prompt">$ </span>pip install -e ".[dev]"</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ MODELS -->
+<section style="background: var(--bg-0); padding: 80px 0;" id="models">
+  <div class="container">
+    <div class="anim">
+      <div class="section-label">多模型支持</div>
+      <h2 class="section-title">一行代码切换任何模型</h2>
+      <p class="section-subtitle">不绑定单一厂商，支持 Claude、OpenAI、Google、DeepSeek 等，任何 OpenAI 兼容 API 均可接入。</p>
+    </div>
+
+    <div class="models-grid anim anim-delay-1">
+      <div class="model-badge">
+        <span class="model-dot" style="background:#d97706"></span>
+        Claude (Anthropic)
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#10b981"></span>
+        OpenAI GPT
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#3b82f6"></span>
+        Google Gemini
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#8b5cf6"></span>
+        DeepSeek
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#06b6d4"></span>
+        智谱 GLM
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#f59e0b"></span>
+        阿里通义千问
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#52c4f7"></span>
+        阿里百炼
+      </div>
+      <div class="model-badge">
+        <span class="model-dot" style="background:#6b7280"></span>
+        任意 OpenAI 兼容 API
+      </div>
+    </div>
+
+    <div class="anim anim-delay-2" style="margin-top:32px">
+      <div class="code-block" style="max-width:600px">
+        <button class="copy-btn" aria-label="复制代码">Copy</button>
+        <pre><span class="cm"># 切换到 DeepSeek</span>
+<span class="kw">export</span> CODY_MODEL=<span class="str">'deepseek:deepseek-coder'</span>
+<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">'sk-...'</span>
+
+<span class="cm"># 切换到智谱 GLM（OpenAI 兼容）</span>
+<span class="kw">export</span> CODY_MODEL=<span class="str">'glm-4'</span>
+<span class="kw">export</span> CODY_MODEL_BASE_URL=<span class="str">'https://open.bigmodel.cn/api/paas/v4/'</span>
+<span class="kw">export</span> CODY_MODEL_API_KEY=<span class="str">'sk-...'</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ TOOLS -->
+<section style="background: var(--bg-1); padding: 80px 0;" id="tools">
+  <div class="container">
+    <div class="anim">
+      <div class="section-label">工具生态</div>
+      <h2 class="section-title">30 个内置工具，覆盖全部编码场景</h2>
+      <p class="section-subtitle">工具注册是声明式的，添加自定义工具只需追加到列表，或通过 SDK Builder 动态注册。</p>
+    </div>
+
+    <div class="features-grid anim anim-delay-1" style="gap:12px">
+      <div class="feature-card" style="padding:20px">
+        <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--blue);margin-bottom:12px">文件 I/O</div>
+        <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary);line-height:1.9">
+          read_file<br>write_file<br>edit_file<br>list_directory
+        </div>
+      </div>
+      <div class="feature-card" style="padding:20px">
+        <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--purple);margin-bottom:12px">搜索</div>
+        <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary);line-height:1.9">
+          grep<br>glob<br>search_files<br>patch
+        </div>
+      </div>
+      <div class="feature-card" style="padding:20px">
+        <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--green);margin-bottom:12px">执行 / 代理</div>
+        <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary);line-height:1.9">
+          exec_command<br>spawn_agent<br>get_agent_status<br>kill_agent
+        </div>
+      </div>
+      <div class="feature-card" style="padding:20px">
+        <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--yellow);margin-bottom:12px">代码智能 (LSP)</div>
+        <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary);line-height:1.9">
+          lsp_diagnostics<br>lsp_definition<br>lsp_references<br>lsp_hover
+        </div>
+      </div>
+      <div class="feature-card" style="padding:20px">
+        <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--blue);margin-bottom:12px">Web / MCP</div>
+        <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary);line-height:1.9">
+          webfetch<br>websearch<br>mcp_call<br>mcp_list_tools
+        </div>
+      </div>
+      <div class="feature-card" style="padding:20px">
+        <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--red);margin-bottom:12px">记忆 / 管理</div>
+        <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary);line-height:1.9">
+          save_memory<br>todo_write / todo_read<br>undo_file / redo_file<br>question
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ CTA -->
+<section class="cta-section">
+  <div class="container">
+    <div class="cta-box anim">
+      <h2>准备好构建你的 AI Agent 了吗？</h2>
+      <p>MIT 开源，代码在你手里。可审计、可定制、可离线私有部署。</p>
+      <div class="cta-actions">
+        <a href="docs.html" class="btn btn-primary btn-lg">阅读文档</a>
+        <a href="https://github.com/CodyCodeAgent/cody" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="index.html" class="nav-logo" style="font-size:1rem">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#0a0e1a"/>
+            <circle cx="32" cy="32" r="22" stroke="#52c4f7" stroke-width="2" stroke-dasharray="4 2" opacity="0.4"/>
+            <path d="M20 25 L13 32 L20 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M44 25 L51 32 L44 39" stroke="#52c4f7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="27" y="27" width="10" height="10" rx="2" fill="#52c4f7" transform="rotate(45 32 32)"/>
+          </svg>
+          Cody
+        </a>
+        <p>开源 AI Coding Agent 框架。构建、定制和部署你自己的 AI 编程 Agent。</p>
+      </div>
+
+      <div class="footer-group">
+        <h4>产品</h4>
+        <ul>
+          <li><a href="index.html#features">功能特性</a></li>
+          <li><a href="index.html#install">快速安装</a></li>
+          <li><a href="index.html#models">多模型支持</a></li>
+          <li><a href="index.html#tools">工具生态</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-group">
+        <h4>文档</h4>
+        <ul>
+          <li><a href="docs.html#quickstart">快速开始</a></li>
+          <li><a href="docs.html#sdk">SDK 指南</a></li>
+          <li><a href="docs.html#cli">CLI 参考</a></li>
+          <li><a href="docs.html#config">配置说明</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-group">
+        <h4>资源</h4>
+        <ul>
+          <li><a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a></li>
+          <li><a href="https://github.com/CodyCodeAgent/cody/issues" target="_blank" rel="noopener">问题反馈</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span>© 2026 Cody Contributors · MIT License</span>
+      <span>
+        <a href="https://github.com/CodyCodeAgent/cody" target="_blank" rel="noopener">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="https://pypi.org/project/cody-ai/" target="_blank" rel="noopener">PyPI</a>
+        &nbsp;·&nbsp;
+        <a href="https://github.com/CodyCodeAgent/cody/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
