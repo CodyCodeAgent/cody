@@ -18,9 +18,11 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from itertools import count
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, AsyncGenerator, Literal, Optional, Union
+from uuid import uuid4
 
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
@@ -65,6 +67,15 @@ from .user_input import UserInputQueue
 from .model_resolver import resolve_model
 from .project_instructions import load_project_instructions
 from . import tools
+from .runtime import (
+    CheckpointRecord,
+    InMemoryCheckpointStore,
+    InMemoryTraceStore,
+    RunEvent,
+    SQLiteCheckpointStore,
+    SQLiteTraceStore,
+    stream_event_to_run_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +391,8 @@ class AgentRunner:
         audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET,
         file_history: FileHistoryProtocol | _UnsetType | None = UNSET,
         memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET,
+        trace_store: InMemoryTraceStore | SQLiteTraceStore | None = None,
+        checkpoint_store: InMemoryCheckpointStore | SQLiteCheckpointStore | None = None,
     ):
         self.workdir = workdir
         self.config = config
@@ -458,8 +471,22 @@ class AgentRunner:
         else:
             self._memory_store = memory_store
 
+        # Runtime stores for canonical telemetry and recoverable step snapshots.
+        self._trace_store = trace_store or InMemoryTraceStore()
+        self._checkpoint_store = checkpoint_store or InMemoryCheckpointStore()
+
         # Create agent
         self.agent = self._create_agent()
+
+    @property
+    def trace_store(self) -> InMemoryTraceStore | SQLiteTraceStore:
+        """Append-only runtime trace store for canonical RunEvent telemetry."""
+        return self._trace_store
+
+    @property
+    def checkpoint_store(self) -> InMemoryCheckpointStore | SQLiteCheckpointStore:
+        """Runtime checkpoint store for recoverable step snapshots."""
+        return self._checkpoint_store
 
     @property
     def memory_store(self) -> Optional["MemoryStoreProtocol"]:
@@ -1136,6 +1163,116 @@ class AgentRunner:
         self._check_circuit_breaker()
         return cody_result
 
+    def _record_stream_event(
+        self,
+        event: StreamEvent,
+        *,
+        run_id: str,
+        step_id: str | None = None,
+        parent_event_id: str | None = None,
+        message_state: list[dict[str, Any]] | None = None,
+        workflow_state: dict[str, Any] | None = None,
+        artifact_refs: list[str] | None = None,
+        file_refs: list[str] | None = None,
+        child_run_ids: list[str] | None = None,
+        pending_approval_ids: list[str] | None = None,
+    ) -> RunEvent:
+        """Record a legacy stream event as a canonical runtime RunEvent."""
+
+        runtime_event = stream_event_to_run_event(
+            event,
+            run_id=run_id,
+            step_id=step_id,
+            parent_event_id=parent_event_id,
+        )
+        if run_id and step_id:
+            checkpoint_workflow_state = {
+                "last_event_type": runtime_event.event_type.value,
+                "last_event_payload": runtime_event.payload,
+            }
+            if workflow_state:
+                checkpoint_workflow_state.update(workflow_state)
+            checkpoint = self._checkpoint_store.save(
+                CheckpointRecord(
+                    run_id=run_id,
+                    step_id=step_id,
+                    workflow_state=checkpoint_workflow_state,
+                    message_state=message_state or [],
+                    artifact_refs=artifact_refs or [],
+                    file_refs=file_refs or [],
+                    child_run_ids=child_run_ids or [],
+                    pending_approval_ids=pending_approval_ids or [],
+                    budget_state=self._checkpoint_budget_state(),
+                    metadata={
+                        "runtime_event_id": runtime_event.event_id,
+                        "runtime_event_type": runtime_event.event_type.value,
+                    },
+                )
+            )
+            runtime_event.payload.setdefault("checkpoint_id", checkpoint.checkpoint_id)
+        self._trace_store.append(runtime_event)
+        return runtime_event
+
+    def _checkpoint_budget_state(self) -> dict[str, Any]:
+        """Capture lightweight circuit-breaker budget state for checkpoints."""
+
+        cb = getattr(self, "_cb", _CircuitBreakerState())
+        return {
+            "total_tokens": cb.total_tokens,
+            "estimated_cost": cb.estimated_cost,
+            "step_count": cb.step_count,
+        }
+
+    def _checkpoint_message_state(
+        self,
+        message_history: Optional[list[ModelMessage]],
+    ) -> list[dict[str, Any]]:
+        """Serialize recent message history into JSON-safe checkpoint state."""
+
+        if not message_history:
+            return []
+
+        state: list[dict[str, Any]] = []
+        for index, message in enumerate(message_history[-20:]):
+            parts = []
+            for part in getattr(message, "parts", []):
+                parts.append({
+                    "part_kind": getattr(part, "part_kind", type(part).__name__),
+                    "content": str(getattr(part, "content", ""))[:2000],
+                })
+            state.append({
+                "index": index,
+                "message_type": type(message).__name__,
+                "parts": parts,
+            })
+        return state
+
+    def _checkpoint_refs_for_event(
+        self,
+        event: StreamEvent,
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        """Infer artifact/file/child-run/approval refs from a stream event."""
+
+        artifact_refs: list[str] = []
+        file_refs: list[str] = []
+        child_run_ids: list[str] = []
+        pending_approval_ids: list[str] = []
+
+        if isinstance(event, ToolCallEvent):
+            artifact_refs.append(f"tool-call://{event.tool_call_id}")
+            if event.tool_name in {"read_file", "write_file", "edit_file"}:
+                path = event.args.get("path")
+                if path:
+                    file_refs.append(str(path))
+            if event.tool_name == "spawn_agent":
+                child_run_ids.append(str(event.args.get("agent_id") or event.tool_call_id))
+        elif isinstance(event, ToolResultEvent):
+            artifact_refs.append(f"tool-result://{event.tool_call_id}")
+        elif isinstance(event, InteractionRequestEvent):
+            pending_approval_ids.append(event.request.id)
+
+        return artifact_refs, file_refs, child_run_ids, pending_approval_ids
+
     async def _stream_tool_node(
         self, node, agent_run, interaction_q, drain_interaction_q,
     ) -> AsyncGenerator:
@@ -1231,6 +1368,7 @@ class AgentRunner:
         cancel_event: Optional[asyncio.Event] = None,
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
+        run_id: str | None = None,
     ) -> AsyncGenerator[StreamEvent, None]:
         """Run agent with streaming, yielding structured StreamEvent objects.
 
@@ -1243,6 +1381,7 @@ class AgentRunner:
             cancel_event: Set to cancel the run.
             include_tools: If set, only these tools are available for this run.
             exclude_tools: If set, these tools are excluded for this run.
+            run_id: Optional canonical runtime run identifier. Generated when omitted.
 
         Events:
           - CompactEvent: context was auto-compacted (first event if applicable)
@@ -1260,6 +1399,24 @@ class AgentRunner:
           InteractionTimeoutError: if an interaction request times out
         """
         self._new_circuit_breaker()
+        runtime_run_id = run_id or f"run_{uuid4().hex}"
+        step_ids = count(1)
+
+        def _trace_step(event: StreamEvent) -> StreamEvent:
+            artifact_refs, file_refs, child_run_ids, pending_approval_ids = (
+                self._checkpoint_refs_for_event(event)
+            )
+            self._record_stream_event(
+                event,
+                run_id=runtime_run_id,
+                step_id=f"step_{next(step_ids):06d}",
+                message_state=self._checkpoint_message_state(message_history),
+                artifact_refs=artifact_refs,
+                file_refs=file_refs,
+                child_run_ids=child_run_ids,
+                pending_approval_ids=pending_approval_ids,
+            )
+            return event
 
         # Side channel for interaction events emitted from within tool execution.
         interaction_q: asyncio.Queue = asyncio.Queue()
@@ -1273,12 +1430,12 @@ class AgentRunner:
         )
 
         if compact_result is not None:
-            yield CompactEvent(
+            yield _trace_step(CompactEvent(
                 original_messages=compact_result.original_messages,
                 compacted_messages=compact_result.compacted_messages,
                 estimated_tokens_saved=compact_result.estimated_tokens_saved,
                 used_llm=compact_result.used_llm,
-            )
+            ))
 
         pydantic_prompt = self._to_pydantic_prompt(prompt)
 
@@ -1304,7 +1461,7 @@ class AgentRunner:
             ) as agent_run:
                 async for node in agent_run:
                     if cancel_event and cancel_event.is_set():
-                        yield CancelledEvent()
+                        yield _trace_step(CancelledEvent())
                         break
 
                     # UserPromptNode is handled automatically by iter().
@@ -1324,19 +1481,19 @@ class AgentRunner:
                                         if isinstance(event, PartStartEvent):
                                             part = event.part
                                             if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                                yield ThinkingEvent(content=part.content)
+                                                yield _trace_step(ThinkingEvent(content=part.content))
                                             elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                                yield TextDeltaEvent(content=part.content)
+                                                yield _trace_step(TextDeltaEvent(content=part.content))
                                         elif isinstance(event, PartDeltaEvent):
                                             delta = event.delta
                                             if delta.part_delta_kind == "thinking":
                                                 content = getattr(delta, "content_delta", None)
                                                 if content:
-                                                    yield ThinkingEvent(content=content)
+                                                    yield _trace_step(ThinkingEvent(content=content))
                                             elif delta.part_delta_kind == "text":
                                                 content = getattr(delta, "content_delta", None)
                                                 if content:
-                                                    yield TextDeltaEvent(content=content)
+                                                    yield _trace_step(TextDeltaEvent(content=content))
                                 break  # success — exit retry loop
                             except Exception as exc:
                                 from .retry import is_retryable
@@ -1351,18 +1508,18 @@ class AgentRunner:
                                     "retrying in %.1fs: %s",
                                     attempt + 1, max_attempts, delay, exc,
                                 )
-                                yield RetryEvent(
+                                yield _trace_step(RetryEvent(
                                     attempt=attempt + 1,
                                     max_attempts=max_attempts,
                                     error=str(exc),
-                                )
+                                ))
                                 await asyncio.sleep(delay)
 
                     elif agent.is_call_tools_node(node):
                         async for ev in self._stream_tool_node(
                             node, agent_run, interaction_q, _drain_interaction_q,
                         ):
-                            yield ev
+                            yield _trace_step(ev)
 
                     elif isinstance(node, End):
                         # Final result
@@ -1372,14 +1529,14 @@ class AgentRunner:
                         )
                         self._check_circuit_breaker()
                         cody_result = CodyResult.from_raw(agent_run.result)
-                        yield DoneEvent(result=cody_result)
+                        yield _trace_step(DoneEvent(result=cody_result))
 
         except CircuitBreakerError as e:
-            yield CircuitBreakerEvent(
+            yield _trace_step(CircuitBreakerEvent(
                 reason=e.reason,
                 tokens_used=e.tokens_used,
                 cost_usd=e.cost_usd,
-            )
+            ))
         except Exception:
             logger.exception("run_stream failed unexpectedly")
             raise
@@ -1489,27 +1646,46 @@ class AgentRunner:
         re-compacting already-summarized messages.
         """
         sid, history = self.prepare_session(store, session_id)
+        runtime_run_id = f"session_{sid}"
+        step_ids = count(1)
+
+        def _trace_session_step(event: StreamEvent) -> StreamEvent:
+            artifact_refs, file_refs, child_run_ids, pending_approval_ids = (
+                self._checkpoint_refs_for_event(event)
+            )
+            self._record_stream_event(
+                event,
+                run_id=runtime_run_id,
+                step_id=f"step_{next(step_ids):06d}",
+                message_state=self._checkpoint_message_state(history),
+                artifact_refs=artifact_refs,
+                file_refs=file_refs,
+                child_run_ids=child_run_ids,
+                pending_approval_ids=pending_approval_ids,
+            )
+            return event
 
         # Yield session ID immediately so callers always receive it,
         # even if the AI call fails later.
-        yield SessionStartEvent(session_id=sid), sid
+        yield _trace_session_step(SessionStartEvent(session_id=sid)), sid
 
         # Pre-compact and save checkpoint before streaming
         history, compact_result = await self._compact_history_if_needed(history)
         if compact_result is not None:
             self._save_compaction_checkpoint(store, sid, compact_result)
-            yield CompactEvent(
+            yield _trace_session_step(CompactEvent(
                 original_messages=compact_result.original_messages,
                 compacted_messages=compact_result.compacted_messages,
                 estimated_tokens_saved=compact_result.estimated_tokens_saved,
                 used_llm=compact_result.used_llm,
-            ), sid
+            )), sid
 
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
         async for event in self.run_stream(
             prompt, message_history=history, cancel_event=cancel_event,
             include_tools=include_tools, exclude_tools=exclude_tools,
+            run_id=runtime_run_id,
         ):
             if isinstance(event, DoneEvent):
                 store.add_message(sid, "assistant", event.result.output)
