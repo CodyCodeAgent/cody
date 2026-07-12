@@ -19,12 +19,22 @@ _CODY_ENV_VARS = [
     "CODY_MODEL",
     "CODY_MODEL_BASE_URL",
     "CODY_MODEL_API_KEY",
+    "CODY_AUTH_TYPE",
+    "CODY_AUTH_API_KEY",
+    "CODY_AUTH_TOKEN",
+    "CODY_AUTH_REFRESH_TOKEN",
     "CODY_CODING_PLAN_KEY",
     "CODY_ENABLE_THINKING",
     "CODY_THINKING_BUDGET",
     "CODY_SMALL_MODEL",
     "CODY_SMALL_MODEL_BASE_URL",
     "CODY_SMALL_MODEL_API_KEY",
+    "CODY_COMPACTION_USE_LLM",
+    "CODY_COMPACTION_MODEL",
+    "CODY_SKILL_DIRS",
+    "CODY_SANDBOX_ENABLED",
+    "CODY_SANDBOX_BACKEND",
+    "CODY_SANDBOX_IMAGE",
 ]
 
 
@@ -362,6 +372,26 @@ def test_config_env_coding_plan_key_maps_to_model_api_key(tmp_path, monkeypatch)
     monkeypatch.setenv("CODY_CODING_PLAN_KEY", "sk-sp-from-env")
     config = Config.load(workdir=tmp_path / "project")
     assert config.model_api_key == "sk-sp-from-env"
+
+
+def test_auth_secrets_load_from_environment_without_persistence(tmp_path, monkeypatch):
+    monkeypatch.setenv("CODY_AUTH_TYPE", "api_key")
+    monkeypatch.setenv("CODY_AUTH_API_KEY", "web-test-secret")
+    monkeypatch.setenv("CODY_AUTH_TOKEN", "access-test-secret")
+    monkeypatch.setenv("CODY_AUTH_REFRESH_TOKEN", "refresh-test-secret")
+
+    config = Config.load(workdir=tmp_path)
+    assert config.auth.type == "api_key"
+    assert config.auth.api_key == "web-test-secret"
+    assert config.auth.token == "access-test-secret"
+    assert config.auth.refresh_token == "refresh-test-secret"
+
+    path = tmp_path / "config.json"
+    config.save(path)
+    saved = json.loads(path.read_text())
+    assert "api_key" not in saved["auth"]
+    assert "token" not in saved["auth"]
+    assert "refresh_token" not in saved["auth"]
 
 
 def test_config_env_coding_plan_key_does_not_override_model_api_key(tmp_path, monkeypatch):

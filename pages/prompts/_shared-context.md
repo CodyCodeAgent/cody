@@ -11,7 +11,7 @@ Cody 是一个**开源 AI Agent 框架**（Python），让开发者能快速构�
 核心特点：
 - 30 个内置工具（文件读写、grep/glob、Shell 执行、LSP 代码智能、Web 抓取等）
 - 多模型支持（Claude、OpenAI、Gemini、DeepSeek、通义千问、智谱 GLM 等）
-- Agent Skills 开放标准（兼容 Claude Code、Cursor 等 26+ 平台）
+- Agent Skills 开放标准（可移植的 YAML frontmatter + Markdown 目录格式）
 - 完整安全体系（权限控制、路径保护、熔断器、审计日志）
 - 四种接入方式：Python SDK（主推）/ CLI / TUI / Web
 
@@ -24,12 +24,14 @@ Cody 是一个**开源 AI Agent 框架**（Python），让开发者能快速构�
 环境变量配置（推荐读者按此配置后运行示例）：
 ```bash
 export CODY_MODEL=qwen3.5-plus
-export CODY_MODEL_API_KEY=sk-xxx        # 阿里云百炼 / Coding API Key
+export CODY_MODEL_API_KEY=your-api-key  # 通过环境变量或 secret manager 注入
 export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
 ```
 
 代码方式显式配置（教程中展示完整客户端初始化时使用）：
 ```python
+import os
+
 from cody.sdk import Cody
 
 client = (
@@ -37,7 +39,7 @@ client = (
     .workdir("/path/to/project")
     .model("qwen3.5-plus")
     .base_url("https://coding.dashscope.aliyuncs.com/v1")
-    .api_key("sk-xxx")
+    .api_key(os.environ["CODY_MODEL_API_KEY"])
     .build()
 )
 ```
@@ -115,7 +117,7 @@ pages/
 |------|------|------|
 | `.kw` | 红色 | 关键字：`from import async await def class with try except` |
 | `.fn` | 紫色 | 函数名：`main`, `run`, `fetch_data` |
-| `.str` | 蓝色 | 字符串：`"hello"`, `'sk-ant-...'` |
+| `.str` | 蓝色 | 字符串：`"hello"`, `'your-api-key'` |
 | `.cm` | 灰斜体 | 注释：`# 这是注释` |
 | `.nb` | 橙色 | 内置/参数：`print`, `workdir`, `session_id` |
 | `.t-prompt` | 绿色 | 终端提示符：`$ ` |

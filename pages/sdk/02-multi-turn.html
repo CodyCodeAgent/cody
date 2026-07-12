@@ -83,7 +83,7 @@
     <p>多轮对话指模型能<strong>延续上一轮结论与约束</strong>继续推进：你不必在每句里重复「刚才建的 Flask 项目」，只要让多次 <code>run()</code> 落在<strong>同一条会话</strong>上即可。本篇沿用第 01 篇的环境：模型 <span class="badge badge-purple">qwen3.5-plus</span>，<code>CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</code>，客户端用 <code>AsyncCodyClient(workdir="...")</code> 不显式传模型，由环境变量统一生效。</p>
 
     <div class="callout callout-info">
-      <p>若尚未配置，可在 shell 中执行：<code>export CODY_MODEL=qwen3.5-plus</code>、<code>export CODY_MODEL_API_KEY=sk-xxx</code>、<code>export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1</code>。需要显式写在代码里时，可用 Builder：<code>Cody().workdir(".").model("qwen3.5-plus").base_url("https://coding.dashscope.aliyuncs.com/v1").api_key("sk-xxx").build()</code>。</p>
+      <p>若尚未配置，可在 shell 中设置 <code>CODY_MODEL</code>、<code>CODY_MODEL_API_KEY</code> 和 <code>CODY_MODEL_BASE_URL</code>。模型/Base URL 可在 Builder 显式指定；密钥保持由环境或 secret manager 注入。</p>
     </div>
 
     <h2 id="minimal-example">最简多轮示例</h2>

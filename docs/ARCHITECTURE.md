@@ -81,7 +81,9 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-All four consumers — CLI, TUI, Web Backend, Python SDK — import `core/` directly as an in-process library. There is no intermediary layer between any consumer and the framework.
+All four consumers run Cody in-process. Their product-specific response formats derive from
+the same canonical Runtime service and `RunEvent` stream; no consumer owns an independent
+execution state machine.
 
 ---
 
@@ -257,7 +259,8 @@ CORE_TOOLS = FILE_TOOLS + SEARCH_TOOLS + ... + MEMORY_TOOLS  (all except MCP)
 
 ### 3. Skill System (`core/skill_manager.py`) — Agent Skills Open Standard
 
-Implements the [Agent Skills open standard](https://agentskills.io/) (adopted by 26+ platforms including Claude Code, Codex CLI, Cursor, GitHub Copilot).
+Implements the portable directory and YAML-frontmatter format defined by the
+[Agent Skills open standard](https://agentskills.io/).
 
 **SKILL.md format:** YAML frontmatter (`name`, `description`, optional `license`/`compatibility`/`metadata`/`allowed-tools`) + Markdown body.
 
@@ -475,7 +478,7 @@ Main Agent → spawn_agent("task", "research") tool call
 
 ```
 Config
-├── model: str                    # "claude-sonnet-4-0"
+├── model: str                    # e.g. "deepseek-v4-flash"
 ├── skills: SkillConfig           # enabled[], disabled[]
 ├── mcp: MCPConfig                # servers[]
 ├── permissions: PermissionsConfig # overrides{}, default_level
@@ -526,4 +529,7 @@ cody/sdk/ ───────→ core/*  (direct import, in-process)
 
 ---
 
-**Last updated:** 2026-03-20
+详细运行、存储和恢复契约见 [Runtime 使用与部署](RUNTIME.md)，进程信任边界见
+[Sandbox 指南](SANDBOX.md)。
+
+**Last updated:** 2026-07-12

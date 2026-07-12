@@ -63,6 +63,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   后通过 fallback 进入 repair 并有界重检；耗尽 `max_repairs` 后阻断 Run。提供 tests、
   lint、typecheck、security、coverage command evaluator 和 diff-risk evaluator
 
+### Changed
+
+- **完整文档收束**：新增文档索引、Runtime 使用与部署手册、完整 Sandbox 指南和
+  Runtime 黑盒测试手册；同步 CLI/SDK/API/Web/TUI/Config/Skills/站点教程，并增加
+  `scripts/check_docs.py` 自动检查本地链接、公开命令、配置字段、HTTP 路由和静态站点
+- **密钥配置语义明确化**：CLI `config set model_api_key` 和 Web Settings 不再提供
+  实际无法持久化的密钥入口；后端拒绝密钥字段。API Key 只通过进程环境、SDK 参数或
+  secret manager 注入，与 `Config.save()` 的不落盘策略保持一致；新增
+  `CODY_AUTH_TYPE`、`CODY_AUTH_API_KEY`、`CODY_AUTH_TOKEN` 和
+  `CODY_AUTH_REFRESH_TOKEN` 支持 Web 认证的无落盘部署
+
 ---
 
 ## [2.0.2] - 2026-03-29

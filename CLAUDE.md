@@ -17,7 +17,7 @@ Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程 Agent �
 
 `cody/client.py` 为向后兼容 shim，re-export `sdk/` 的公开符号。新代码应直接用 `cody.sdk`。
 
-当前版本：**v2.0.0**（单一来源：`cody/_version.py`）
+当前版本：**v2.0.2**（单一来源：`cody/_version.py`）
 
 ## 核心定位
 
@@ -44,11 +44,15 @@ web/backend/            →  core/runner.py  →  core/tools/
 
 ### 开发流程
 
-新功能的完整路径：`core/` 实现 → SDK 暴露 → Web Backend 路由 → CLI 命令 → 更新文档
+新功能的完整路径：`core/` 实现 → canonical Runtime 接入 → SDK/Web/CLI/TUI 暴露 →
+更新文档和黑盒验证。
 
 ### 关键入口文件
 
 - `core/runner.py` — 框架中枢：Agent 创建、工具注册、run/stream 执行、熔断检查、记忆加载
+- `core/runtime/service.py` — canonical Run 生命周期、恢复、workflow 与产品主链
+- `core/runtime/environment.py` — SQLite/PostgreSQL/Object Store 组合
+- `core/sandbox/` — 所有 guest 进程的统一隔离边界
 - `core/tools/registry.py` — 声明式工具注册表（`*_TOOLS` 列表），添加新工具只需追加到列表
 - `core/deps.py` — CodyDeps 数据类 + ToolContext，工具的依赖注入容器
 - `core/prompts.py` — System prompt 构建
@@ -60,8 +64,8 @@ web/backend/            →  core/runner.py  →  core/tools/
 # 安装（含所有开发依赖）
 pip install -e ".[dev]"
 
-# 核心 + SDK 测试（650+ 个）
-uv run pytest tests/ -v
+# 全部 Python 测试（core、SDK、CLI/TUI、Web backend）
+uv run pytest -q
 
 # 运行单个测试文件
 uv run pytest tests/test_tools.py -v
@@ -69,24 +73,24 @@ uv run pytest tests/test_tools.py -v
 # 运行匹配名称的测试
 uv run pytest tests/ -k "grep" -v
 
-# Web 后端测试（120+ 个）
-PYTHONPATH=. uv run pytest web/tests/ -v
+# Web 后端专项测试
+uv run pytest web/tests/ -q
 
 # Web 前端测试
-cd web && npx vitest run
+cd web && npm test -- --run && npm run build
 
 # Lint（必须零告警）
-uv run ruff check cody/ tests/ web/
+uv run ruff check .
 
 # 自动修复 lint 问题
-uv run ruff check cody/ tests/ web/ --fix
+uv run ruff check . --fix
 
 # 类型检查
 uv run mypy cody/ --ignore-missing-imports
 
 # 启动 Web（后端 + 前端）
-cody-web --dev              # 开发模式
-cody-web --port 8000        # 生产模式
+cody-web run --dev          # 开发模式
+cody-web run --port 8000    # 生产模式
 ```
 
 **CI 矩阵**：Python 3.10–3.13，lint → mypy → core tests → web tests（见 `.github/workflows/python-publish.yml`）
@@ -127,6 +131,8 @@ cody-web --port 8000        # 生产模式
 |------|------|
 | `./` | 根目录文档（README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等） |
 | `docs/` | 所有项目文档（CLI.md、API.md、ARCHITECTURE.md、FEATURES.md、SDK.md 等） |
+| `web/README.md` | Web 架构、端点、前端与测试 |
+| `ai_tests/` | 真实模型和产品表面黑盒回归 |
 
 > **原则**：文档是代码的一部分，不是事后补充。代码合并前，文档必须先更新。
 
@@ -151,4 +157,5 @@ Python 版本号**单一来源**：`cody/_version.py` → `__version__ = "x.y.z"
 
 ## 文档
 
-详细文档在 `docs/` 目录下（架构、API、SDK、CLI、TUI、Skills、配置等）。开发规范见 `CONTRIBUTING.md`。
+详细文档从 `docs/README.md` 开始；开发规范见 `CONTRIBUTING.md`。Runtime 或 Sandbox
+变更必须同步更新 `docs/RUNTIME.md` / `docs/SANDBOX.md`。

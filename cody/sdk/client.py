@@ -116,7 +116,7 @@ class CodyBuilder:
         return self
 
     def model(self, model: str) -> "CodyBuilder":
-        """Set model name (e.g., 'claude-sonnet-4-0', 'gpt-4o')."""
+        """Set the model name supported by the configured OpenAI-compatible endpoint."""
         self._model = model
         return self
 

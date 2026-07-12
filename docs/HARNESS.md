@@ -1,5 +1,11 @@
 # Cody — Harness 能力补齐需求文档
 
+> **历史需求（已交付/归档）**：本文用于定义早期 CircuitBreaker、ProjectMemory、
+> HumanFeedback 和 StructuredOutput 缺口。相关能力已经进入主线，并在 Cody 2.0.2
+> 进一步统一到 canonical Runtime、durable approval、Quality Gate 和治理预算。
+> 当前行为与公共接口以 [Runtime 使用与部署](RUNTIME.md)、[SDK 指南](SDK.md) 和
+> [功能清单](FEATURES.md) 为准；本文保留用于追溯设计背景。
+
 **单 Agent 场景 · 基于 Harness 方法论**
 
 | 字段 | 内容 |

@@ -1022,6 +1022,13 @@ body {
   gap: 8px;
 }
 
+.settings-hint {
+  margin: 0;
+  color: var(--text-secondary, #a1a1aa);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 .settings-actions {
   display: flex;
   align-items: center;

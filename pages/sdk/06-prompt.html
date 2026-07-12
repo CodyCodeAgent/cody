@@ -106,7 +106,7 @@
     <p>默认情况下，Cody 会把你当成通用编程助手来组织系统提示。很多场景下，你希望它变成<strong>专用助手</strong>：只做安全审查、只按某种语气回复，或者能「看见」截图里的界面再写代码。本篇用同一条叙事线：先给可运行的完整示例，再拆开讲 <code>system_prompt()</code>、<code>extra_system_prompt()</code> 以及多模态 <code>MultimodalPrompt</code>。</p>
 
     <div class="callout callout-info">
-      <p>本系列演示模型统一为 <span class="badge badge-blue">qwen3.5-plus</span>。请像第 01 篇那样配置环境变量（<code>CODY_MODEL</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL</code>），下面示例中的 <code>Cody().workdir("...").build()</code> 即可不显式写模型；需要写死模型时可用 <code>.model("qwen3.5-plus").base_url("https://coding.dashscope.aliyuncs.com/v1").api_key("sk-xxx")</code>。</p>
+      <p>本系列演示模型统一为 <span class="badge badge-blue">qwen3.5-plus</span>。请像第 01 篇那样配置环境变量（<code>CODY_MODEL</code>、<code>CODY_MODEL_API_KEY</code>、<code>CODY_MODEL_BASE_URL</code>）；代码中可显式指定模型和 Base URL，但密钥不应硬编码。</p>
     </div>
 
     <h2 id="full-example">先看完整例子：安全审查 + 中文回复</h2>

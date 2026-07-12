@@ -1,6 +1,8 @@
 # Cody SDK - Python SDK 使用文档
 
-Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framework）。**Python SDK（`cody.sdk`）是使用 Cody 框架的首选方式**——它直接包装 `cody.core` 引擎，在你的 Python 应用中以 in-process 方式运行，无需启动 HTTP 服务、无需部署额外进程。
+Cody 是一个开源 AI Agent Runtime 和 Coding Agent 参考实现。**Python SDK
+（`cody.sdk`）是嵌入 Cody 的首选方式**——它在进程内启动 canonical Runtime，无需
+HTTP 服务；CLI、TUI 和 Web 与它共享同一种 Run/Event/Checkpoint 模型。
 
 无论你是构建自动化脚本、IDE 插件、CI/CD 流水线还是自己的 AI 编程产品，SDK 都提供了完整的 API 来驱动 Cody 的全部能力：Agent 执行、流式输出、工具调用、多模态 Prompt、技能管理、事件钩子与指标收集。
 
@@ -45,7 +47,7 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 ### 安装
 
 ```bash
-# 只装核心 SDK（4 个依赖）
+# 只装核心 SDK（3 个直接核心依赖）
 pip install cody-ai
 
 # 完整安装（包含 CLI、TUI、Web）
@@ -79,7 +81,7 @@ SDK 支持通过环境变量配置模型，无需在代码中硬编码：
 
 ```bash
 export CODY_MODEL=qwen3.5-plus
-export CODY_MODEL_API_KEY=sk-xxx
+export CODY_MODEL_API_KEY='your-api-key'
 export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
 ```
 
@@ -96,8 +98,18 @@ export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
 ```python
 from cody import CodyRuntime
 from cody.core import Config
+from cody.core.runtime import (
+    AsyncMultiAgentCoordinator,
+    ToolSpec,
+    RuntimeStoreBundle,
+    Workflow,
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    standard_quality_evaluators,
+)
 
-runtime = CodyRuntime.from_config(Config.load(), ".")
+stores = RuntimeStoreBundle.for_workdir(".")
+runtime = CodyRuntime.from_config(Config.load(workdir="."), ".", stores=stores)
 run = await runtime.start("修复当前项目中失败的测试")
 
 async for event in run.events():
@@ -106,6 +118,7 @@ async for event in run.events():
 result = await run.result()
 print(result.output)
 print(result.artifact_ids)
+await runtime.close()
 ```
 
 也可以传入编译后的 workflow 和结构化输入：
@@ -233,17 +246,24 @@ runtime = CodyRuntime.from_config(config, ".", quality_evaluators=evaluators)
 不使用 shell，支持 timeout 和结构化 stdout/stderr/returncode；也可以注册任意同步或
 异步 evaluator。
 
+Runtime 的 durable store、治理预算、进程恢复、PostgreSQL/S3 部署、Sandbox 和扩展
+接口见独立的 [Runtime 使用与部署](RUNTIME.md) 与 [Sandbox 指南](SANDBOX.md)。
+
 ## 四种创建方式
 
 ```python
+import os
+
 from cody.sdk import AsyncCodyClient, Cody, config
+
+api_key = os.environ["CODY_MODEL_API_KEY"]
 
 # 1. Builder 模式（推荐）
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("claude-sonnet-4-0")
-    .api_key("sk-ant-xxx")
+    .model("deepseek-v4-flash")
+    .api_key(api_key)
     .thinking(True, budget=10000)
     .allowed_roots(["/path/to/project", "/shared/libs"])
     .enable_metrics()
@@ -254,17 +274,17 @@ client = (
 # 2. 直接构造
 client = AsyncCodyClient(
     workdir="/path/to/project",
-    model="claude-sonnet-4-0",
-    api_key="sk-ant-xxx",
-    base_url="https://api.example.com/v1",
+    model="deepseek-v4-flash",
+    api_key=api_key,
+    base_url="https://api.deepseek.com/v1",
     db_path="/path/to/sessions.db",
 )
 
 # 3. Config 对象
 cfg = config(
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     workdir=".",
-    api_key="sk-ant-xxx",
+    api_key=api_key,
     enable_thinking=True,
     thinking_budget=10000,
     allowed_roots=["/path/to/project", "/shared/libs"],
@@ -293,7 +313,7 @@ client = (
     .workdir("/path/to/project")
     .model("qwen3.5-plus")
     .base_url("https://coding.dashscope.aliyuncs.com/v1")
-    .api_key("sk-xxx")
+    .api_key(api_key)
     .build()
 )
 
@@ -301,9 +321,9 @@ client = (
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("deepseek-chat")
+    .model("deepseek-v4-flash")
     .base_url("https://api.deepseek.com/v1")
-    .api_key("sk-xxx")
+    .api_key(api_key)
     .build()
 )
 
@@ -312,7 +332,7 @@ client = AsyncCodyClient(
     workdir="/path/to/project",
     model="glm-4",
     base_url="https://open.bigmodel.cn/api/paas/v4/",
-    api_key="your-zhipu-api-key",
+    api_key=api_key,
 )
 ```
 
@@ -589,7 +609,7 @@ r3 = await client.run("添加用户认证", session_id=sid)
 # 也可以手动创建会话（可自定义标题）
 session = await client.create_session(
     title="My Project",
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     workdir="/path/to/project",
 )
 r4 = await client.run("分析项目结构", session_id=session.id)
@@ -806,7 +826,7 @@ async with client:
 from cody.sdk import AsyncCodyClient, config
 
 cfg = config(
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     enable_thinking=True,
     thinking_budget=8000,
 )
@@ -823,7 +843,7 @@ from cody.sdk import SDKConfig, ModelConfig, AsyncCodyClient
 cfg = SDKConfig(
     workdir="/path/to/project",
     model=ModelConfig(
-        model="claude-sonnet-4-0",
+        model="deepseek-v4-flash",
         enable_thinking=True,
         thinking_budget=10000,
     ),
@@ -1272,7 +1292,7 @@ SDK 支持配置自定义 Skill 搜索目录，自定义目录优先级最高（
 client = (
     Cody()
     .workdir("/my/project")
-    .model("claude-sonnet-4-0")
+    .model("deepseek-v4-flash")
     .skill_dir("/shared/team-skills")
     .skill_dir("/home/user/my-skills")
     .build()
@@ -1280,7 +1300,7 @@ client = (
 
 # config() 便捷函数
 cfg = config(
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     workdir="/my/project",
     skill_dirs=["/shared/team-skills", "/home/user/my-skills"],
 )
@@ -1576,7 +1596,7 @@ cb = CircuitBreakerConfig(
     max_cost_usd=10.0,
     max_tokens=500_000,
     max_steps=50,
-    model_prices={"claude-sonnet-4-0": 0.000009},
+    model_prices={"my-model": 0.000003},  # 按供应商实际单价设置
 )
 client = Cody().circuit_breaker(cb).build()
 
@@ -2228,4 +2248,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-20
+**最后更新:** 2026-07-12

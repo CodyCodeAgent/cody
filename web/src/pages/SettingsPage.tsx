@@ -5,7 +5,6 @@ import Sidebar from "../components/Sidebar";
 export default function SettingsPage() {
   const [model, setModel] = useState("");
   const [modelBaseUrl, setModelBaseUrl] = useState("");
-  const [modelApiKey, setModelApiKey] = useState("");
   const [enableThinking, setEnableThinking] = useState(false);
   const [thinkingBudget, setThinkingBudget] = useState("");
   const [loading, setLoading] = useState(true);
@@ -17,7 +16,6 @@ export default function SettingsPage() {
       .then((cfg) => {
         setModel((cfg.model as string) ?? "");
         setModelBaseUrl((cfg.model_base_url as string) ?? "");
-        setModelApiKey((cfg.model_api_key as string) ?? "");
         setEnableThinking((cfg.enable_thinking as boolean) ?? false);
         setThinkingBudget(
           cfg.thinking_budget != null ? String(cfg.thinking_budget) : ""
@@ -34,7 +32,6 @@ export default function SettingsPage() {
       const data: Record<string, unknown> = {};
       if (model) data.model = model;
       if (modelBaseUrl) data.model_base_url = modelBaseUrl;
-      if (modelApiKey) data.model_api_key = modelApiKey;
       data.enable_thinking = enableThinking;
       if (thinkingBudget) data.thinking_budget = parseInt(thinkingBudget, 10);
 
@@ -63,7 +60,7 @@ export default function SettingsPage() {
                   type="text"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  placeholder="anthropic:claude-sonnet-4-0"
+                  placeholder="deepseek-v4-flash"
                 />
               </label>
 
@@ -77,15 +74,10 @@ export default function SettingsPage() {
                 />
               </label>
 
-              <label className="settings-field">
-                <span>API Key</span>
-                <input
-                  type="password"
-                  value={modelApiKey}
-                  onChange={(e) => setModelApiKey(e.target.value)}
-                  placeholder="sk-..."
-                />
-              </label>
+              <p className="settings-hint">
+                API keys are never persisted here. Inject CODY_MODEL_API_KEY
+                through the server environment or your secret manager.
+              </p>
 
               <label className="settings-field settings-field-inline">
                 <span>Enable Thinking</span>

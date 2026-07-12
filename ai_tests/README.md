@@ -2,7 +2,8 @@
 
 本目录包含 Cody 项目的 **AI 驱动黑盒回归测试用例**。
 
-这些测试用例以 Markdown 编写，由 **Claude Code**（或其他 AI Agent）执行。目的是在功能迭代后，让 AI 代替人工完成回归测试。
+这些测试用例以 Markdown 编写，由 Codex、Claude Code 或其他 AI Agent 执行。目的
+是在功能迭代后完成可复核的真实模型和产品表面回归。
 
 ## 设计理念
 
@@ -18,6 +19,7 @@ ai_tests/
 ├── README.md              # 本文件 — 总指南
 ├── setup.md               # 环境准备（安装、配置、前置检查）
 ├── security.md            # 安全策略测试（命令阻断、路径限制、strict_read_boundary）
+├── runtime.md             # Canonical Runtime、恢复、审批、质量和 Sandbox 验证
 ├── cli/
 │   ├── run.md             # cody run 命令测试
 │   ├── chat.md            # cody chat 命令测试（非交互验证）
@@ -60,15 +62,17 @@ ai_tests/
 
 ## 如何使用
 
-### 给 Claude Code 的执行指令
+### 给 AI Agent 的执行指令
 
-将以下 prompt 发送给 Claude Code，它会自动执行测试：
+将以下 prompt 发送给执行测试的 Agent：
 
 ```
 请阅读 ai_tests/ 目录下的测试用例，按照以下流程执行回归测试：
 
 1. 先阅读 ai_tests/setup.md，向我询问 LLM 配置（CODY_MODEL、CODY_MODEL_API_KEY、CODY_MODEL_BASE_URL），然后完成环境检查
 2. 按目录顺序执行每个 .md 文件中的测试用例
+   - 优先运行 `scripts/verify_live_capabilities.py` 的自动化真实模型矩阵
+   - 再执行自动化矩阵未覆盖或需要人工观察的 Markdown 用例
 3. 每个测试用例：
    a. 阅读「前置条件」，准备环境（通常是创建临时目录）
    b. 按「操作步骤」逐步执行
@@ -82,6 +86,7 @@ ai_tests/
 注意：
 - 所有文件操作在 /tmp/cody_ai_test_<timestamp>/ 下进行，测试结束后清理
 - 每次执行前必须向用户要 LLM 配置，不要假设环境变量已设置
+- API Key 只能通过无回显 stdin 或进程环境注入，不写入命令历史、报告或仓库
 - 遇到 FAIL 时继续执行后续用例，不要中断
 - 报告文件保存在 ai_tests/reports/ 目录下，方便版本追溯
 ```
@@ -94,9 +99,9 @@ AI 执行完毕后应输出如下格式的报告：
 ## 回归测试报告
 
 日期：2026-03-09
-执行者：Claude Code
-模型：qwen3.5-plus
-Cody 版本：v1.8.0
+执行者：AI Agent
+模型：deepseek-v4-flash
+Cody 版本：v2.0.2
 
 ### 汇总
 
@@ -176,3 +181,21 @@ Cody 版本：v1.8.0
 2. **超时处理**：LLM 调用可能较慢，单个用例超过 2 分钟未响应视为 FAIL
 3. **环境隔离**：所有测试在 `/tmp/cody_ai_test_*` 目录下运行
 4. **幂等性**：每个用例可独立执行，不依赖其他用例的执行结果
+5. **外部依赖边界**：PostgreSQL、S3、Docker/Bubblewrap、Remote Sandbox、视觉模型
+   必须记录实际服务/版本；adapter mock 不能写成真实后端通过
+
+## 自动化真实模型矩阵
+
+`scripts/verify_live_capabilities.py` 是当前权威的 live capability runner。它只读取
+`CODY_LIVE_API_KEY`，使用临时工作区，并且不会把 Key 写入 JSON 报告。
+
+```bash
+export CODY_LIVE_API_KEY='your-test-key'
+export CODY_LIVE_BASE_URL='https://api.deepseek.com'
+uv run python scripts/verify_live_capabilities.py
+unset CODY_LIVE_API_KEY
+```
+
+可在命令后指定一个或多个 case 名单做定向验证；无参数运行全部 case。完整矩阵覆盖
+SDK/stream/session、工具/hooks、interaction/cancel/breaker、Runtime/approval/recovery、
+Quality Gate、多 Agent、MCP、LSP、Web、CLI、TUI、Seatbelt、Skills 和状态工具。

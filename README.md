@@ -4,10 +4,10 @@
 
 [![PyPI](https://img.shields.io/pypi/v/cody-ai.svg)](https://pypi.org/project/cody-ai/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://pypi.org/project/cody-ai/)
-[![Tests](https://img.shields.io/badge/tests-673%20total-green.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-passing-green.svg)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Cody 提供构建 AI 编程 Agent 所需的完整基础设施：**30 个工具（28 core + 2 MCP）、Agent Skills 开放标准、MCP/LSP 集成、子 Agent 编排、熔断器、跨任务记忆、会话管理和安全体系**。你可以用 SDK 将它嵌入任何 Python 应用，也可以直接用 CLI/TUI/Web 开箱即用。
+Cody 提供构建 AI 编程 Agent 所需的完整基础设施：**Canonical Agent Runtime、30 个工具（28 core + 2 MCP）、可恢复工作流、Agent Skills、MCP/LSP、多 Agent 编排、Quality Gate、Sandbox 和完整治理/观测能力**。你可以用 SDK 将它嵌入任何 Python 应用，也可以直接用 CLI/TUI/Web 开箱即用。
 
 ---
 
@@ -15,9 +15,9 @@ Cody 提供构建 AI 编程 Agent 所需的完整基础设施：**30 个工具�
 
 | 痛点 | Cody 怎么解决 |
 |------|--------------|
-| 想自建 AI 编码工具，但从零造轮子太重 | 30 个工具 + 熔断器 + 安全体系 + Sessions 全现成，专注你的业务逻辑 |
+| 想自建 AI 编码工具，但从零造轮子太重 | Runtime + 30 个工具 + Sessions + Sandbox 全现成，专注你的业务逻辑 |
 | Claude Code / Cursor 不够灵活，想定制 Agent 行为 | Skills 系统 + 权限控制 + 多模型切换，完全可控 |
-| 绑定单一模型厂商，切换成本高 | 多模型支持（Claude、GPT、Gemini、DeepSeek、智谱 GLM、通义千问） |
+| 绑定单一模型厂商，切换成本高 | 使用标准 OpenAI-compatible 接口，可连接 DeepSeek、通义、GLM、本地模型和兼容网关 |
 | 商业产品无法审计、无法私有部署 | 开源 MIT，代码在你手里，可审计、可定制、可离线部署 |
 
 ---
@@ -27,7 +27,7 @@ Cody 提供构建 AI 编程 Agent 所需的完整基础设施：**30 个工具�
 ### 方式一：SDK 嵌入（推荐）
 
 ```bash
-pip install cody-ai    # 仅 4 个核心依赖
+pip install cody-ai    # 3 个直接核心依赖
 ```
 
 ```python
@@ -54,6 +54,9 @@ SDK 直接调用核心引擎（in-process），无需启动任何服务。详细
 ```bash
 pip install cody-ai[cli]
 
+# `cody tui` 同时需要 CLI 与 Textual（也可以安装 cody-ai[all]）
+pip install 'cody-ai[cli,tui]'
+
 # 配置模型
 cody config setup
 
@@ -72,21 +75,21 @@ cody tui
 ```bash
 pip install cody-ai[web]
 
-cody-web --dev    # 开发模式（含 Vite HMR）
+cody-web run --dev    # 开发模式（含 Vite HMR）
 ```
 
 ---
 
 ## 框架能力一览
 
-### 29 个内置工具
+### 30 个内置工具
 
 | 分类 | 工具 |
 |------|------|
 | **文件 I/O** | `read_file`, `write_file`, `edit_file`, `list_directory` |
 | **搜索** | `grep`, `glob`, `search_files`, `patch` |
 | **Shell** | `exec_command` |
-| **子代理** | `spawn_agent`, `get_agent_status`, `kill_agent` |
+| **子代理** | `spawn_agent`, `get_agent_status`, `kill_agent`, `resume_agent` |
 | **MCP** | `mcp_call`, `mcp_list_tools` |
 | **Web** | `webfetch`, `websearch` |
 | **LSP** | `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover` |
@@ -98,7 +101,8 @@ cody-web --dev    # 开发模式（含 Vite HMR）
 
 ### Agent Skills 开放标准
 
-兼容 [Agent Skills](https://agentskills.io/) 开放标准（Claude Code、Cursor、GitHub Copilot 等 26+ 平台采用）。你的 Skills 可以跨平台复用。
+兼容 [Agent Skills](https://agentskills.io/) 开放标准，使用可移植的 YAML frontmatter +
+Markdown 目录格式，便于与其他兼容 Agent 工具复用。
 
 ```markdown
 ---
@@ -114,20 +118,20 @@ AI 代理的使用说明...
 
 **自定义技能：** 在 `.cody/skills/` 或 `~/.cody/skills/` 下创建 SKILL.md，AI 自动发现并按需加载。
 
-**两层优先级：** `.cody/skills/`（项目）> `~/.cody/skills/`（用户）
+**加载优先级：** `custom_dirs` > `.cody/skills/`（项目）>
+`~/.cody/skills/`（用户）> 内置 Skills
 
-### 多模型支持
+### 模型接入
 
-| 提供商 | 模型示例 |
-|--------|----------|
-| Claude | `claude-sonnet-4-0`, `claude-opus-4-0` |
-| OpenAI | `openai:gpt-4`, `openai:gpt-4-turbo` |
-| Google | `google:gemini-pro` |
-| DeepSeek | `deepseek:deepseek-coder` |
-| 智谱 GLM | `glm-4`（需配置 `model_base_url`） |
-| 阿里通义 | `qwen-coder-plus`（需配置 `model_base_url`） |
-| 阿里百炼 | `qwen3.5`（需配置 `coding_plan_key`） |
-| 任何 OpenAI 兼容 API | 通过 `model_base_url` 配置 |
+Cody 的模型层使用 OpenAI-compatible Chat Completions 接口。配置模型名称、Base URL
+和 API Key 即可切换提供商；模型名必须以目标端点实际支持的名称为准。
+
+| 提供商/部署 | 模型示例 | Base URL 示例 |
+|-------------|----------|---------------|
+| DeepSeek | `deepseek-v4-flash`、`deepseek-v4-pro` | `https://api.deepseek.com/v1` |
+| 阿里云百炼 | `qwen3.5` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| 智谱 GLM | `glm-4` | `https://open.bigmodel.cn/api/paas/v4/` |
+| 本地或企业网关 | 由网关决定 | 任意 OpenAI-compatible `/v1` 地址 |
 
 ### 集成能力
 
@@ -138,6 +142,9 @@ AI 代理的使用说明...
 - **熔断器** — Token/成本上限 + 死循环检测，自动终止失控 Agent
 - **跨任务记忆** — AI 自动积累项目经验，注入后续会话
 - **人工交互** — AI 主动提问 + 用户随时输入，双向互动
+- **Canonical Runtime** — Run/Step/Event/Checkpoint/Artifact/Approval 共享一条持久化主链
+- **工作流与多 Agent** — sequential/parallel/join/fallback、团队任务 DAG、确定性结果合并
+- **Quality Gate** — 测试、lint、风险检查和有限次数自动修复循环
 
 ### 安全体系
 
@@ -146,6 +153,8 @@ AI 代理的使用说明...
 - 审计日志（SQLite 持久化）
 - 速率限制（滑动窗口）
 - 文件修改 undo/redo
+- macOS Seatbelt、Linux Bubblewrap、Docker/Podman 和远程 Sandbox 后端
+- 审批等待持久化、进程重启恢复、工具幂等收据和秘密脱敏
 
 ---
 
@@ -157,12 +166,15 @@ Cody 的核心是 AI 编程引擎（`cody/core/`），以下四种方式共享�
 |------|---------|------|
 | **SDK** | 嵌入到你的应用/平台/工具链 | `pip install cody-ai` |
 | **CLI** | 终端中快速执行任务 | `pip install cody-ai[cli]` |
-| **TUI** | 全屏终端交互（Textual） | `pip install cody-ai[tui]` |
+| **TUI** | 全屏终端交互（Textual） | `pip install 'cody-ai[cli,tui]'` |
 | **Web** | 浏览器界面 + HTTP API | `pip install cody-ai[web]` |
 
 ```bash
-# 一次性安装全部
+# 安装全部本地产品表面（SDK + CLI + TUI + Web）
 pip install cody-ai[all]
+
+# PostgreSQL / S3 生产后端
+pip install cody-ai[production]
 ```
 
 ---
@@ -170,20 +182,20 @@ pip install cody-ai[all]
 ## 配置
 
 ```bash
-# 交互式配置向导（推荐，首次使用时自动触发）
+# 交互式配置向导（保存模型和 Base URL，不持久化密钥）
 cody config setup
 
-# 或手动设置环境变量
-export CODY_MODEL_API_KEY='sk-ant-...'
+# 密钥只通过环境变量或部署平台的 secret manager 注入
+export CODY_MODEL_API_KEY='your-api-key'
 
 # 使用 OpenAI 兼容 API（如智谱 GLM）
 export CODY_MODEL='glm-4'
 export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
-export CODY_MODEL_API_KEY='sk-...'
+export CODY_MODEL_API_KEY='your-api-key'
 
 # 阿里云百炼 Coding Plan
 export CODY_MODEL='qwen3.5'
-export CODY_CODING_PLAN_KEY='sk-sp-xxxxx'
+export CODY_MODEL_API_KEY='your-api-key'
 ```
 
 详细配置：[配置文件详解](docs/CONFIG.md)
@@ -198,17 +210,17 @@ git clone https://github.com/CodyCodeAgent/cody.git
 cd cody
 pip install -e ".[dev]"
 
-# 运行核心 + SDK 测试（588 个）
-uv run pytest tests/ -v
+# 运行全部 Python 测试（包含 core、SDK 与 Web backend）
+uv run pytest -q
 
-# Web 后端测试（85 个）
-PYTHONPATH=. uv run pytest web/tests/ -v
+# Web 后端专项测试
+uv run pytest web/tests/ -q
 
-# Web 前端测试（33 个）
-cd web && npx vitest run
+# Web 前端测试与生产构建
+cd web && npm test -- --run && npm run build
 
 # Lint（必须零告警）
-uv run ruff check cody/ tests/ web/
+uv run ruff check .
 ```
 
 ---
@@ -221,6 +233,8 @@ uv run ruff check cody/ tests/ web/
 - [TUI 使用指南](docs/TUI.md) — 全屏终端用法
 
 ### 框架开发
+- [Runtime 使用与部署](docs/RUNTIME.md) — Run、Workflow、恢复、存储、治理与扩展
+- [Sandbox 指南](docs/SANDBOX.md) — 隔离后端、网络策略、生命周期与部署要求
 - [SDK 使用指南](docs/SDK.md) — Python SDK 深度指南
 - [技能开发指南](docs/SKILLS.md) — 创建自定义技能
 - [架构设计](docs/ARCHITECTURE.md) — 框架架构与数据流
@@ -249,4 +263,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-03-26 | **版本:** 2.0.0
+**最后更新:** 2026-07-12 | **版本:** 2.0.2

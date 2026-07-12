@@ -35,7 +35,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ```json
 {
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
   "model_base_url": null,
   "model_api_key": null,
   "small_model": null,
@@ -60,10 +60,25 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   },
   "security": {
     "allowed_commands": null,
+    "blocked_commands": [],
     "restricted_paths": [],
     "allowed_roots": [],
     "strict_read_boundary": false,
-    "require_confirmation": true
+    "require_confirmation": true,
+    "allow_private_urls": false,
+    "command_timeout": 30
+  },
+  "sandbox": {
+    "enabled": false,
+    "backend": "auto",
+    "fail_if_unavailable": true,
+    "private_workspace": false,
+    "network_mode": "disabled",
+    "allowed_domains": [],
+    "allowed_cidrs": [],
+    "denied_roots": [],
+    "image_pull_policy": "if_missing",
+    "env": {}
   },
   "interaction": {
     "enabled": false,
@@ -71,8 +86,8 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
   },
   "circuit_breaker": {
     "enabled": true,
-    "max_tokens": 200000,
-    "max_cost_usd": 5.0,
+    "max_tokens": 1000000,
+    "max_cost_usd": 10.0,
     "max_steps": 0,
     "loop_detect_turns": 6,
     "loop_similarity_threshold": 0.9
@@ -119,23 +134,17 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 #### `model`
 
 **类型:** `string`  
-**默认:** `"claude-sonnet-4-0"`  
-**说明:** AI 模型名称
+**默认:** `""`（必须配置）
+**说明:** OpenAI-compatible 端点实际支持的模型名称
 
 ```json
 {
-  "model": "claude-sonnet-4-0"
+  "model": "deepseek-v4-flash"
 }
 ```
 
-**支持的模型：**
-- `claude-sonnet-4-0`
-- `claude-opus-4-0`
-- `openai:gpt-4`
-- `openai:gpt-4-turbo`
-- `google:gemini-pro`
-- `deepseek:deepseek-coder`
-- 任何 OpenAI 兼容模型
+模型列表不在 Cody 中硬编码。只要目标服务实现 OpenAI-compatible Chat Completions，
+即可使用该服务提供的模型名，例如 DeepSeek V4、Qwen、GLM 或企业内部网关模型。
 
 ---
 
@@ -163,15 +172,18 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 **类型:** `string | null`
 **默认:** `null`
-**说明:** 模型 API Key。OpenAI 兼容提供商的 API Key。
+**说明:** 模型 API Key。只应通过 `CODY_MODEL_API_KEY` 或进程内 `Config`/SDK 参数注入。
 
-`cody config setup` 交互式设置后会自动保存到配置文件。也可通过环境变量 `CODY_MODEL_API_KEY` 覆盖。
+`Config.save()`、`cody config setup` 和 `cody config set` 不把密钥写入配置文件。
+向导中输入的 Key 只对当前自动配置并立即执行的进程有效；后续命令必须设置环境变量。
 
 ```json
 {
   "model_api_key": "sk-..."
 }
 ```
+
+不要把上述 JSON 片段中的占位符替换成真实密钥并提交到仓库。
 
 ---
 
@@ -242,7 +254,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `auth.type`
 
-**类型:** `"api_key"`
+**类型:** `"api_key" | "oauth"`
 **默认:** `"api_key"`
 **说明:** 认证类型
 
@@ -262,7 +274,11 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 **默认:** `null`
 **说明:** API Key（用于 HTTP API 认证）
 
-⚠️ **安全提示:** 建议使用环境变量。
+⚠️ **安全提示:** 使用 `CODY_AUTH_API_KEY` 注入，不写入配置文件。
+
+`auth.token`、`auth.refresh_token` 和 `auth.expires_at` 用于自定义认证 adapter 的
+短期 token 状态。`Config.save()` 会移除 token、refresh token 和 API key；生产服务
+应从 `CODY_AUTH_TOKEN` / `CODY_AUTH_REFRESH_TOKEN` 或认证 provider 注入，而不是写入 JSON。
 
 ---
 
@@ -270,14 +286,14 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `skills.enabled`
 
-**类型:** `string[]`  
-**默认:** `[]`  
+**类型:** `string[]`
+**默认:** `[]`
 **说明:** 启用的技能列表（空表示全部启用）
 
 ```json
 {
   "skills": {
-    "enabled": ["git", "github", "python"]
+    "enabled": ["git", "python", "testing"]
   }
 }
 ```
@@ -286,14 +302,14 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `skills.disabled`
 
-**类型:** `string[]`  
-**默认:** `[]`  
+**类型:** `string[]`
+**默认:** `[]`
 **说明:** 禁用的技能列表
 
 ```json
 {
   "skills": {
-    "disabled": ["docker", "java"]
+    "disabled": ["docker", "npm"]
   }
 }
 ```
@@ -302,6 +318,13 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 1. `disabled` 中的技能始终禁用
 2. 如果 `enabled` 非空，只启用列表中的技能
 3. 如果 `enabled` 为空，默认启用所有技能
+
+#### `skills.custom_dirs`
+
+**类型:** `string[]`
+**默认:** `[]`
+**说明:** 额外 Skill 根目录，优先级高于 project/global/builtin。也可使用冒号分隔的
+`CODY_SKILL_DIRS`。
 
 ---
 
@@ -525,6 +548,62 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 }
 ```
 
+#### `security.allow_private_urls`
+
+**类型:** `boolean`
+**默认:** `false`
+**说明:** 是否允许 Web 工具访问 loopback、link-local 和私有网段。生产环境保持关闭，
+避免 SSRF；Sandbox HTTP MCP 还会额外应用 Run network policy。
+
+#### `security.command_timeout`
+
+**类型:** `integer`
+**默认:** `30`
+**说明:** command 默认超时（秒）。Sandbox 未设置 `timeout_seconds` 时继承此值。
+
+---
+
+### Sandbox 配置 (`sandbox`)
+
+Sandbox 控制 guest 进程的 OS 隔离、文件系统、网络、资源和生命周期。文件工具仍受
+`security.allowed_roots`/`strict_read_boundary` 管理；两套边界应同时配置。
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `enabled` | boolean | `false` | 是否启用 OS Sandbox；关闭时使用 `local-policy` |
+| `backend` | string | `"auto"` | `auto`、`seatbelt`、`bubblewrap`、`docker`、`podman`、`remote` 或 `local-policy` |
+| `image` | string/null | `null` | Docker/Podman 镜像 |
+| `fail_if_unavailable` | boolean | `true` | 后端不可用时 fail closed |
+| `private_workspace` | boolean | `false` | 为 Run 使用私有可写工作区 |
+| `network_mode` | enum | `"disabled"` | `disabled`、`allowlist`、`proxied`、`unrestricted` |
+| `allowed_domains` | string[] | `[]` | 代理策略允许的域名 |
+| `allowed_cidrs` | string[] | `[]` | 允许的 CIDR |
+| `proxy_url` | string/null | `null` | policy proxy 地址 |
+| `network_name` | string/null | `null` | 容器 proxy-only 网络 |
+| `denied_roots` | string[] | `[]` | guest 永远不可访问的根目录 |
+| `cpu_count` | number/null | `null` | CPU quota |
+| `memory_mb` | integer/null | `null` | 内存上限 |
+| `process_limit` | integer/null | `null` | 进程数量上限 |
+| `timeout_seconds` | number/null | `null` | guest 命令默认超时 |
+| `image_pull_policy` | enum | `"if_missing"` | `never`、`if_missing` 或 `always` |
+| `state_root` | string/null | `null` | snapshot/private workspace 状态目录 |
+| `env` | object | `{}` | 明确传入 guest 的非敏感环境变量 |
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "backend": "auto",
+    "fail_if_unavailable": true,
+    "network_mode": "disabled",
+    "denied_roots": ["~/.ssh", "~/.aws"],
+    "timeout_seconds": 300
+  }
+}
+```
+
+完整后端和部署要求见 [Sandbox 指南](SANDBOX.md)。
+
 ---
 
 ### 速率限制配置 (`rate_limit`)
@@ -703,6 +782,15 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 
 ---
 
+#### `compaction.model_api_key`
+
+**类型:** `string | null`
+**默认:** `null`
+**说明:** 摘要专用模型密钥。未设置时使用 small/main model key；不会被
+`Config.save()` 持久化，应由进程内配置或 secret manager 注入。
+
+---
+
 #### `compaction.max_tokens`
 
 **类型:** `integer`
@@ -853,13 +941,13 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 #### `circuit_breaker.max_tokens`
 
 **类型:** `integer`
-**默认:** `200000`
+**默认:** `1000000`
 **说明:** 单次运行最大 token 消耗。超出时终止。
 
 #### `circuit_breaker.max_cost_usd`
 
 **类型:** `float`
-**默认:** `5.0`
+**默认:** `10.0`
 **说明:** 单次运行最大成本（美元）。超出时终止。
 
 #### `circuit_breaker.max_steps`
@@ -880,12 +968,19 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 **默认:** `0.9`
 **说明:** 死循环检测的相似度阈值（0.0-1.0）。
 
+#### `circuit_breaker.model_prices`
+
+**类型:** `object`
+**默认:** `{"default": 0.000003}`
+**说明:** 每 token USD 单价映射，用于成本熔断估算。部署方必须按供应商实际价格
+维护；fallback 默认值不应作为账单依据。
+
 ```json
 {
   "circuit_breaker": {
     "enabled": true,
-    "max_tokens": 200000,
-    "max_cost_usd": 5.0,
+    "max_tokens": 1000000,
+    "max_cost_usd": 10.0,
     "max_steps": 50,
     "loop_detect_turns": 6,
     "loop_similarity_threshold": 0.9
@@ -897,18 +992,30 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 
 ## 环境变量
 
-所有配置项都可以通过环境变量覆盖：
+以下配置项支持环境变量覆盖；其他字段使用全局/项目 JSON 或 SDK 参数：
 
 | 环境变量 | 配置项 | 示例 |
 |---------|--------|------|
 | `CODY_MODEL` | `model` | `glm-4` |
 | `CODY_MODEL_BASE_URL` | `model_base_url` | `https://...` |
 | `CODY_MODEL_API_KEY` | `model_api_key` | `sk-...` |
+| `CODY_AUTH_TYPE` | `auth.type` | `api_key` 或 `oauth` |
+| `CODY_AUTH_API_KEY` | `auth.api_key` | `cody_...` |
+| `CODY_AUTH_TOKEN` | `auth.token` | `<access-token>` |
+| `CODY_AUTH_REFRESH_TOKEN` | `auth.refresh_token` | `<refresh-token>` |
 | `CODY_CODING_PLAN_KEY` | `model_api_key`（兼容旧配置） | `sk-sp-...` |
 | `CODY_ENABLE_THINKING` | `enable_thinking` | `true` |
 | `CODY_THINKING_BUDGET` | `thinking_budget` | `10000` |
+| `CODY_SMALL_MODEL` | `small_model` | `qwen-turbo` |
+| `CODY_SMALL_MODEL_BASE_URL` | `small_model_base_url` | `https://.../v1` |
+| `CODY_SMALL_MODEL_API_KEY` | `small_model_api_key` | `your-api-key` |
 | `CODY_COMPACTION_USE_LLM` | `compaction.use_llm` | `true` |
 | `CODY_COMPACTION_MODEL` | `compaction.model` | `gpt-4o-mini` |
+| `CODY_SKILL_DIRS` | `skills.custom_dirs`（冒号分隔） | `/opt/skills:./skills` |
+| `CODY_SANDBOX_ENABLED` | `sandbox.enabled` | `true` |
+| `CODY_SANDBOX_BACKEND` | `sandbox.backend` | `docker` |
+| `CODY_SANDBOX_IMAGE` | `sandbox.image` | `cody-sandbox:stable` |
+| `CODY_RUNTIME_HOME` | canonical Runtime 数据根目录 | `/var/lib/cody/runtime` |
 | `CODY_CORS_ORIGINS` | Web CORS 允许的源（逗号分隔） | `http://localhost:5173,http://localhost:3000` |
 
 **优先级：** 环境变量 > 配置文件 > 默认值
@@ -928,9 +1035,10 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 cody config setup
 ```
 
-交互式引导配置模型提供商、API Key 等信息，保存到 `~/.cody/config.json`。
+交互式引导配置模型、Base URL 和偏好，非敏感字段保存到 `~/.cody/config.json`。
+API Key 不落盘；后续命令通过 `CODY_MODEL_API_KEY` 注入。
 
-首次使用 `cody run`/`chat`/`tui` 时如果未配置 API Key，也会自动触发。
+首次使用 `cody run`/`chat`/`tui` 且模型或 Base URL 未配置时会自动触发。
 
 ---
 
@@ -943,8 +1051,8 @@ cody config show
 **输出示例：**
 ```json
 {
-  "model": "claude-sonnet-4-0",
-  "model_api_key": "sk-ant...xyz",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "enable_thinking": false,
   "skills": {
     "enabled": ["git", "github"],
@@ -954,7 +1062,7 @@ cody config show
 }
 ```
 
-> API Key 在显示时会自动脱敏。
+> 若 API Key 来自当前进程环境，显示时会自动脱敏；配置文件本身不保存它。
 
 ---
 
@@ -962,13 +1070,13 @@ cody config show
 
 ```bash
 # 设置模型
-cody config set model "claude-sonnet-4-0"
+cody config set model "deepseek-v4-flash"
 
 # 设置 API 地址
 cody config set model_base_url "https://..."
 
-# 设置 API Key
-cody config set model_api_key "sk-..."
+# API Key 不通过 config set 持久化
+export CODY_MODEL_API_KEY='your-api-key'
 
 # 启用思考模式
 cody config set enable_thinking true
@@ -983,7 +1091,8 @@ cody config set thinking_budget 10000
 
 ```json
 {
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["git", "github", "python"]
   }
@@ -998,7 +1107,6 @@ cody config set thinking_budget 10000
 {
   "model": "glm-4",
   "model_base_url": "https://open.bigmodel.cn/api/paas/v4/",
-  "model_api_key": "sk-...",
   "skills": {
     "enabled": ["git", "python"]
   }
@@ -1013,7 +1121,6 @@ cody config set thinking_budget 10000
 {
   "model": "qwen3.5",
   "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "model_api_key": "sk-...",
   "enable_thinking": true,
   "thinking_budget": 10000
 }
@@ -1025,7 +1132,8 @@ cody config set thinking_budget 10000
 
 ```json
 {
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "mcp": {
     "servers": [
       {
@@ -1091,15 +1199,16 @@ cody init
 
 ## 安装依赖分层
 
-`pip install cody-ai` 仅安装核心 SDK（4 个依赖），CLI/TUI/Web 需通过可选依赖组安装：
+`pip install cody-ai` 仅安装核心 SDK（3 个直接依赖），CLI/TUI/Web 需通过可选依赖组安装：
 
 | 安装方式 | 说明 |
 |----------|------|
 | `pip install cody-ai` | 核心 SDK（pydantic-ai、pydantic、httpx） |
 | `pip install cody-ai[cli]` | + CLI（click、rich） |
-| `pip install cody-ai[tui]` | + TUI（textual） |
+| `pip install cody-ai[tui]` | + `cody-tui` 入口（textual）；`cody tui` 还需 `[cli]` |
 | `pip install cody-ai[web]` | + Web（fastapi、uvicorn） |
-| `pip install cody-ai[all]` | 全部功能 |
+| `pip install cody-ai[production]` | + PostgreSQL/S3（psycopg、boto3） |
+| `pip install cody-ai[all]` | SDK + CLI + TUI + Web/Repl 产品表面 |
 | `pip install cody-ai[dev]` | 全部 + 开发工具（pytest、ruff 等） |
 
 缺少可选依赖时，入口模块会提示安装命令（如 `pip install cody-ai[cli]`）。
@@ -1108,17 +1217,17 @@ cody init
 
 ## 最佳实践
 
-### 1. 使用 `cody config setup` 管理 API Key
+### 1. 使用环境变量或 Secret Manager 管理 API Key
 
 ```bash
-# 交互式配置，API Key 安全保存到 ~/.cody/config.json
+# 向导保存模型和 Base URL
 cody config setup
 ```
 
-也可通过环境变量覆盖（优先级高于配置文件）：
+密钥通过环境变量注入（优先级高于配置文件，且不会落盘）：
 
 ```bash
-export CODY_MODEL_API_KEY=sk-...
+export CODY_MODEL_API_KEY='your-api-key'
 ```
 
 ---
@@ -1128,7 +1237,8 @@ export CODY_MODEL_API_KEY=sk-...
 ```bash
 # 全局配置（~/.cody/config.json）
 {
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["git", "github"]
   }
@@ -1255,4 +1365,4 @@ cody run -v "your prompt"
 
 ---
 
-**最后更新:** 2026-03-07
+**最后更新:** 2026-07-12

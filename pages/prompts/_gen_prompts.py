@@ -49,7 +49,7 @@ async for chunk in client.stream("写一篇长文章", cancel_event=cancel):
 ```
 
 **8. 思考模式（Thinking）**：
-callout-info 说明：部分模型（如 claude-sonnet-4-0）支持思考模式，流里会额外出现 thinking chunk。
+callout-info 说明：部分端点模型（如 qwen3.5）支持思考模式，流里会额外出现 thinking chunk。
 ```python
 client = Cody().workdir(".").thinking(True, budget=10000).build()
 async for chunk in client.stream("分析这段代码的性能瓶颈"):
@@ -126,7 +126,7 @@ async for chunk in client.stream("任务", cancel_event=cancel):
         "group": "工具篇", "badge": "green", "time": "8",
         "prev_file": "03-streaming.html", "prev_title": "流式输出全解",
         "next_file": "05-custom-tools.html", "next_title": "注册自定义工具",
-        "desc": "tool() 方法调用 28+ 内置工具，include/exclude_tools 过滤，便捷方法，LSP 工具",
+        "desc": "tool() 方法调用 30 个内置工具，include/exclude_tools 过滤，便捷方法，LSP 工具",
         "goal": "读者能直接调用任意内置工具、过滤工具范围、使用便捷方法快速操作文件和执行命令。",
         "content": """
 **1. 引言**：两种工具使用方式——让 AI 自动调用（run/stream）vs 手动直接调用（tool()）。手动调用适合：自动化脚本、测试、精确控制。
@@ -152,7 +152,7 @@ async with AsyncCodyClient(workdir=".") as client:
 ```
 说明 `ToolResult.result` 字段（str）。
 
-**3. 28+ 内置工具清单**（表格，分类展示）：
+**3. 30 个内置工具清单**（表格，分类展示）：
 | 分类 | 工具 |
 |------|------|
 | 文件 I/O | read_file, write_file, edit_file, list_directory |
@@ -444,7 +444,7 @@ client = (
 ```
 
 **6. 多模态 Prompt —— 发送图片**：
-callout-info：需要模型支持视觉（Claude claude-sonnet-4-0, GPT-4V 等）。
+callout-info：需要所配置的端点模型支持视觉；文本模型不会自动获得图片理解能力。
 ```python
 import base64
 from cody.core.prompt import MultimodalPrompt, ImageData

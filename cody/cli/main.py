@@ -212,7 +212,7 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
 
     Examples:
         cody chat
-        cody chat --model claude-sonnet-4-0
+        cody chat --model deepseek-v4-flash
         cody chat --continue
         cody chat --session abc123
         cody chat --max-tokens 50000 --max-cost 1.0
@@ -364,7 +364,7 @@ def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, cont
 
     Examples:
         cody tui
-        cody tui --model claude-sonnet-4-0
+        cody tui --model deepseek-v4-flash
         cody tui --continue
         cody tui --max-tokens 50000 --max-cost 1.0
         cody tui --workdir /proj/frontend --allow-root /proj/backend

@@ -14,14 +14,17 @@
 ### 选择安装方式
 
 ```bash
-# 只用 SDK（最轻量，4 个依赖）
+# 只用 SDK（3 个直接核心依赖）
 pip install cody-ai
 
 # 用 CLI 交互
 pip install cody-ai[cli]
 
-# 全部功能（CLI + TUI + Web）
+# 全部本地产品表面（CLI + TUI + Web）
 pip install cody-ai[all]
+
+# PostgreSQL / S3 生产后端
+pip install cody-ai[production]
 
 # 从源码安装（开发）
 git clone https://github.com/CodyCodeAgent/cody.git
@@ -35,26 +38,31 @@ pip install -e ".[dev]"
 
 Cody 支持多种模型提供商，你需要先配置 API Key。
 
-### 方式 1：交互式配置（推荐）
+### 方式 1：交互式配置
 
 ```bash
 cody config setup
 ```
 
+向导保存模型名称、Base URL 和非敏感选项。API Key 不写入配置文件，需通过环境变量
+或部署平台的 secret manager 注入。
+
 ### 方式 2：环境变量
 
 ```bash
-# Anthropic Claude
-export CODY_MODEL_API_KEY='sk-ant-...'
+# DeepSeek（示例）
+export CODY_MODEL='deepseek-v4-flash'
+export CODY_MODEL_BASE_URL='https://api.deepseek.com/v1'
+export CODY_MODEL_API_KEY='your-api-key'
 
 # 智谱 GLM
 export CODY_MODEL='glm-4'
 export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
-export CODY_MODEL_API_KEY='sk-...'
+export CODY_MODEL_API_KEY='your-api-key'
 
 # 阿里云百炼 Coding Plan
 export CODY_MODEL='qwen3.5'
-export CODY_CODING_PLAN_KEY='sk-sp-...'
+export CODY_MODEL_API_KEY='your-api-key'
 ```
 
 ### 验证配置
@@ -120,7 +128,7 @@ from cody import Cody
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("claude-sonnet-4-0")
+    .model("deepseek-v4-flash")
     .thinking(enabled=True, budget=10000)
     .enable_metrics()
     .enable_events()
@@ -212,6 +220,7 @@ cody skills disable docker      # 禁用技能
 ## 5. TUI 全屏终端
 
 ```bash
+pip install 'cody-ai[cli,tui]'  # 如果前面没有安装 [all]
 cody tui                        # 启动全屏界面
 cody tui --continue             # 继续上次会话
 cody tui --workdir /path        # 指定工作目录
@@ -223,14 +232,43 @@ cody tui --workdir /path        # 指定工作目录
 
 ---
 
-## 6. Web 界面
+## 6. Canonical Runtime
 
-```bash
-cody-web --dev                  # 开发模式（Vite HMR + FastAPI）
-cody-web --port 8000            # 生产模式
+普通 SDK、CLI、TUI 和 Web 请求都会生成同一格式的持久化 Run。需要编排、恢复或
+治理能力时，可以直接使用 `CodyRuntime`：
+
+```python
+from cody import CodyRuntime
+from cody.core import Config
+from cody.core.runtime import RuntimeStoreBundle
+
+workdir = "/path/to/project"
+config = Config.load(workdir=workdir)
+stores = RuntimeStoreBundle.for_workdir(workdir)
+runtime = CodyRuntime.from_config(config, workdir, stores=stores)
+run = await runtime.start("修复失败的测试")
+
+async for event in run.events():
+    print(event.event_type.value, event.payload)
+
+result = await run.result()
+print(result.output)
+await runtime.close()
 ```
 
-**功能：** 项目管理、实时对话、图片上传、深色主题
+运行可以等待审批、暂停、恢复、重试，或从历史 checkpoint fork。详细用法见
+[Runtime 使用与部署](RUNTIME.md)。
+
+---
+
+## 7. Web 界面
+
+```bash
+cody-web run --dev              # 开发模式（Vite HMR + FastAPI）
+cody-web run --port 8000        # 生产模式
+```
+
+**功能：** 项目管理、实时对话、Runtime 控制台、审批、timeline、artifact、图片上传和深色主题
 
 **API 端点：** `POST /run`, `POST /run/stream` (SSE), `POST /tool`, `GET /skills`, `GET /sessions`, `WS /ws`
 
@@ -238,9 +276,9 @@ cody-web --port 8000            # 生产模式
 
 ---
 
-## 7. 定制你的 Agent
+## 8. 定制你的 Agent
 
-### 7.1 自定义 Skills
+### 8.1 自定义 Skills
 
 在 `.cody/skills/` 下创建你自己的技能：
 
@@ -263,7 +301,7 @@ EOF
 cody skills list
 ```
 
-### 7.2 连接 MCP 服务器
+### 8.2 连接 MCP 服务器
 
 在 `.cody/config.json` 中配置：
 
@@ -282,7 +320,7 @@ cody skills list
 }
 ```
 
-### 7.3 权限控制
+### 8.3 权限与 Sandbox
 
 ```json
 {
@@ -295,13 +333,31 @@ cody skills list
 }
 ```
 
+需要 OS 级进程隔离时启用 Sandbox：
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "backend": "auto",
+    "fail_if_unavailable": true,
+    "network_mode": "disabled"
+  }
+}
+```
+
+macOS 的 `auto` 使用 Seatbelt，Linux 使用 Bubblewrap。容器和远程部署要求见
+[Sandbox 指南](SANDBOX.md)。
+
 ---
 
-## 8. 下一步
+## 9. 下一步
 
 | 目标 | 文档 |
 |------|------|
 | 深入了解 SDK | [SDK 使用指南](SDK.md) |
+| 编排和恢复长期运行 | [Runtime 使用与部署](RUNTIME.md) |
+| 配置进程隔离 | [Sandbox 指南](SANDBOX.md) |
 | 创建自定义技能 | [技能开发指南](SKILLS.md) |
 | 理解框架架构 | [架构设计](ARCHITECTURE.md) |
 | 了解全部配置项 | [配置文件详解](CONFIG.md) |
@@ -309,4 +365,4 @@ cody skills list
 
 ---
 
-**最后更新:** 2026-03-04
+**最后更新:** 2026-07-12

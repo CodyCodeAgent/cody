@@ -287,6 +287,18 @@ class Config(BaseModel):
         env_api_key = os.environ.get("CODY_MODEL_API_KEY")
         if env_api_key:
             config.model_api_key = env_api_key
+        env_auth_type = os.environ.get("CODY_AUTH_TYPE")
+        if env_auth_type in ("api_key", "oauth"):
+            config.auth.type = env_auth_type
+        env_auth_api_key = os.environ.get("CODY_AUTH_API_KEY")
+        if env_auth_api_key:
+            config.auth.api_key = env_auth_api_key
+        env_auth_token = os.environ.get("CODY_AUTH_TOKEN")
+        if env_auth_token:
+            config.auth.token = env_auth_token
+        env_auth_refresh_token = os.environ.get("CODY_AUTH_REFRESH_TOKEN")
+        if env_auth_refresh_token:
+            config.auth.refresh_token = env_auth_refresh_token
         # Legacy: CODY_CODING_PLAN_KEY maps to model_api_key
         env_coding_plan = os.environ.get("CODY_CODING_PLAN_KEY")
         if env_coding_plan and not config.model_api_key:
