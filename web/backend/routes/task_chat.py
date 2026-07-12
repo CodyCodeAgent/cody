@@ -20,11 +20,12 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from cody.core import SessionStore
 from cody.core.auth import AuthError
 from cody.core.interaction import InteractionResponse
+from cody.core.runtime.control import WorkflowCancelled
 
 from ..db import ProjectStore
-from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
+from ..helpers import build_prompt, resolve_chat_runner, serialize_runtime_event
 from ..middleware import validate_credential
-from ..state import get_project_store, session_store_dep
+from ..state import create_runtime, get_project_store, session_store_dep
 
 logger = logging.getLogger("cody.web.task_chat")
 
@@ -145,22 +146,27 @@ async def task_chat_websocket(
         try:
             t0 = time.monotonic()
             event_count = 0
-
-            if sid:
-                async for event, s in runner.run_stream_with_session(
-                    prompt, session_store, sid,
-                    cancel_event=run_cancel_event,
-                ):
-                    payload = serialize_stream_event(event, session_id=s)
+            runtime = create_runtime(runner, workdir)
+            handle = await runtime.start(
+                prompt,
+                session_store=(session_store if sid else None),
+                session_id=sid,
+                cancel_event=run_cancel_event,
+            )
+            async for event in handle.events():
+                model_result = None
+                if event.event_type.value == "run.completed":
+                    completed = await handle.result()
+                    model_result = completed.model_result
+                    sid = completed.session_id
+                payload = serialize_runtime_event(event, sid, model_result)
+                if payload is not None:
                     await _safe_send(run, payload)
                     event_count += 1
-            else:
-                async for event in runner.run_stream(
-                    prompt, cancel_event=run_cancel_event,
-                ):
-                    payload = serialize_stream_event(event)
-                    await _safe_send(run, payload)
-                    event_count += 1
+            try:
+                await handle.result()
+            except WorkflowCancelled:
+                pass
 
             elapsed = time.monotonic() - t0
             logger.info(

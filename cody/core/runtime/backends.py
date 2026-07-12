@@ -69,7 +69,12 @@ def agent_runner_streaming_backend(
         final_output: str | None = None
         index = 0
 
-        async for event in runner.run_stream(prompt, run_id=state.run_id):
+        async for event in runner.run_stream(
+            prompt,
+            run_id=state.run_id,
+            event_scope="step",
+            step_id_prefix=f"node_{node.node_id}_model",
+        ):
             index += 1
             event_type = getattr(event, "event_type", event.__class__.__name__)
             event_data: dict[str, Any] = {"event_type": event_type}
@@ -83,11 +88,13 @@ def agent_runner_streaming_backend(
                 final_output = getattr(result, "output", str(result))
                 event_data["output"] = final_output
             stream_events.append(event_data)
-            if trace_store is not None:
+            runner_trace_store = getattr(runner, "trace_store", None)
+            if trace_store is not None and runner_trace_store is not trace_store:
                 trace_store.append(stream_event_to_run_event(
                     event,
                     run_id=state.run_id,
                     step_id=f"{node.node_id}_stream_{index:06d}",
+                    event_scope="step",
                 ))
 
         return {

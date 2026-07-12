@@ -33,6 +33,7 @@ cody-web                   # 后端自动托管编译后的前端
 浏览器 (React SPA, port 5173)
   │
   ├── HTTP /api/*  ──→  FastAPI (port 8000)  ──→  cody.core
+  ├── HTTP /runtime/* ─→  CodyRuntime + shared durable stores
   └── WS /ws/chat/*  ──→  FastAPI (port 8000)  ──→  AgentRunner.run_stream()
 ```
 
@@ -103,6 +104,7 @@ web/backend/
 | **工具** | `POST /tool` | 直接调用工具 |
 | **会话** | `GET/POST /sessions`, `GET/DELETE /sessions/{id}` | 会话管理 |
 | **技能** | `GET /skills`, `GET /skills/{name}` | 技能查询 |
+| **Runtime** | `GET/POST /runtime/runs`, `/timeline`, `/approvals`, `/artifacts` | 可恢复 Run 管理与控制 |
 | **Agent** | `POST /agent/spawn`, `GET/DELETE /agent/{id}` | 子 Agent 管理 |
 | **审计** | `GET /audit` | 审计日志 |
 | **健康** | `GET /health`, `GET /api/health` | 健康检查 |

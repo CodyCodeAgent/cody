@@ -17,7 +17,9 @@ from cody.sdk.types import (
     UserInputReceivedChunk,
     UnknownChunk,
     Usage,
+    _runtime_event_to_chunk,
 )
+from cody.core.runtime import RunEvent, RunEventType
 
 
 # ── Typed chunks are StreamChunk subclasses ──────────────────────────────────
@@ -95,6 +97,25 @@ class TestSubclassRelationship:
         assert isinstance(chunk, StreamChunk)
         assert chunk.type == "interaction_request"
         assert chunk.options == ["yes", "no"]
+
+    def test_runtime_interaction_uses_durable_approval_id(self):
+        event = RunEvent(
+            RunEventType.HUMAN_INPUT_REQUESTED,
+            run_id="run_1",
+            payload={
+                "approval_id": "approval_1",
+                "request": {
+                    "kind": "question",
+                    "prompt": "Choose",
+                    "options": ["yes", "no"],
+                },
+            },
+        )
+
+        chunk = _runtime_event_to_chunk(event)
+
+        assert isinstance(chunk, InteractionRequestChunk)
+        assert chunk.request_id == "approval_1"
 
     def test_user_input_received_is_stream_chunk(self):
         chunk = UserInputReceivedChunk(content="user said yes")

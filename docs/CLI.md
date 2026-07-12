@@ -48,9 +48,47 @@ cody init
 | `cody chat` | 交互式对话 |
 | `cody tui` | 全屏终端界面 |
 | `cody sessions` | 会话管理 |
+| `cody runs` | Canonical Runtime Run 查询与控制 |
+| `cody approvals` | Runtime 审批 |
+| `cody artifacts` | Runtime 产物 |
+| `cody timeline` | Runtime timeline/checkpoint |
 | `cody skills` | 技能管理 |
 | `cody config` | 配置管理 |
 | `cody init` | 初始化项目 |
+
+---
+
+## Canonical Runtime 命令
+
+CLI、TUI 和 Web 根据规范化 workdir 连接同一组 durable SQLite stores。默认位置为
+`~/.cody/runtime/<project-id>/`，可通过 `CODY_RUNTIME_HOME` 覆盖。
+
+```bash
+cody runs list --workdir /path/to/project
+cody runs show <run_id>
+cody runs watch <run_id>
+cody runs pause <run_id>
+cody runs cancel <run_id>
+cody runs resume <run_id>
+cody runs retry <run_id> [--checkpoint-id <id>]
+cody runs recover <run_id>
+cody runs fork <checkpoint_id> [--new-run-id <id>]
+
+cody approvals list --status pending
+cody approvals approve <approval_id>
+cody approvals reject <approval_id> --reason "needs changes"
+
+cody artifacts list --run-id <run_id>
+cody artifacts show <artifact_id>
+cody timeline show <run_id>
+cody timeline checkpoints <run_id>
+```
+
+`pause`/`cancel` 写入共享 control store，因此可以控制由 Web 或另一个 CLI 进程启动
+的 Run。`recover` 用于服务/进程终止后仍处于 `running` 状态的 Run，从最后安全
+checkpoint 继续。
+
+所有查询命令支持 `--workdir`；主要读取命令支持 `--json`，便于脚本和 CI 使用。
 
 ---
 

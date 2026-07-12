@@ -101,6 +101,16 @@ def log_elapsed(name: str | None = None, level: int = logging.DEBUG):
                 func_logger.log(level, "%s took %.3fs", label, elapsed)
 
         @functools.wraps(func)
+        async def async_generator_wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            try:
+                async for item in func(*args, **kwargs):
+                    yield item
+            finally:
+                elapsed = time.perf_counter() - start
+                func_logger.log(level, "%s took %.3fs", label, elapsed)
+
+        @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
             start = time.perf_counter()
             try:
@@ -109,8 +119,10 @@ def log_elapsed(name: str | None = None, level: int = logging.DEBUG):
                 elapsed = time.perf_counter() - start
                 func_logger.log(level, "%s took %.3fs", label, elapsed)
 
-        import asyncio
-        if asyncio.iscoroutinefunction(func):
+        import inspect
+        if inspect.isasyncgenfunction(func):
+            return async_generator_wrapper
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 

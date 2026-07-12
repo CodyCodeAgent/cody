@@ -23,6 +23,7 @@ class ArtifactType(str, Enum):
     APPROVAL = "approval"
     CONTEXT_PACK = "context_pack"
     TOOL_OUTPUT = "tool_output"
+    SANDBOX_SNAPSHOT = "sandbox_snapshot"
     GENERIC = "generic"
 
 

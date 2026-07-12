@@ -69,6 +69,33 @@ class SecurityConfig:
 
 
 @dataclass
+class SandboxConfig:
+    """Run-scoped process isolation configuration."""
+
+    enabled: bool = False
+    backend: str = "auto"
+    image: Optional[str] = None
+    fail_if_unavailable: bool = True
+    private_workspace: bool = False
+    network_mode: Literal["disabled", "allowlist", "proxied", "unrestricted"] = "disabled"
+    allowed_domains: list[str] = field(default_factory=list)
+    allowed_cidrs: list[str] = field(default_factory=list)
+    proxy_url: Optional[str] = None
+    network_name: Optional[str] = None
+    denied_roots: list[str] = field(default_factory=list)
+    cpu_count: Optional[float] = None
+    memory_mb: Optional[int] = None
+    process_limit: Optional[int] = None
+    timeout_seconds: Optional[float] = None
+    image_pull_policy: Literal["never", "if_missing", "always"] = "if_missing"
+    state_root: Optional[str] = None
+    env: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return dict(self.__dict__)
+
+
+@dataclass
 class MCPServerConfig:
     """Single MCP server configuration.
 
@@ -228,6 +255,9 @@ class SDKConfig:
     
     # Security
     security: SecurityConfig = field(default_factory=SecurityConfig)
+
+    # Process sandbox
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     
     # MCP
     mcp: MCPConfig = field(default_factory=MCPConfig)
@@ -274,6 +304,11 @@ class SDKConfig:
             sec_data = data["security"]
             if isinstance(sec_data, dict):
                 config.security = SecurityConfig(**sec_data)
+
+        if "sandbox" in data:
+            sandbox_data = data["sandbox"]
+            if isinstance(sandbox_data, dict):
+                config.sandbox = SandboxConfig(**sandbox_data)
         
         if "mcp" in data:
             mcp_data = data["mcp"]
@@ -325,6 +360,9 @@ class SDKConfig:
         
         # Add security
         config_dict["security"] = self.security.to_dict()
+
+        # Add sandbox
+        config_dict["sandbox"] = self.sandbox.to_dict()
         
         # Add MCP
         config_dict["mcp"] = self.mcp.to_dict()

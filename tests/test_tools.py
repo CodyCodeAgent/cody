@@ -10,6 +10,8 @@ from cody.core.tools import (
 )
 from cody.core.tools._file_filter import _is_binary, _parse_gitignore, _is_gitignored, _iter_files
 from cody.core.tools.command import _BLOCKED_COMMAND_PATTERNS, exec_command
+from cody.core.tools._base import _with_model_retry
+from cody.core.runtime import WorkflowWaiting
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
 from cody.core.deps import CodyDeps
@@ -171,6 +173,16 @@ async def test_strict_read_boundary_exec_command_no_abs_path_ok(tmp_path):
 
     result = await exec_command(ctx, "echo hello")
     assert "hello" in result
+
+
+@pytest.mark.asyncio
+async def test_tool_wrapper_propagates_runtime_control_signals():
+    async def waiting_tool(_ctx):
+        raise WorkflowWaiting("approval required")
+
+    wrapped = _with_model_retry(waiting_tool)
+    with pytest.raises(WorkflowWaiting, match="approval required"):
+        await wrapped(object())
 
 
 @pytest.mark.asyncio

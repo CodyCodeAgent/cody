@@ -12,6 +12,8 @@ class WorkflowNodeType(str, Enum):
     """Kinds of nodes supported by the runtime workflow graph."""
 
     AGENT = "agent"
+    AGENT_TEAM = "agent_team"
+    QUALITY_GATE = "quality_gate"
     TOOL = "tool"
     HUMAN_APPROVAL = "human_approval"
     FUNCTION = "function"
@@ -54,6 +56,19 @@ class WorkflowNode:
             "metadata": self.metadata,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowNode":
+        return cls(
+            node_id=data["node_id"],
+            node_type=WorkflowNodeType(data["node_type"]),
+            name=data.get("name"),
+            agent_name=data.get("agent_name"),
+            tool_name=data.get("tool_name"),
+            input_schema=data.get("input_schema"),
+            output_schema=data.get("output_schema"),
+            metadata=dict(data.get("metadata") or {}),
+        )
+
 
 @dataclass(frozen=True)
 class WorkflowEdge:
@@ -75,6 +90,17 @@ class WorkflowEdge:
             "label": self.label,
             "metadata": self.metadata,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "WorkflowEdge":
+        return cls(
+            source=data["source"],
+            target=data["target"],
+            edge_type=WorkflowEdgeType(data.get("edge_type", WorkflowEdgeType.SEQUENTIAL.value)),
+            condition=data.get("condition"),
+            label=data.get("label"),
+            metadata=dict(data.get("metadata") or {}),
+        )
 
 
 @dataclass(frozen=True)
@@ -147,6 +173,26 @@ class CompiledWorkflow:
             "edges": [edge.to_dict() for edge in self.edges],
             "metadata": self.metadata,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CompiledWorkflow":
+        nodes = {
+            node_id: WorkflowNode.from_dict(node_data)
+            for node_id, node_data in dict(data.get("nodes") or {}).items()
+        }
+        workflow = cls(
+            workflow_id=data["workflow_id"],
+            name=data["name"],
+            entry_node_id=data["entry_node_id"],
+            nodes=nodes,
+            edges=[WorkflowEdge.from_dict(edge) for edge in data.get("edges") or []],
+            metadata=dict(data.get("metadata") or {}),
+        )
+        if workflow.entry_node_id not in workflow.nodes:
+            raise ValueError(
+                f"Persisted workflow entrypoint does not exist: {workflow.entry_node_id}"
+            )
+        return workflow
 
 
 @dataclass

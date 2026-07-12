@@ -10,6 +10,7 @@ vi.mock("../../src/api/client", () => ({
     onEvent: null,
   }),
   getSession: vi.fn().mockRejectedValue(new Error("no session")),
+  getConfigStatus: vi.fn().mockResolvedValue({ is_ready: true, missing_fields: [] }),
 }));
 
 describe("ChatWindow", () => {

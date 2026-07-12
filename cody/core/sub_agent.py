@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic_ai import Agent
 
@@ -173,6 +173,7 @@ class SubAgentManager:
         default_timeout: float = DEFAULT_AGENT_TIMEOUT,
         audit_logger: AuditLoggerProtocol | None = None,
         file_history: FileHistoryProtocol | None = None,
+        sandbox: Any | None = None,
     ):
         self.config = config
         self.workdir = workdir
@@ -180,6 +181,7 @@ class SubAgentManager:
         self.default_timeout = default_timeout
         self._injected_audit_logger = audit_logger
         self._injected_file_history = file_history
+        self.sandbox = sandbox
 
         self._agents: dict[str, SubAgentResult] = {}
         self._tasks: dict[str, asyncio.Task] = {}
@@ -452,6 +454,7 @@ class SubAgentManager:
                 default_level=PermissionLevel(self.config.permissions.default_level),
             ),
             file_history=fh,
+            sandbox=self.sandbox,
         )
 
         result = await agent.run(task, deps=deps)

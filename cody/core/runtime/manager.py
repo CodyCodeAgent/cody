@@ -7,13 +7,14 @@ from typing import Any
 from uuid import uuid4
 
 from .async_executor import AsyncConditionHandler, AsyncNodeHandler, AsyncWorkflowExecutor
+from .async_scheduler import AsyncWorkflowScheduler
 from .control import WorkflowCancelled, WorkflowControlState, WorkflowPaused, WorkflowWaiting
 from .checkpoint import CheckpointRecord, InMemoryCheckpointStore, SQLiteCheckpointStore
 from .executor import ConditionHandler, NodeHandler, WorkflowExecutor
 from .models import RunRecord, RunStatus
 from .registry import InMemoryRunStore, SQLiteRunStore
 from .trace import InMemoryTraceStore, SQLiteTraceStore
-from .workflow import CompiledWorkflow, WorkflowState
+from .workflow import CompiledWorkflow, WorkflowEdgeType, WorkflowNodeType, WorkflowState
 
 
 class WorkflowRunManagerError(RuntimeError):
@@ -34,6 +35,11 @@ class WorkflowRunManager:
         async_condition_handlers: dict[str, AsyncConditionHandler] | None = None,
         run_store: InMemoryRunStore | SQLiteRunStore | None = None,
         control_state: WorkflowControlState | None = None,
+        nested_workflows: dict[str, CompiledWorkflow] | None = None,
+        cancel_event: Any | None = None,
+        max_concurrency: int = 8,
+        default_node_timeout: float | None = None,
+        force_async_scheduler: bool = False,
     ):
         self.trace_store = trace_store or InMemoryTraceStore()
         self.checkpoint_store = checkpoint_store or InMemoryCheckpointStore()
@@ -43,6 +49,11 @@ class WorkflowRunManager:
         self.condition_handlers = condition_handlers or {}
         self.async_node_handlers = async_node_handlers or {}
         self.async_condition_handlers = async_condition_handlers or {}
+        self.nested_workflows = nested_workflows or {}
+        self.cancel_event = cancel_event
+        self.max_concurrency = max_concurrency
+        self.default_node_timeout = default_node_timeout
+        self.force_async_scheduler = force_async_scheduler
 
     def start(
         self,
@@ -87,7 +98,7 @@ class WorkflowRunManager:
         runtime_run_id = run_id or f"run_{uuid4().hex}"
         self._save_run(workflow, runtime_run_id, initial_data, RunStatus.RUNNING)
         try:
-            state = await self._async_executor().run(
+            state = await self._async_runtime(workflow).run(
                 workflow,
                 run_id=runtime_run_id,
                 initial_data=initial_data,
@@ -168,7 +179,11 @@ class WorkflowRunManager:
         checkpoint = self.get_checkpoint(checkpoint_id)
         self._transition_run(checkpoint.run_id, RunStatus.RUNNING)
         try:
-            state = await self._async_executor().resume(workflow, checkpoint=checkpoint, max_steps=max_steps)
+            state = await self._async_runtime(workflow).resume(
+                workflow,
+                checkpoint=checkpoint,
+                max_steps=max_steps,
+            )
         except WorkflowPaused:
             self._transition_run(checkpoint.run_id, RunStatus.PAUSED)
             raise
@@ -192,10 +207,12 @@ class WorkflowRunManager:
         metadata: dict[str, Any] | None = None,
     ) -> CheckpointRecord:
         source = self.get_checkpoint(checkpoint_id)
+        source_run = self.run_store.get_run(source.run_id)
         fork_run_id = new_run_id or f"run_{uuid4().hex}"
         workflow_state = dict(source.workflow_state)
         workflow_state["run_id"] = fork_run_id
-        fork_metadata = dict(source.metadata)
+        fork_metadata = dict(source_run.metadata) if source_run is not None else {}
+        fork_metadata.update(source.metadata)
         fork_metadata.update(metadata or {})
         fork_metadata.update({
             "forked_from_checkpoint_id": source.checkpoint_id,
@@ -217,6 +234,10 @@ class WorkflowRunManager:
             status=RunStatus.PAUSED,
             parent_run_id=source.run_id,
             workflow_id=workflow_state.get("workflow_id"),
+            session_id=source_run.session_id if source_run is not None else None,
+            project_id=source_run.project_id if source_run is not None else None,
+            workdir=source_run.workdir if source_run is not None else None,
+            branch=source_run.branch if source_run is not None else None,
             metadata=fork_metadata,
         ))
         return fork
@@ -296,4 +317,36 @@ class WorkflowRunManager:
             condition_handlers=self.async_condition_handlers,
             run_store=self.run_store,
             control_state=self.control_state,
+        )
+
+    def _async_runtime(
+        self,
+        workflow: CompiledWorkflow,
+    ) -> AsyncWorkflowExecutor | AsyncWorkflowScheduler:
+        graph_edges = {
+            WorkflowEdgeType.PARALLEL,
+            WorkflowEdgeType.JOIN,
+            WorkflowEdgeType.FALLBACK,
+        }
+        use_scheduler = (
+            self.force_async_scheduler
+            or any(edge.edge_type in graph_edges for edge in workflow.edges)
+            or any(
+                node.node_type == WorkflowNodeType.NESTED_WORKFLOW
+                for node in workflow.nodes.values()
+            )
+        )
+        if not use_scheduler:
+            return self._async_executor()
+        return AsyncWorkflowScheduler(
+            trace_store=self.trace_store,
+            checkpoint_store=self.checkpoint_store,
+            node_handlers=self.async_node_handlers,
+            condition_handlers=self.async_condition_handlers,
+            nested_workflows=self.nested_workflows,
+            run_store=self.run_store,
+            control_state=self.control_state,
+            cancel_event=self.cancel_event,
+            max_concurrency=self.max_concurrency,
+            default_timeout=self.default_node_timeout,
         )

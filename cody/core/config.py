@@ -88,6 +88,29 @@ class SecurityConfig(BaseModel):
     command_timeout: int = 30
 
 
+class SandboxConfig(BaseModel):
+    """Execution sandbox configuration shared by tools and Runtime services."""
+
+    enabled: bool = False
+    backend: str = "auto"
+    image: Optional[str] = None
+    fail_if_unavailable: bool = True
+    private_workspace: bool = False
+    network_mode: Literal["disabled", "allowlist", "proxied", "unrestricted"] = "disabled"
+    allowed_domains: list[str] = Field(default_factory=list)
+    allowed_cidrs: list[str] = Field(default_factory=list)
+    proxy_url: Optional[str] = None
+    network_name: Optional[str] = None
+    denied_roots: list[str] = Field(default_factory=list)
+    cpu_count: Optional[float] = None
+    memory_mb: Optional[int] = None
+    process_limit: Optional[int] = None
+    timeout_seconds: Optional[float] = None
+    image_pull_policy: Literal["never", "if_missing", "always"] = "if_missing"
+    state_root: Optional[str] = None
+    env: dict[str, str] = Field(default_factory=dict)
+
+
 class CompactionConfig(BaseModel):
     """Context compaction configuration."""
     use_llm: bool = False
@@ -174,6 +197,7 @@ class Config(BaseModel):
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
     truncation: TruncationConfig = Field(default_factory=TruncationConfig)
@@ -301,6 +325,17 @@ class Config(BaseModel):
             config.skills.custom_dirs = [
                 d.strip() for d in env_skill_dirs.split(":") if d.strip()
             ]
+        env_sandbox_enabled = os.environ.get("CODY_SANDBOX_ENABLED")
+        if env_sandbox_enabled is not None:
+            config.sandbox.enabled = env_sandbox_enabled.lower() in (
+                "1", "true", "yes", "on",
+            )
+        env_sandbox_backend = os.environ.get("CODY_SANDBOX_BACKEND")
+        if env_sandbox_backend:
+            config.sandbox.backend = env_sandbox_backend
+        env_sandbox_image = os.environ.get("CODY_SANDBOX_IMAGE")
+        if env_sandbox_image:
+            config.sandbox.image = env_sandbox_image
         return config
 
     def apply_overrides(

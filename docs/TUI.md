@@ -131,6 +131,17 @@ Ctrl+N New  Ctrl+C Cancel/Quit  Ctrl+Q Quit
 
 在输入框中输入 `/` 开头的命令：
 
+Runtime 命令与 CLI/Web 共享同一 durable 状态：
+
+| 命令 | 说明 |
+|------|------|
+| `/runs` | 列出项目 Run |
+| `/run <id>` | 查看 Run 与 Step |
+| `/timeline <id>` | 查看最近 timeline 事件 |
+| `/approvals` | 列出 pending approvals |
+| `/approve <id>` | 批准请求 |
+| `/cancel-run <id>` | 跨进程请求取消 |
+
 ### /new — 新建会话
 
 ```

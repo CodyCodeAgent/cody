@@ -71,6 +71,7 @@ from .config import (
     ModelConfig,
     PermissionConfig,
     SecurityConfig,
+    SandboxConfig,
     InteractionConfig,
     CircuitBreakerConfig,
     MCPConfig,
@@ -145,6 +146,7 @@ from .metrics import (
 from ..core.interaction import InteractionRequest, InteractionResponse
 from ..core.errors import CircuitBreakerError, InteractionTimeoutError
 from ..core.deps import UNSET
+from ..core.runtime import CodyRuntime, RuntimeRun, RuntimeRunResult
 
 # Storage protocols and null implementations
 from ..core.storage import (
@@ -163,12 +165,16 @@ __all__ = [
     "AsyncCodyClient",
     "CodyClient",
     "Cody",
+    "CodyRuntime",
+    "RuntimeRun",
+    "RuntimeRunResult",
     
     # Config
     "SDKConfig",
     "ModelConfig",
     "PermissionConfig",
     "SecurityConfig",
+    "SandboxConfig",
     "InteractionConfig",
     "CircuitBreakerConfig",
     "MCPConfig",

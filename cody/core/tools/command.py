@@ -1,7 +1,6 @@
 """Command execution tool."""
 
 import re
-import subprocess
 from pathlib import Path
 
 from pydantic_ai import RunContext
@@ -9,6 +8,11 @@ from pydantic_ai import RunContext
 from ..deps import CodyDeps
 from ..errors import ToolPathDenied, ToolPermissionDenied
 from ._base import _audit_tool_call, _check_permission
+from ..sandbox import (
+    SandboxExecutionRequest,
+    SandboxManager,
+    sandbox_spec_from_config,
+)
 
 # Regex-based blocked command patterns — handles whitespace variations and
 # argument reordering that simple substring matching would miss.
@@ -91,15 +95,22 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int =
 
     effective_timeout = timeout or ctx.deps.config.security.command_timeout
 
+    owned_sandbox = None
     try:
-        result = subprocess.run(
+        sandbox = ctx.deps.sandbox
+        if sandbox is None:
+            manager = SandboxManager()
+            sandbox = await manager.create(sandbox_spec_from_config(
+                ctx.deps.config,
+                run_id="direct_tool",
+                workdir=ctx.deps.workdir,
+            ))
+            owned_sandbox = sandbox
+        result = await sandbox.exec(SandboxExecutionRequest.shell(
             command,
-            shell=True,
             cwd=ctx.deps.workdir,
-            capture_output=True,
-            text=True,
-            timeout=effective_timeout,
-        )
+            timeout_seconds=effective_timeout,
+        ))
 
         output = result.stdout
         if result.stderr:
@@ -107,6 +118,13 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int =
 
         if result.returncode != 0:
             output += f"\n[exit code: {result.returncode}]"
+
+        if result.timed_out:
+            _audit_tool_call(
+                ctx, "command_exec", "exec_command",
+                f"command={command}", "timeout", success=False,
+            )
+            return f"[ERROR] Command timed out after {effective_timeout} seconds"
 
         _audit_tool_call(
             ctx, "command_exec", "exec_command",
@@ -116,7 +134,7 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int =
 
         return output or "[no output]"
 
-    except subprocess.TimeoutExpired:
+    except TimeoutError:
         _audit_tool_call(
             ctx, "command_exec", "exec_command",
             f"command={command}", "timeout", success=False,
@@ -124,3 +142,6 @@ async def exec_command(ctx: RunContext['CodyDeps'], command: str, timeout: int =
         return f"[ERROR] Command timed out after {effective_timeout} seconds"
     except Exception as e:
         return f"[ERROR] {str(e)}"
+    finally:
+        if owned_sandbox is not None:
+            await owned_sandbox.terminate()

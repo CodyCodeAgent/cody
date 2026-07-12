@@ -482,9 +482,10 @@ def test_agent_runner_streaming_backend_collects_and_traces_stream_events():
         output = "final answer"
 
     class FakeRunner:
-        async def run_stream(self, prompt, run_id=None):
+        async def run_stream(self, prompt, run_id=None, **kwargs):
             self.prompt = prompt
             self.run_id = run_id
+            self.kwargs = kwargs
             yield TextDeltaEvent(content="partial ")
             yield TextDeltaEvent(content="answer")
             yield DoneEvent(result=FakeResult())
@@ -504,13 +505,17 @@ def test_agent_runner_streaming_backend_collects_and_traces_stream_events():
     assert [event["event_type"] for event in output["agent_stream_events"]] == ["text_delta", "text_delta", "done"]
     assert runner.prompt == "do work"
     assert runner.run_id == "run_stream_backend"
+    assert runner.kwargs == {
+        "event_scope": "step",
+        "step_id_prefix": "node_agent_model",
+    }
     mirrored = trace_store.list_events(run_id="run_stream_backend")
     assert [event.step_id for event in mirrored] == [
         "agent_stream_000001",
         "agent_stream_000002",
         "agent_stream_000003",
     ]
-    assert mirrored[-1].event_type.value == "run.completed"
+    assert mirrored[-1].event_type.value == "model.completed"
 
 
 def test_workflow_executor_resumes_from_checkpoint_without_replaying_completed_nodes():

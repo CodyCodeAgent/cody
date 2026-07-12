@@ -13,6 +13,7 @@ from pathlib import Path
 from ..errors import ToolError, ToolPathDenied
 from ..interaction import InteractionRequest
 from ..permissions import PermissionDeniedError, PermissionLevel
+from ..runtime.control import WorkflowCancelled, WorkflowPaused, WorkflowWaiting
 from .truncate import truncate_output
 
 if TYPE_CHECKING:
@@ -200,6 +201,11 @@ def _with_model_retry(func):
             elapsed = time.perf_counter() - start
             _tool_logger.debug("tool.%s failed in %.3fs: %s", tool_name, elapsed, e)
             raise ModelRetry(str(e)) from e
+        except (WorkflowWaiting, WorkflowPaused, WorkflowCancelled):
+            # These are Runtime control signals, not tool failures. They must
+            # cross pydantic-ai's tool task so the canonical Run can persist a
+            # waiting/paused/cancelled state and release its worker.
+            raise
         except Exception as e:
             # Catch-all for unhandled tool errors — return a formatted error
             # string to the model instead of crashing the agent run.

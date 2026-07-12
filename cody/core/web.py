@@ -4,6 +4,7 @@ Provides webfetch and websearch tools for the Cody agent.
 """
 
 import ipaddress
+import html as html_lib
 import json
 import logging
 import re
@@ -130,6 +131,8 @@ _DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
+_BING_URL = "https://www.bing.com/search"
+
 MAX_CONTENT_LENGTH = 500_000  # 500KB max
 
 
@@ -205,14 +208,18 @@ async def websearch(query: str, max_results: int = 8, timeout: float = 10.0) -> 
         timeout=timeout,
         headers=_DEFAULT_HEADERS,
     ) as client:
-        resp = await client.post(
-            _DDG_URL,
-            data={"q": query, "b": ""},
-        )
-        resp.raise_for_status()
-
-    html = resp.text
-    results = _parse_ddg_results(html, max_results)
+        try:
+            resp = await client.post(
+                _DDG_URL,
+                data={"q": query, "b": ""},
+            )
+            resp.raise_for_status()
+            results = _parse_ddg_results(resp.text, max_results)
+        except httpx.HTTPError as exc:
+            logger.warning("DuckDuckGo search failed, falling back to Bing: %s", exc)
+            resp = await client.get(_BING_URL, params={"q": query})
+            resp.raise_for_status()
+            results = _parse_bing_results(resp.text, max_results)
 
     if not results:
         return f"No search results found for: {query}"
@@ -260,4 +267,42 @@ def _parse_ddg_results(html: str, max_results: int) -> list[dict]:
 
         results.append({"title": title, "url": url, "snippet": snippet})
 
+    return results
+
+
+def _parse_bing_results(html: str, max_results: int) -> list[dict]:
+    """Parse standard Bing result cards as a resilient search fallback."""
+
+    results: list[dict] = []
+    blocks = re.findall(
+        r'<li[^>]*class="[^"]*\bb_algo\b[^"]*"[^>]*>(.*?)</li>',
+        html,
+        re.DOTALL | re.IGNORECASE,
+    )
+    for block in blocks:
+        title_match = re.search(
+            r"<h2[^>]*>\s*<a[^>]*href=([\"'])(.*?)\1[^>]*>(.*?)</a>",
+            block,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if title_match is None:
+            continue
+        snippet_match = re.search(
+            r'<p[^>]*class="[^"]*\bb_lineclamp\d*\b[^"]*"[^>]*>(.*?)</p>',
+            block,
+            re.DOTALL | re.IGNORECASE,
+        )
+
+        def plain(value: str) -> str:
+            return html_lib.unescape(re.sub(r"<[^>]+>", "", value)).strip()
+
+        results.append(
+            {
+                "title": plain(title_match.group(3)),
+                "url": html_lib.unescape(title_match.group(2)),
+                "snippet": plain(snippet_match.group(1)) if snippet_match else "",
+            }
+        )
+        if len(results) >= max_results:
+            break
     return results

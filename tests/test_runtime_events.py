@@ -1,9 +1,12 @@
+import pytest
+
 from cody.core.runner import CodyResult, DoneEvent, TextDeltaEvent, ToolCallEvent, ToolTrace
 from cody.core.runtime import (
     InMemoryCheckpointStore,
     InMemoryTraceStore,
     RunEvent,
     RunEventType,
+    run_event_to_stream_event,
     stream_event_to_run_event,
 )
 
@@ -49,6 +52,33 @@ def test_stream_event_to_run_event_converts_text_delta():
     assert event.event_type == RunEventType.MODEL_TEXT_DELTA
     assert event.run_id == "run_1"
     assert event.payload == {"content": "hello", "event_type": "text_delta", "legacy_event_type": "text_delta"}
+    assert run_event_to_stream_event(event) is not None
+
+
+def test_persisted_run_event_has_no_live_stream_compatibility_object():
+    persisted = RunEvent.from_dict(
+        RunEvent(RunEventType.MODEL_TEXT_DELTA, payload={"content": "hi"}).to_dict()
+    )
+
+    with pytest.raises(ValueError, match="no live StreamEvent"):
+        run_event_to_stream_event(persisted)
+
+
+@pytest.mark.asyncio
+async def test_agent_runner_legacy_stream_is_derived_from_canonical_events():
+    from cody.core.runner import AgentRunner
+
+    legacy = TextDeltaEvent(content="canonical first")
+    canonical = stream_event_to_run_event(legacy, run_id="run_adapter")
+    runner = AgentRunner.__new__(AgentRunner)
+
+    async def fake_run_events(*args, **kwargs):
+        yield canonical
+
+    runner.run_events = fake_run_events
+    streamed = [event async for event in runner.run_stream("task")]
+
+    assert streamed == [legacy]
 
 
 def test_stream_event_to_run_event_converts_tool_call():
@@ -76,6 +106,20 @@ def test_stream_event_to_run_event_sanitizes_done_event_payload():
     assert event.payload["legacy_event_type"] == "done"
     assert event.payload["result"]["output"] == "done"
     assert event.payload["result"]["tool_traces"][0]["tool_name"] == "read_file"
+
+
+def test_stream_event_to_run_event_scopes_embedded_agent_completion_to_model_step():
+    result = CodyResult(output="done")
+
+    event = stream_event_to_run_event(
+        DoneEvent(result=result),
+        run_id="run_workflow",
+        step_id="node_implement_model_000001",
+        event_scope="step",
+    )
+
+    assert event.event_type == RunEventType.MODEL_COMPLETED
+    assert event.payload["event_scope"] == "step"
 
 
 def test_agent_runner_records_stream_event_into_injected_trace_store():

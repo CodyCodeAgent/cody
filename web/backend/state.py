@@ -29,6 +29,7 @@ from cody.core.file_history import FileHistory
 from cody.core.permissions import PermissionLevel, PermissionManager
 from cody.core.rate_limiter import RateLimiter
 from cody.core.skill_manager import SkillManager
+from cody.core.runtime import CodyRuntime, RuntimeRun, RuntimeStoreBundle
 
 from .db import ProjectStore
 
@@ -52,6 +53,8 @@ class ServerState:
         self.sub_agent_lock: asyncio.Lock = asyncio.Lock()
         self.project_store: Optional[ProjectStore] = None
         self.runner_cache: dict[str, tuple] = {}  # key -> (AgentRunner, created_at, fingerprint)
+        self.runtime_bundles: dict[str, RuntimeStoreBundle] = {}
+        self.runtime_runs: dict[str, tuple[object, RuntimeRun, asyncio.Task]] = {}
 
 
 _state = ServerState()
@@ -169,6 +172,39 @@ def get_project_store() -> ProjectStore:
     if _state.project_store is None:
         _state.project_store = ProjectStore()
     return _state.project_store
+
+
+def get_runtime_bundle(workdir: Path) -> RuntimeStoreBundle:
+    """Return the durable Runtime stores shared with CLI/TUI for a project."""
+
+    key = str(workdir.expanduser().resolve())
+    if key not in _state.runtime_bundles:
+        _state.runtime_bundles[key] = RuntimeStoreBundle.for_workdir(key)
+    return _state.runtime_bundles[key]
+
+
+def create_runtime(runner: object, workdir: Path) -> CodyRuntime:
+    """Create a canonical Runtime sharing this project's durable Web stores."""
+
+    return CodyRuntime(runner, stores=get_runtime_bundle(workdir))
+
+
+def register_runtime_run(
+    run_id: str,
+    runtime: object,
+    handle: RuntimeRun,
+    task: asyncio.Task,
+) -> None:
+    _state.runtime_runs[run_id] = (runtime, handle, task)
+
+    def cleanup(_task: asyncio.Task) -> None:
+        _state.runtime_runs.pop(run_id, None)
+
+    task.add_done_callback(cleanup)
+
+
+def get_active_runtime_run(run_id: str) -> tuple[object, RuntimeRun, asyncio.Task] | None:
+    return _state.runtime_runs.get(run_id)
 
 
 async def get_sub_agent_manager(workdir: Optional[Path] = None):

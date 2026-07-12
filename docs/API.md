@@ -567,6 +567,43 @@ Authorization: Bearer your_auth_token
 
 ## WebSocket API
 
+## Canonical Runtime API
+
+所有端点通过 `workdir` 连接与 CLI/TUI 相同的 durable Runtime stores。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/runtime/runs` | POST | 异步启动 canonical Run，返回 202 |
+| `/runtime/runs` | GET | 分页列出 Runs |
+| `/runtime/runs/{id}` | GET | Run 与 Step 详情 |
+| `/runtime/runs/{id}/timeline` | GET | Timeline、checkpoint、artifact 关联视图 |
+| `/runtime/runs/{id}/checkpoints` | GET | Checkpoint 列表 |
+| `/runtime/runs/{id}/artifacts` | GET | Run Artifacts |
+| `/runtime/runs/{id}/pause` | POST | 请求安全边界暂停 |
+| `/runtime/runs/{id}/cancel` | POST | 跨进程取消 |
+| `/runtime/runs/{id}/resume` | POST | 恢复 waiting/paused Run |
+| `/runtime/runs/{id}/retry` | POST | 重试 failed/cancelled Run |
+| `/runtime/runs/{id}/recover` | POST | 恢复进程终止后孤立的 running Run |
+| `/runtime/forks` | POST | 从 checkpoint fork |
+| `/runtime/approvals` | GET | 查询审批 |
+| `/runtime/approvals/{id}/approve` | POST | 批准 |
+| `/runtime/approvals/{id}/reject` | POST | 拒绝 |
+| `/runtime/artifacts/{id}` | GET | Artifact 详情 |
+| `/runtime/audit` | GET | Runtime action audit |
+
+启动示例：
+
+```bash
+curl -X POST http://localhost:8000/runtime/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"修复测试", "workdir":"/path/to/project"}'
+```
+
+接口返回 202 后通过 Run 详情或 timeline 观察进度；取消和审批不会依赖发起请求的
+HTTP 连接持续存在。
+
+---
+
 ### WS /ws
 
 建立 WebSocket 连接，用于实时双向交互。支持流式推送和中途取消。

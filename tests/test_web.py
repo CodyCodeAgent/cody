@@ -1,5 +1,6 @@
 """Tests for web capabilities module"""
 
+import httpx
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -7,6 +8,7 @@ from cody.core.web import (
     html_to_markdown,
     webfetch,
     websearch,
+    _parse_bing_results,
     _parse_ddg_results,
 )
 
@@ -215,6 +217,27 @@ async def test_websearch_no_results():
     assert "No search results found" in result
 
 
+@pytest.mark.asyncio
+async def test_websearch_falls_back_to_bing_on_duckduckgo_error():
+    bing_html = """
+    <li class="b_algo"><h2><a href="https://python.org">Python Home</a></h2>
+    <div class="b_caption"><p class="b_lineclamp2">Python language</p></div></li>
+    """
+    bing_response = MagicMock(text=bing_html)
+    bing_response.raise_for_status = MagicMock()
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.ConnectTimeout("timeout"))
+    mock_client.get = AsyncMock(return_value=bing_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("cody.core.web.httpx.AsyncClient", return_value=mock_client):
+        result = await websearch("python")
+
+    assert "Python Home" in result
+    mock_client.get.assert_awaited_once()
+
+
 # ── _parse_ddg_results ───────────────────────────────────────────────────────
 
 
@@ -258,3 +281,15 @@ def test_parse_ddg_results_uddg_redirect():
     results = _parse_ddg_results(html, max_results=10)
     assert len(results) == 1
     assert results[0]["url"] == "https://real.com/page"
+
+
+def test_parse_bing_results_basic():
+    results = _parse_bing_results(
+        '<li class="b_algo"><h2><a href="https://example.com">Example <strong>Title</strong></a></h2>'
+        '<div class="b_caption"><p class="b_lineclamp2">A &amp; B</p></div></li>',
+        max_results=5,
+    )
+
+    assert results == [
+        {"title": "Example Title", "url": "https://example.com", "snippet": "A & B"}
+    ]

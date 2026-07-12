@@ -11,31 +11,32 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 ## 目录
 
 1. [快速开始](#快速开始)
-2. [四种创建方式](#四种创建方式)
-3. [核心方法](#核心方法)
-4. [多模态 Prompt](#多模态-prompt)
-5. [思考模式](#思考模式)
-6. [多工作目录与 allowed_roots](#多工作目录与-allowed_roots)
-7. [自定义工具（Custom Tools）](#自定义工具custom-tools)
-8. [自定义 Prompt](#自定义-prompt)
-9. [无状态模式（Stateless）](#无状态模式stateless)
-10. [技能管理](#技能管理)
-11. [事件系统](#事件系统)
-12. [指标收集](#指标收集)
-13. [MCP 集成](#mcp-集成)
-14. [熔断器（Circuit Breaker）](#熔断器circuit-breaker)
-15. [结构化输出（Structured Output）](#结构化输出structured-output)
-16. [人工交互（Human Interaction）](#人工交互human-interaction)
-17. [项目记忆（Project Memory）](#项目记忆project-memory)
-18. [工具中间件（Step Hooks）](#工具中间件step-hooks)
-19. [存储层抽象（Storage Abstraction）](#存储层抽象storage-abstraction)
-20. [StreamChunk 类型系统](#streamchunk-类型系统)
-21. [LSP 集成](#lsp-集成)
-22. [便捷方法](#便捷方法)
-23. [错误处理](#错误处理)
-24. [示例文件](#示例文件)
-25. [最佳实践](#最佳实践)
-26. [API 参考](#api-参考)
+2. [Canonical Runtime](#canonical-runtime)
+3. [四种创建方式](#四种创建方式)
+4. [核心方法](#核心方法)
+5. [多模态 Prompt](#多模态-prompt)
+6. [思考模式](#思考模式)
+7. [多工作目录与 allowed_roots](#多工作目录与-allowed_roots)
+8. [自定义工具（Custom Tools）](#自定义工具custom-tools)
+9. [自定义 Prompt](#自定义-prompt)
+10. [无状态模式（Stateless）](#无状态模式stateless)
+11. [技能管理](#技能管理)
+12. [事件系统](#事件系统)
+13. [指标收集](#指标收集)
+14. [MCP 集成](#mcp-集成)
+15. [熔断器（Circuit Breaker）](#熔断器circuit-breaker)
+16. [结构化输出（Structured Output）](#结构化输出structured-output)
+17. [人工交互（Human Interaction）](#人工交互human-interaction)
+18. [项目记忆（Project Memory）](#项目记忆project-memory)
+19. [工具中间件（Step Hooks）](#工具中间件step-hooks)
+20. [存储层抽象（Storage Abstraction）](#存储层抽象storage-abstraction)
+21. [StreamChunk 类型系统](#streamchunk-类型系统)
+22. [LSP 集成](#lsp-集成)
+23. [便捷方法](#便捷方法)
+24. [错误处理](#错误处理)
+25. [示例文件](#示例文件)
+26. [最佳实践](#最佳实践)
+27. [API 参考](#api-参考)
 
 ---
 
@@ -85,6 +86,152 @@ export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
 配置优先级（从高到低）：代码参数 > 环境变量 > 项目配置文件 > 全局配置文件 > 默认值
 
 > **注意**：`AsyncCodyClient()` 不传 model 参数时会使用环境变量，不会使用 SDK 默认模型覆盖。
+
+## Canonical Runtime
+
+`CodyRuntime` 是面向工作流和长期运行的新高层入口。Runtime 拥有 Run 生命周期、
+统一 `RunEvent`、checkpoint、artifact 和状态存储；`AgentRunner` 作为 Agent 类型节点的
+执行器。现有 `AsyncCodyClient` 和 `StreamChunk` API 保持兼容。
+
+```python
+from cody import CodyRuntime
+from cody.core import Config
+
+runtime = CodyRuntime.from_config(Config.load(), ".")
+run = await runtime.start("修复当前项目中失败的测试")
+
+async for event in run.events():
+    print(event.event_type.value, event.payload)
+
+result = await run.result()
+print(result.output)
+print(result.artifact_ids)
+```
+
+也可以传入编译后的 workflow 和结构化输入：
+
+```python
+run = await runtime.start(workflow.compile(), {"task": "审查并修复 PR"})
+```
+
+`run.cancel()` 会同时向模型执行和 workflow 边界传播协作式取消。运行状态、事件、
+checkpoint 和最终结果 artifact 使用同一个 `run_id`。
+
+带人工审批的工作流会持久化为 `waiting`，不需要一直占用原来的执行协程。批准后
+可以在新进程或新 Runtime 实例中恢复：
+
+```python
+runtime.approve(approval_id, {"approved": True})
+resumed = await runtime.resume(run_id)
+result = await resumed.result()
+```
+
+Runtime 会从 RunRecord 中恢复持久化的 workflow 定义，并从最新 checkpoint 继续。
+自定义 node/condition handler 仍需在新 Runtime 实例中注册。
+
+失败或取消的 Run 可以重试，历史 checkpoint 可以 fork 成新 Run：
+
+```python
+retried = await runtime.retry(run_id)
+forked = await runtime.fork(checkpoint_id, metadata={"reason": "alternate approach"})
+```
+
+Runtime Tool Registry 的工具节点默认使用持久化幂等收据。即使显式回退到工具执行前
+的 checkpoint，已经完成的同一 `run_id + node_id + tool + args` 也只会返回原收据，
+不会再次执行副作用。调用外部幂等 API 的工具可以声明参数名：
+
+```python
+registry.register(ToolSpec(
+    "deploy",
+    deploy,
+    metadata={"idempotency_arg": "request_id"},
+))
+runtime = CodyRuntime.from_config(config, ".", tool_registry=registry)
+```
+
+### 并行工作流与 Agent 团队
+
+`parallel` 分支会由 async worker pool 真正并发执行，`join` 仅在所有来源完成后运行：
+
+```python
+workflow = (
+    Workflow("parallel-review")
+    .node("plan", WorkflowNodeType.AGENT)
+    .node("security", WorkflowNodeType.AGENT)
+    .node("tests", WorkflowNodeType.TOOL)
+    .node("join", WorkflowNodeType.FUNCTION)
+    .edge("plan", "security", edge_type=WorkflowEdgeType.PARALLEL)
+    .edge("plan", "tests", edge_type=WorkflowEdgeType.PARALLEL)
+    .edge("security", "join", edge_type=WorkflowEdgeType.JOIN)
+    .edge("tests", "join", edge_type=WorkflowEdgeType.JOIN)
+)
+```
+
+节点 metadata 支持 `timeout_seconds`、`max_retries` 和
+`retry_backoff_seconds`。Runtime 构造参数 `max_concurrency` 限制并发资源。
+
+`agent_team` 节点可以声明 specialist task DAG：
+
+```python
+coordinator = AsyncMultiAgentCoordinator()
+coordinator.register_agent(code_role, code_backend)
+coordinator.register_agent(test_role, test_backend)
+
+runtime = CodyRuntime.from_config(
+    config,
+    ".",
+    multi_agent_coordinator=coordinator,
+    max_concurrency=4,
+)
+```
+
+每个 task 支持 `required_capabilities`、`depends_on`、`preferred_agent_id`、
+`fallback_agent_ids`，以及 metadata 中的 timeout/retry 配置。
+
+### Quality Gate 与自动修复
+
+Runtime 原生支持 async quality gate。Gate 失败后可沿 fallback edge 进入 repair，
+修复完成后通过 `allow_revisit` edge 重新检查：
+
+```python
+workflow = (
+    Workflow("verified-change")
+    .node("implement", WorkflowNodeType.AGENT)
+    .node(
+        "quality",
+        WorkflowNodeType.QUALITY_GATE,
+        metadata={
+            "max_repairs": 2,
+            "quality_gate": {
+                "gate_id": "release",
+                "metrics": [
+                    {"metric_id": "tests", "required": True},
+                    {"metric_id": "lint", "required": True},
+                    {"metric_id": "diff_risk", "threshold": 0.7},
+                ],
+            },
+        },
+    )
+    .node("repair", WorkflowNodeType.AGENT)
+    .node("done", WorkflowNodeType.FUNCTION)
+    .edge("implement", "quality")
+    .edge("quality", "done")
+    .edge(
+        "quality",
+        "repair",
+        edge_type=WorkflowEdgeType.FALLBACK,
+        metadata={"allow_revisit": True},
+    )
+    .edge("repair", "quality", metadata={"allow_revisit": True})
+)
+
+evaluators = standard_quality_evaluators(".")
+runtime = CodyRuntime.from_config(config, ".", quality_evaluators=evaluators)
+```
+
+每次 gate decision 都保存为 REVIEW Artifact 并写入 timeline。标准 command evaluator
+不使用 shell，支持 timeout 和结构化 stdout/stderr/returncode；也可以注册任意同步或
+异步 evaluator。
 
 ## 四种创建方式
 
@@ -2028,6 +2175,7 @@ async with client:
 | `ModelConfig` | 模型配置（模型名、API Key、思考模式等） |
 | `PermissionConfig` | 工具权限配置 |
 | `SecurityConfig` | 安全配置（`allowed_roots`、`blocked_commands`、`strict_read_boundary` 等） |
+| `SandboxConfig` | Sandbox 后端、文件/网络策略与 CPU/内存/进程限制 |
 | `MCPConfig` | MCP 服务器配置 |
 | `MCPServerConfig` | 单个 MCP 服务器配置（v1.9.0+，支持 stdio/http 传输） |
 | `LSPConfig` | LSP 语言配置 |

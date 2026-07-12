@@ -21,6 +21,7 @@ from .commands.sessions import sessions
 from .commands.skills import skills
 from .commands.config import config
 from .commands.init_cmd import init
+from .commands.runtime import approvals, artifacts, runs, timeline
 
 
 @click.group()
@@ -37,6 +38,10 @@ main.add_command(sessions)
 main.add_command(skills)
 main.add_command(config)
 main.add_command(init)
+main.add_command(runs)
+main.add_command(approvals)
+main.add_command(artifacts)
+main.add_command(timeline)
 
 
 # ── Run command ──────────────────────────────────────────────────────────────

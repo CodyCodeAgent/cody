@@ -54,6 +54,10 @@ web = [
 repl = [
     "prompt_toolkit>=3.0.0",
 ]
+production = [
+    "psycopg[binary]>=3.2.0",
+    "boto3>=1.35.0",
+]
 all = [
     "cody-ai[cli]",
     "cody-ai[tui]",

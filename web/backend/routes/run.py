@@ -17,9 +17,14 @@ from cody.core.errors import (
     ToolError, ToolPermissionDenied, ToolPathDenied,
 )
 
-from ..helpers import build_prompt, config_from_run_request, raise_structured, serialize_stream_event
+from ..helpers import (
+    build_prompt,
+    config_from_run_request,
+    raise_structured,
+    serialize_runtime_event,
+)
 from ..models import RunRequest, RunResponse, ToolTraceResponse
-from ..state import session_store_dep
+from ..state import create_runtime, session_store_dep
 from .metrics import record_run
 
 logger = logging.getLogger("cody.web.run")
@@ -52,6 +57,7 @@ async def run_agent(
         workdir = Path(request.workdir) if request.workdir else Path.cwd()
         extra_roots = [Path(r) for r in (request.allowed_roots or [])]
         runner = AgentRunner(config=config, workdir=workdir, extra_roots=extra_roots)
+        runtime = create_runtime(runner, workdir)
 
         images_raw = [img.model_dump() for img in request.images] if request.images else None
         prompt = build_prompt(request.prompt, images_raw)
@@ -59,16 +65,18 @@ async def run_agent(
         inc_tools = request.include_tools
         exc_tools = request.exclude_tools
 
-        if request.session_id is not None:
-            result, sid = await runner.run_with_session(
-                prompt, store, request.session_id,
-                include_tools=inc_tools, exclude_tools=exc_tools,
-            )
-        else:
-            result = await runner.run(
-                prompt, include_tools=inc_tools, exclude_tools=exc_tools,
-            )
-            sid = None
+        handle = await runtime.start(
+            prompt,
+            session_store=(store if request.session_id is not None else None),
+            session_id=request.session_id,
+            include_tools=inc_tools,
+            exclude_tools=exc_tools,
+        )
+        runtime_result = await handle.result()
+        result = runtime_result.model_result
+        sid = runtime_result.session_id
+        if result is None:
+            raise RuntimeError("Runtime completed without an agent result")
 
         traces = None
         if result.tool_traces:
@@ -166,6 +174,7 @@ async def run_agent_stream(
             runner = AgentRunner(
                 config=config, workdir=workdir, extra_roots=extra_roots
             )
+            runtime = create_runtime(runner, workdir)
 
             images_raw = [img.model_dump() for img in request.images] if request.images else None
             prompt = build_prompt(request.prompt, images_raw)
@@ -173,17 +182,24 @@ async def run_agent_stream(
             inc_tools = request.include_tools
             exc_tools = request.exclude_tools
 
-            if request.session_id is not None:
-                async for event, sid in runner.run_stream_with_session(
-                    prompt, store, request.session_id,
-                    include_tools=inc_tools, exclude_tools=exc_tools,
-                ):
-                    yield f"data: {json.dumps(serialize_stream_event(event, session_id=sid))}\n\n"
-            else:
-                async for event in runner.run_stream(
-                    prompt, include_tools=inc_tools, exclude_tools=exc_tools,
-                ):
-                    yield f"data: {json.dumps(serialize_stream_event(event))}\n\n"
+            handle = await runtime.start(
+                prompt,
+                session_store=(store if request.session_id is not None else None),
+                session_id=request.session_id,
+                include_tools=inc_tools,
+                exclude_tools=exc_tools,
+            )
+            sid = request.session_id
+            async for event in handle.events():
+                model_result = None
+                if event.event_type.value == "run.completed":
+                    completed = await handle.result()
+                    model_result = completed.model_result
+                    sid = completed.session_id
+                payload = serialize_runtime_event(event, sid, model_result)
+                if payload is not None:
+                    yield f"data: {json.dumps(payload)}\n\n"
+            await handle.result()
 
         except Exception as e:
             logger.error("POST /run/stream error: %s", e, exc_info=True)

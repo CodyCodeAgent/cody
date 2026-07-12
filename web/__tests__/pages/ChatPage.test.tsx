@@ -30,6 +30,7 @@ vi.mock("../../src/api/client", () => ({
     updated_at: "",
     messages: [],
   }),
+  getConfigStatus: vi.fn().mockResolvedValue({ is_ready: true, missing_fields: [] }),
 }));
 
 describe("ChatPage", () => {

@@ -11,6 +11,7 @@ from cody.core.lsp_client import (
     Location,
     LSPClient,
     _LANGUAGE_SERVERS,
+    _LSPServer,
     _SEVERITY_MAP,
     _uri_to_path,
     _path_to_uri,
@@ -397,3 +398,27 @@ async def test_context_manager(tmp_path):
     async with LSPClient(workdir=tmp_path) as client:
         assert client.running_servers == []
     # After exit, stop_all is called (no servers to stop here, just verify no error)
+
+
+def test_server_requests_receive_json_rpc_responses(tmp_path):
+    server = _LSPServer(
+        language="typescript",
+        command="typescript-language-server",
+        args=["--stdio"],
+        extensions={".ts"},
+        workdir=tmp_path,
+        sandbox=MagicMock(),
+    )
+    sent = []
+    server._send_message = sent.append
+
+    server._handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "workspace/configuration",
+            "params": {"items": [{"section": "typescript"}]},
+        }
+    )
+
+    assert sent == [{"jsonrpc": "2.0", "id": 9, "result": [{}]}]

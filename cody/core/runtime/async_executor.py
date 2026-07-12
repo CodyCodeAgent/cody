@@ -312,6 +312,10 @@ def _step_type_for_node(node: WorkflowNode) -> StepType:
     node_type = node.node_type.value
     if node_type == "agent":
         return StepType.MODEL
+    if node_type == "agent_team":
+        return StepType.HANDOFF
+    if node_type == "quality_gate":
+        return StepType.SYSTEM
     if node_type == "tool":
         return StepType.TOOL
     if node_type == "human_approval":

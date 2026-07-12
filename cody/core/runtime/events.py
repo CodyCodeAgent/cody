@@ -13,6 +13,8 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
+from .redaction import redact_secrets
+
 
 SCHEMA_VERSION = "2026-07-03.v1"
 
@@ -21,14 +23,30 @@ class RunEventType(str, Enum):
     """Stable event names emitted by the runtime event bus."""
 
     RUN_STARTED = "run.started"
+    RUN_RESUMED = "run.resumed"
+    RUN_RECOVERING = "run.recovering"
+    RUN_RETRYING = "run.retrying"
+    RUN_FORKED = "run.forked"
+    RUN_PAUSED = "run.paused"
+    RUN_WAITING = "run.waiting"
     RUN_COMPLETED = "run.completed"
     RUN_CANCELLED = "run.cancelled"
     RUN_FAILED = "run.failed"
     SESSION_STARTED = "session.started"
 
+    SANDBOX_CREATED = "sandbox.created"
+    SANDBOX_STARTED = "sandbox.started"
+    SANDBOX_PAUSED = "sandbox.paused"
+    SANDBOX_RESUMED = "sandbox.resumed"
+    SANDBOX_SNAPSHOT_CREATED = "sandbox.snapshot.created"
+    SANDBOX_TERMINATED = "sandbox.terminated"
+    SANDBOX_FAILED = "sandbox.failed"
+
     MODEL_THINKING_DELTA = "model.thinking.delta"
     MODEL_TEXT_DELTA = "model.text.delta"
     MODEL_RETRYING = "model.retrying"
+    MODEL_COMPLETED = "model.completed"
+    MODEL_FAILED = "model.failed"
 
     TOOL_CALL_STARTED = "tool.call.started"
     TOOL_CALL_COMPLETED = "tool.call.completed"
@@ -48,8 +66,13 @@ class RunEventType(str, Enum):
     WORKFLOW_COMPLETED = "workflow.completed"
     WORKFLOW_FAILED = "workflow.failed"
     WORKFLOW_NODE_STARTED = "workflow.node.started"
+    WORKFLOW_NODE_RETRYING = "workflow.node.retrying"
     WORKFLOW_NODE_COMPLETED = "workflow.node.completed"
     WORKFLOW_EDGE_SELECTED = "workflow.edge.selected"
+    WORKFLOW_BATCH_COMPLETED = "workflow.batch.completed"
+
+    QUALITY_GATE_PASSED = "quality_gate.passed"
+    QUALITY_GATE_FAILED = "quality_gate.failed"
 
 
 @dataclass(frozen=True)
@@ -82,6 +105,10 @@ class RunEvent:
     event_id: str = field(default_factory=lambda: uuid4().hex)
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     schema_version: str = SCHEMA_VERSION
+    source_event: Any = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "payload", redact_secrets(self.payload))
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""

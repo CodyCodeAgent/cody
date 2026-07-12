@@ -61,7 +61,7 @@ describe("Sidebar", () => {
     );
     await waitFor(() => screen.getByText("Project Alpha"));
     await userEvent.click(screen.getByText("Project Alpha"));
-    expect(mockNavigate).toHaveBeenCalledWith("/chat/p1");
+    expect(mockNavigate).toHaveBeenCalledWith("/project/p1");
   });
 
   it("navigates to home on '+ New' click", async () => {

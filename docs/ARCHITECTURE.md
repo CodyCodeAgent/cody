@@ -29,7 +29,7 @@ Cody's architecture follows a **framework + reference implementations** pattern.
 ┌──▼──────────────▼──────────────▼──────────────▼────────────────┐
 │                     Cody Core — Agent Framework                  │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │          AgentRunner (core/runner.py)                      │  │
+│  │          CodyRuntime → AgentRunner executor                │  │
 │  │  - Creates Pydantic AI Agent                              │  │
 │  │  - Registers 28 core + 2 MCP tools                                     │  │
 │  │  - Context compaction (auto)                              │  │
@@ -87,13 +87,57 @@ All four consumers — CLI, TUI, Web Backend, Python SDK — import `core/` dire
 
 ## Framework Core 组件
 
-### 1. AgentRunner (`core/runner.py`)
+### 1. Canonical Runtime 与 AgentRunner
+
+`CodyRuntime` 是长期运行和工作流的高层入口。它拥有 Run 生命周期，并将同一组
+Run、Trace、Checkpoint、Artifact、Approval 与 Audit stores 交给工作流服务。
+`AgentRunner` 是 Agent 类型 workflow node 的执行器。
+
+```text
+CodyRuntime
+  → WorkflowRunManager
+    → AsyncWorkflowExecutor
+      → AgentRunner.run_events()
+        → canonical RunEvent + shared stores
+```
+
+`AgentRunner.run_events()` 是 canonical 实时事件接口。兼容的 `run_stream()` 从 live
+`RunEvent` 中还原旧 `StreamEvent`，因此 CLI/TUI/Web/现有 SDK 可以渐进迁移。Agent
+嵌入工作流时使用 step event scope，结束事件为 `model.completed`；只有 Runtime
+拥有的父 Run 才写入 `run.completed`。
+
+`CodyRuntime.start()` 返回 `RuntimeRun`，支持 `events()`、`result()`、`cancel()`。
+workflow 定义随 RunRecord 持久化；waiting approval 被批准后，新的 Runtime 实例可
+通过 `resume(run_id)` 从最新 checkpoint 继续执行。
+
+失败/取消 Run 可以通过 `retry()` 从最新或指定 checkpoint 重试；`fork()` 从任意
+历史 checkpoint 创建带 `parent_run_id` 和 `parent_checkpoint_id` 的新 Run。Runtime
+Tool Registry 使用持久化 Artifact receipt 实现 retry-safe 工具节点，同一 Run 内
+回退 checkpoint 不会重复执行已完成的副作用。
+
+包含 `parallel` / `join` / `fallback` / `nested_workflow` 的图由
+`AsyncWorkflowScheduler` 执行。调度器并发运行当前 ready batch，在 batch 边界保存
+安全 checkpoint，支持 per-node timeout/retry、全局 step/concurrency 上限和运行中
+取消。并行输出按 node id 确定性合并；同一 key 的不同值默认报错，可显式选择
+`last_write_wins` 或 `namespace` policy。
+
+`agent_team` workflow node 由 `AsyncMultiAgentCoordinator` 执行。无依赖任务并发，
+依赖任务在后续轮次启动；任务可声明 capability、preferred/fallback agent、timeout
+和 max attempts。每个成功任务保存独立 Artifact，并以 `agent_outputs[task_id]`
+隔离输出，避免 specialist 之间出现隐式覆盖。
+
+`quality_gate` workflow node 使用 `AsyncQualityGateRunner` 并发计算指标。每次 decision
+写入 canonical event、checkpoint 和 REVIEW Artifact。失败 decision 可以通过
+fallback edge 进入 repair node；repair edge 使用 `allow_revisit` 返回 gate，直到通过
+或耗尽 `max_repairs`。全局 `max_steps` 提供第二层循环保护。
+
+### 1b. AgentRunner (`core/runner.py`)
 
 The central orchestrator. Responsibilities:
 - Create Pydantic AI `Agent` with all tools registered
 - Assemble `CodyDeps` dataclass for dependency injection into tools
 - Auto-compact message history when approaching token limits
-- Provide `run()`, `run_stream()`, `run_sync()` execution methods (accept `Prompt` type — `str` or `MultimodalPrompt`)
+- Provide canonical `run_events()` and compatible `run()` / `run_stream()` / `run_sync()` methods
 - Session-aware variants: `run_with_session()`, `run_stream_with_session()`
 - Multimodal support: `_to_pydantic_prompt()` converts `Prompt` to pydantic-ai format (`str` or `[text, BinaryContent, ...]`)
 - Manage lifecycle of MCP and LSP clients
@@ -436,8 +480,32 @@ Config
 ├── mcp: MCPConfig                # servers[]
 ├── permissions: PermissionsConfig # overrides{}, default_level
 ├── security: SecurityConfig      # allowed_commands[], restricted_paths[]
+├── sandbox: SandboxConfig        # backend, filesystem/network/resource policy
 └── auth: AuthConfig              # type, token, api_key
 ```
+
+### Sandbox execution boundary
+
+All OS process execution crosses `SandboxHandle`: shell tools, quality gates,
+stdio MCP servers, language servers, and commands launched by sub-agents share
+the Run sandbox. Python hooks, model providers, and Runtime plugins are trusted
+host extensions; they are not untrusted guest code.
+
+`SandboxManager` selects one backend behind a stable contract:
+
+- `seatbelt` on macOS and `bubblewrap` on Linux for hardened local execution;
+- `docker`/`podman` for service deployments and resource quotas;
+- `RemoteSandboxBackend` for provider adapters (microVM, Kubernetes, or hosted
+  sandbox services);
+- `local-policy` only as an explicit compatibility backend. It is not an OS
+  security boundary.
+
+The sandbox lifecycle belongs to the canonical Run. Creation, start, snapshot,
+pause, resume, failure, and termination are `RunEvent`s. A waiting approval
+creates a `SANDBOX_SNAPSHOT` Artifact referenced by the latest Checkpoint, then
+releases the worker. Resume/recovery restores that Artifact before scheduling
+the next node. Host environment variables are allowlisted, so API keys are not
+implicitly copied into guest processes.
 
 ---
 

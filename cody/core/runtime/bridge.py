@@ -31,13 +31,29 @@ def stream_event_to_run_event(
     run_id: str | None = None,
     step_id: str | None = None,
     parent_event_id: str | None = None,
+    event_scope: str = "run",
 ) -> RunEvent:
-    """Convert a legacy ``runner.StreamEvent`` to the canonical event envelope."""
+    """Convert a legacy ``runner.StreamEvent`` to the canonical event envelope.
+
+    ``event_scope="step"`` is used when an AgentRunner is embedded in a
+    workflow node.  In that mode the legacy terminal events describe the model
+    step, not the owning runtime run.
+    """
+
+    if event_scope not in {"run", "step"}:
+        raise ValueError(f"Unsupported runtime event scope: {event_scope}")
 
     legacy_type = getattr(event, "event_type", type(event).__name__)
     event_type = _LEGACY_EVENT_MAP.get(legacy_type, RunEventType.RUN_FAILED)
+    if event_scope == "step":
+        if event_type == RunEventType.RUN_COMPLETED:
+            event_type = RunEventType.MODEL_COMPLETED
+        elif event_type in {RunEventType.RUN_CANCELLED, RunEventType.RUN_FAILED}:
+            event_type = RunEventType.MODEL_FAILED
     payload = _payload_for_event(event)
     payload.setdefault("legacy_event_type", legacy_type)
+    if event_scope != "run":
+        payload.setdefault("event_scope", event_scope)
 
     return RunEvent(
         event_type=event_type,
@@ -45,7 +61,18 @@ def stream_event_to_run_event(
         run_id=run_id,
         step_id=step_id,
         parent_event_id=parent_event_id,
+        source_event=event,
     )
+
+
+def run_event_to_stream_event(event: RunEvent) -> Any:
+    """Return the transient legacy event carried by a live canonical event."""
+
+    if event.source_event is None:
+        raise ValueError(
+            "Persisted RunEvent has no live StreamEvent compatibility object"
+        )
+    return event.source_event
 
 
 def _payload_for_event(event: Any) -> dict[str, Any]:

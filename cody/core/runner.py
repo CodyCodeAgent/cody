@@ -42,6 +42,7 @@ from pydantic_graph import End
 from .audit import AuditLogger
 from .retry import RetryParams as _RetryDataclass, with_retry, with_retry_sync
 from .config import Config
+from .sandbox import SandboxHandle, SandboxManager, sandbox_spec_from_config
 from .context import (
     CompactResult,
     compact_messages,
@@ -74,6 +75,10 @@ from .runtime import (
     RunEvent,
     SQLiteCheckpointStore,
     SQLiteTraceStore,
+    WorkflowCancelled,
+    WorkflowPaused,
+    WorkflowWaiting,
+    run_event_to_stream_event,
     stream_event_to_run_event,
 )
 
@@ -396,6 +401,8 @@ class AgentRunner:
     ):
         self.workdir = workdir
         self.config = config
+        self._sandbox_manager = SandboxManager()
+        self._service_sandbox: SandboxHandle | None = None
         self.allowed_roots: list[Path] = _build_allowed_roots(
             workdir, config.security.allowed_roots, extra_roots or []
         )
@@ -613,7 +620,7 @@ class AgentRunner:
             )
         return self.agent
 
-    def _create_deps(self, interaction_handler=None) -> CodyDeps:
+    def _create_deps(self, interaction_handler=None, sandbox=None) -> CodyDeps:
         """Create dependencies.
 
         *interaction_handler*: async callable ``(InteractionRequest) -> InteractionResponse``.
@@ -636,6 +643,7 @@ class AgentRunner:
             interaction_handler=interaction_handler or self._auto_approve_handler,
             before_tool_hooks=self._before_tool_hooks,
             after_tool_hooks=self._after_tool_hooks,
+            sandbox=sandbox,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -647,7 +655,46 @@ class AgentRunner:
         so they automatically reflect the tools discovered at start time.
         """
         if self._mcp_client:
+            await self._ensure_service_sandbox()
             await self._mcp_client.start_all()
+
+    async def _ensure_service_sandbox(self) -> SandboxHandle:
+        existing = self._mcp_client.sandbox if self._mcp_client is not None else None
+        existing = existing or self._lsp_client.sandbox
+        if existing is not None:
+            return existing
+        spec = sandbox_spec_from_config(
+            self.config,
+            run_id=f"service_{uuid4().hex}",
+            workdir=self.workdir,
+            metadata={"scope": "runner_service"},
+        )
+        self._service_sandbox = await self._sandbox_manager.create(spec)
+        await self.bind_sandbox(self._service_sandbox)
+        return self._service_sandbox
+
+    async def bind_sandbox(self, sandbox: SandboxHandle) -> None:
+        """Bind all process-based capabilities to the current Run sandbox."""
+
+        old_service = self._service_sandbox
+        restart_mcp = bool(
+            self._mcp_client is not None and self._mcp_client.running_servers
+        )
+        restart_lsp = list(self._lsp_client.running_servers)
+        if self._mcp_client is not None and self._mcp_client.sandbox is not sandbox:
+            await self._mcp_client.stop_all()
+            self._mcp_client.sandbox = sandbox
+        if self._lsp_client.sandbox is not sandbox:
+            await self._lsp_client.stop_all()
+            self._lsp_client.sandbox = sandbox
+        self._sub_agent_manager.sandbox = sandbox
+        if old_service is not None and old_service is not sandbox:
+            await old_service.terminate()
+            self._service_sandbox = None
+        if restart_mcp and self._mcp_client is not None:
+            await self._mcp_client.start_all()
+        for language in restart_lsp:
+            await self._lsp_client.start(language)
 
     async def stop_mcp(self) -> None:
         """Stop MCP servers."""
@@ -658,6 +705,7 @@ class AgentRunner:
 
     async def start_lsp(self, language: str) -> bool:
         """Start an LSP server for the given language."""
+        await self._ensure_service_sandbox()
         return await self._lsp_client.start(language)
 
     async def stop_lsp(self) -> None:
@@ -1115,6 +1163,7 @@ class AgentRunner:
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
         cancel_event: Optional[asyncio.Event] = None,
+        sandbox=None,
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history.
 
@@ -1127,7 +1176,7 @@ class AgentRunner:
                 a ``CodyResult`` with output ``"(cancelled)"`` is returned.
         """
         self._new_circuit_breaker()
-        deps = self._create_deps()
+        deps = self._create_deps(sandbox=sandbox)
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
         agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
@@ -1176,6 +1225,7 @@ class AgentRunner:
         file_refs: list[str] | None = None,
         child_run_ids: list[str] | None = None,
         pending_approval_ids: list[str] | None = None,
+        event_scope: str = "run",
     ) -> RunEvent:
         """Record a legacy stream event as a canonical runtime RunEvent."""
 
@@ -1184,6 +1234,7 @@ class AgentRunner:
             run_id=run_id,
             step_id=step_id,
             parent_event_id=parent_event_id,
+            event_scope=event_scope,
         )
         if run_id and step_id:
             checkpoint_workflow_state = {
@@ -1274,7 +1325,12 @@ class AgentRunner:
         return artifact_refs, file_refs, child_run_ids, pending_approval_ids
 
     async def _stream_tool_node(
-        self, node, agent_run, interaction_q, drain_interaction_q,
+        self,
+        node,
+        agent_run,
+        interaction_q,
+        drain_interaction_q,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator:
         """Stream tool calls/results for a single CallToolsNode.
 
@@ -1308,10 +1364,34 @@ class AgentRunner:
 
         _tool_task = asyncio.create_task(_consume_tool_stream())
         _ia_task = asyncio.create_task(_forward_interactions())
+        _cancel_task = (
+            asyncio.create_task(cancel_event.wait())
+            if cancel_event is not None
+            else None
+        )
+        item_task: asyncio.Task | None = None
 
         try:
             while True:
-                kind, item = await _merged_q.get()
+                item_task = asyncio.create_task(_merged_q.get())
+                waiting = {item_task}
+                if _cancel_task is not None:
+                    waiting.add(_cancel_task)
+                completed, _ = await asyncio.wait(
+                    waiting,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if _cancel_task is not None and _cancel_task in completed:
+                    item_task.cancel()
+                    try:
+                        await item_task
+                    except asyncio.CancelledError:
+                        pass
+                    _tool_task.cancel()
+                    yield CancelledEvent()
+                    return
+                kind, item = item_task.result()
+                item_task = None
                 if kind == "done":
                     break
                 if kind == "error":
@@ -1342,16 +1422,41 @@ class AgentRunner:
                         )
                         self._update_circuit_breaker(content, None)
         finally:
+            if item_task is not None and not item_task.done():
+                item_task.cancel()
+                try:
+                    await item_task
+                except asyncio.CancelledError:
+                    pass
+            if _cancel_task is not None:
+                _cancel_task.cancel()
+                try:
+                    await _cancel_task
+                except asyncio.CancelledError:
+                    pass
             _ia_task.cancel()
             try:
                 await _ia_task
             except asyncio.CancelledError:
                 pass
             if not _tool_task.done():
-                try:
-                    await _tool_task
-                except (asyncio.CancelledError, Exception):
-                    pass
+                _tool_task.cancel()
+                if cancel_event is not None and cancel_event.is_set():
+                    # Closing some provider tool streams can perform lengthy
+                    # cleanup. Do not let that delay the public cancellation
+                    # boundary; drain the task when the provider releases it.
+                    def consume_cancelled_tool(task: asyncio.Task) -> None:
+                        try:
+                            task.result()
+                        except (asyncio.CancelledError, Exception):
+                            pass
+
+                    _tool_task.add_done_callback(consume_cancelled_tool)
+                else:
+                    try:
+                        await _tool_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
 
         # Drain any remaining interaction events after tool execution
         for interaction_event in drain_interaction_q():
@@ -1360,8 +1465,8 @@ class AgentRunner:
         # Check circuit breaker after each tool execution round
         self._check_circuit_breaker()
 
-    @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
-    async def run_stream(
+    @log_elapsed("AgentRunner.run_events", level=logging.INFO)
+    async def run_events(
         self,
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
@@ -1369,8 +1474,12 @@ class AgentRunner:
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
         run_id: str | None = None,
-    ) -> AsyncGenerator[StreamEvent, None]:
-        """Run agent with streaming, yielding structured StreamEvent objects.
+        event_scope: str = "run",
+        step_id_prefix: str = "step",
+        interaction_handler=None,
+        sandbox=None,
+    ) -> AsyncGenerator[RunEvent, None]:
+        """Run agent with streaming, yielding canonical ``RunEvent`` objects.
 
         Uses pydantic-ai's ``agent.iter()`` API for node-level control,
         which enables proactive user input injection between nodes.
@@ -1382,6 +1491,9 @@ class AgentRunner:
             include_tools: If set, only these tools are available for this run.
             exclude_tools: If set, these tools are excluded for this run.
             run_id: Optional canonical runtime run identifier. Generated when omitted.
+            event_scope: ``run`` for a top-level run or ``step`` when embedded
+                in a runtime workflow node.
+            step_id_prefix: Prefix used for canonical trace step identifiers.
 
         Events:
           - CompactEvent: context was auto-compacted (first event if applicable)
@@ -1402,28 +1514,35 @@ class AgentRunner:
         runtime_run_id = run_id or f"run_{uuid4().hex}"
         step_ids = count(1)
 
-        def _trace_step(event: StreamEvent) -> StreamEvent:
+        def _trace_step(event: StreamEvent) -> RunEvent:
             artifact_refs, file_refs, child_run_ids, pending_approval_ids = (
                 self._checkpoint_refs_for_event(event)
             )
-            self._record_stream_event(
+            return self._record_stream_event(
                 event,
                 run_id=runtime_run_id,
-                step_id=f"step_{next(step_ids):06d}",
+                step_id=f"{step_id_prefix}_{next(step_ids):06d}",
                 message_state=self._checkpoint_message_state(message_history),
                 artifact_refs=artifact_refs,
                 file_refs=file_refs,
                 child_run_ids=child_run_ids,
                 pending_approval_ids=pending_approval_ids,
+                event_scope=event_scope,
             )
-            return event
 
         # Side channel for interaction events emitted from within tool execution.
         interaction_q: asyncio.Queue = asyncio.Queue()
 
         # Build interaction handler for this stream.
-        interaction_handler = self._build_stream_interaction_handler(interaction_q)
-        deps = self._create_deps(interaction_handler=interaction_handler)
+        effective_interaction_handler = (
+            interaction_handler
+            if interaction_handler is not None
+            else self._build_stream_interaction_handler(interaction_q)
+        )
+        deps = self._create_deps(
+            interaction_handler=effective_interaction_handler,
+            sandbox=sandbox,
+        )
 
         message_history, compact_result = await self._compact_history_if_needed(
             message_history,
@@ -1517,7 +1636,11 @@ class AgentRunner:
 
                     elif agent.is_call_tools_node(node):
                         async for ev in self._stream_tool_node(
-                            node, agent_run, interaction_q, _drain_interaction_q,
+                            node,
+                            agent_run,
+                            interaction_q,
+                            _drain_interaction_q,
+                            cancel_event,
                         ):
                             yield _trace_step(ev)
 
@@ -1537,9 +1660,41 @@ class AgentRunner:
                 tokens_used=e.tokens_used,
                 cost_usd=e.cost_usd,
             ))
-        except Exception:
-            logger.exception("run_stream failed unexpectedly")
+        except (WorkflowWaiting, WorkflowPaused, WorkflowCancelled):
             raise
+        except Exception:
+            logger.exception("run_events failed unexpectedly")
+            raise
+
+    @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
+    async def run_stream(
+        self,
+        prompt: Prompt,
+        message_history: Optional[list[ModelMessage]] = None,
+        cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        run_id: str | None = None,
+        event_scope: str = "run",
+        step_id_prefix: str = "step",
+        interaction_handler=None,
+        sandbox=None,
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """Yield legacy StreamEvents derived from canonical live RunEvents."""
+
+        async for event in self.run_events(
+            prompt,
+            message_history=message_history,
+            cancel_event=cancel_event,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+            run_id=run_id,
+            event_scope=event_scope,
+            step_id_prefix=step_id_prefix,
+            interaction_handler=interaction_handler,
+            sandbox=sandbox,
+        ):
+            yield run_event_to_stream_event(event)
 
     @log_elapsed("AgentRunner.run_sync", level=logging.INFO)
     def run_sync(

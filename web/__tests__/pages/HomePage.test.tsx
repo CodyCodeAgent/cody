@@ -63,7 +63,7 @@ describe("HomePage", () => {
     );
     await waitFor(() => screen.getByText("My Project"));
     await userEvent.click(screen.getByText("My Project"));
-    expect(mockNavigate).toHaveBeenCalledWith("/chat/p1");
+    expect(mockNavigate).toHaveBeenCalledWith("/project/p1");
   });
 
   it("shows project wizard when New Project is clicked", async () => {
