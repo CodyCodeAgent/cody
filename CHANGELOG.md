@@ -80,6 +80,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   安全继承 `DOCKER_HOST`、`DOCKER_CONTEXT`、`DOCKER_CONFIG` 和 `CONTAINER_HOST`，使
   Colima、Docker context、Podman Machine 与远程 daemon 可实际工作，同时仍不继承
   模型 API key 等宿主 secret
+- **模型框架依赖契约**：将 Pydantic AI 约束为已完成 live/类型/回归验证的
+  `>=1.65,<2`；2.x 的 graph/event breaking API 在完成迁移验收前不会被包管理器静默引入
 
 - **完整文档收束**：新增文档索引、Runtime 使用与部署手册、完整 Sandbox 指南和
   Runtime 黑盒测试手册；同步 CLI/SDK/API/Web/TUI/Config/Skills/站点教程，并增加
