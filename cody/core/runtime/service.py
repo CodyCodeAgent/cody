@@ -8,7 +8,7 @@ import json
 from hashlib import sha256
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Literal, cast
 from uuid import uuid4
 
 from ..prompt import ImageData, MultimodalPrompt, Prompt, prompt_images, prompt_text
@@ -286,8 +286,8 @@ class CodyRuntime:
         runner = AgentRunner(
             config=config,
             workdir=Path(workdir),
-            trace_store=bundle.trace_store,
-            checkpoint_store=bundle.checkpoint_store,
+            trace_store=cast(Any, bundle.trace_store),
+            checkpoint_store=cast(Any, bundle.checkpoint_store),
             **runner_kwargs,
         )
         return cls(
@@ -988,7 +988,9 @@ class CodyRuntime:
         )
         handlers.setdefault(
             WorkflowNodeType.HUMAN_APPROVAL.value,
-            queued_human_approval_node_handler(self.stores.approval_store),
+            queued_human_approval_node_handler(
+                cast(Any, self.stores.approval_store)
+            ),
         )
         if self.tool_registry is not None:
             handlers.setdefault(
@@ -996,15 +998,15 @@ class CodyRuntime:
                 idempotent_registry_tool_node_handler(
                     self.tool_registry,
                     policy=self.tool_policy,
-                    artifact_store=self.stores.artifact_store,
-                    trace_store=self.stores.trace_store,
+                    artifact_store=cast(Any, self.stores.artifact_store),
+                    trace_store=cast(Any, self.stores.trace_store),
                 ),
             )
         if self.multi_agent_coordinator is not None:
             coordinator = self.multi_agent_coordinator.clone(
-                trace_store=self.stores.trace_store,
-                checkpoint_store=self.stores.checkpoint_store,
-                artifact_store=self.stores.artifact_store,
+                trace_store=cast(Any, self.stores.trace_store),
+                checkpoint_store=cast(Any, self.stores.checkpoint_store),
+                artifact_store=cast(Any, self.stores.artifact_store),
                 cancel_event=cancel_event,
                 max_concurrency=self.max_concurrency,
             )
@@ -1020,19 +1022,19 @@ class CodyRuntime:
                         binder(sandbox)
             quality_runner = AsyncQualityGateRunner(
                 evaluators=self.quality_evaluators,
-                trace_store=self.stores.trace_store,
-                checkpoint_store=self.stores.checkpoint_store,
-                artifact_store=self.stores.artifact_store,
+                trace_store=cast(Any, self.stores.trace_store),
+                checkpoint_store=cast(Any, self.stores.checkpoint_store),
+                artifact_store=cast(Any, self.stores.artifact_store),
             )
             handlers.setdefault(
                 WorkflowNodeType.QUALITY_GATE.value,
                 async_quality_gate_node_handler(quality_runner),
             )
         return WorkflowRunManager(
-            trace_store=self.stores.trace_store,
-            checkpoint_store=self.stores.checkpoint_store,
-            run_store=self.stores.run_store,
-            control_state=self.stores.control_store,
+            trace_store=cast(Any, self.stores.trace_store),
+            checkpoint_store=cast(Any, self.stores.checkpoint_store),
+            run_store=cast(Any, self.stores.run_store),
+            control_state=cast(Any, self.stores.control_store),
             async_node_handlers=handlers,
             async_condition_handlers=self.condition_handlers,
             cancel_event=cancel_event,
@@ -1218,9 +1220,13 @@ class CodyRuntime:
             action = str(response.get("action") or (
                 "approve" if approval.status == ApprovalStatus.APPROVED else "reject"
             ))
+            if action not in {"approve", "reject", "revise", "answer"}:
+                action = "answer"
             return InteractionResponse(
                 request_id=request.id,
-                action=action,
+                action=cast(
+                    Literal["approve", "reject", "revise", "answer"], action
+                ),
                 content=str(response.get("content") or response.get("answer") or ""),
             )
 

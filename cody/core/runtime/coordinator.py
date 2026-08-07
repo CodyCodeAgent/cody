@@ -246,7 +246,12 @@ class MultiAgentCoordinator:
         ]
         ordered = [agent_id for agent_id in [*preferred, *fallbacks, *capable] if agent_id]
         seen: set[str] = set()
-        return [agent_id for agent_id in ordered if agent_id in self._backends and not (agent_id in seen or seen.add(agent_id))]
+        candidates: list[str] = []
+        for agent_id in ordered:
+            if agent_id in self._backends and agent_id not in seen:
+                seen.add(agent_id)
+                candidates.append(agent_id)
+        return candidates
 
     def _merge_output(self, state: WorkflowState, record: AgentTaskRecord) -> WorkflowState:
         data = dict(state.data)

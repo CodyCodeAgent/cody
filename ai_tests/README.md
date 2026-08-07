@@ -101,7 +101,7 @@ AI 执行完毕后应输出如下格式的报告：
 日期：2026-03-09
 执行者：AI Agent
 模型：deepseek-v4-flash
-Cody 版本：v2.0.2
+Cody 版本：v3.0.0
 
 ### 汇总
 
@@ -181,8 +181,29 @@ Cody 版本：v2.0.2
 2. **超时处理**：LLM 调用可能较慢，单个用例超过 2 分钟未响应视为 FAIL
 3. **环境隔离**：所有测试在 `/tmp/cody_ai_test_*` 目录下运行
 4. **幂等性**：每个用例可独立执行，不依赖其他用例的执行结果
-5. **外部依赖边界**：PostgreSQL、S3、Docker/Bubblewrap、Remote Sandbox、视觉模型
+5. **外部依赖边界**：PostgreSQL、S3、Docker/Podman/Bubblewrap、Remote Sandbox、视觉模型
    必须记录实际服务/版本；adapter mock 不能写成真实后端通过
+
+## 自动化生产后端矩阵
+
+`scripts/verify_production_backends.py` 对真实 PostgreSQL、S3-compatible storage、
+Docker、Podman 和 Bubblewrap 运行 opt-in 集成测试，并始终运行 provider-neutral Remote
+transport contract。外部凭据只从环境变量读取，JSON 输出不会包含 DSN 或 secret：
+
+```bash
+export CODY_VERIFY_POSTGRES_DSN='postgresql://...'
+export CODY_VERIFY_S3_ENDPOINT='https://...'
+export CODY_VERIFY_S3_BUCKET='cody-validation'
+export CODY_VERIFY_S3_ACCESS_KEY='...'
+export CODY_VERIFY_S3_SECRET_KEY='...'
+python scripts/verify_production_backends.py
+unset CODY_VERIFY_POSTGRES_DSN CODY_VERIFY_S3_ENDPOINT CODY_VERIFY_S3_BUCKET
+unset CODY_VERIFY_S3_ACCESS_KEY CODY_VERIFY_S3_SECRET_KEY
+```
+
+未配置的外部服务输出 `SKIP`；已配置但能力不满足输出 `FAIL`，不会用 mock 代替真实
+服务。Remote 项的 `PASS` 仅表示 adapter lifecycle contract 通过，输出同时标记
+`hosted_provider=false`。
 
 ## 自动化真实模型矩阵
 

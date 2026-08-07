@@ -254,9 +254,9 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 #### `auth.type`
 
-**类型:** `"api_key" | "oauth"`
+**类型:** `"api_key"`
 **默认:** `"api_key"`
-**说明:** 认证类型
+**说明:** Web Backend 仅支持 API Key 认证
 
 ```json
 {
@@ -276,9 +276,8 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ⚠️ **安全提示:** 使用 `CODY_AUTH_API_KEY` 注入，不写入配置文件。
 
-`auth.token`、`auth.refresh_token` 和 `auth.expires_at` 用于自定义认证 adapter 的
-短期 token 状态。`Config.save()` 会移除 token、refresh token 和 API key；生产服务
-应从 `CODY_AUTH_TOKEN` / `CODY_AUTH_REFRESH_TOKEN` 或认证 provider 注入，而不是写入 JSON。
+`Config.save()` 会移除 API key；生产服务应通过 `CODY_AUTH_API_KEY` 或部署平台的
+secret manager 注入，而不是写入 JSON。
 
 ---
 
@@ -999,10 +998,7 @@ LLM API 调用的自动重试。对 429（rate limit）和 5xx（服务端错误
 | `CODY_MODEL` | `model` | `glm-4` |
 | `CODY_MODEL_BASE_URL` | `model_base_url` | `https://...` |
 | `CODY_MODEL_API_KEY` | `model_api_key` | `sk-...` |
-| `CODY_AUTH_TYPE` | `auth.type` | `api_key` 或 `oauth` |
 | `CODY_AUTH_API_KEY` | `auth.api_key` | `cody_...` |
-| `CODY_AUTH_TOKEN` | `auth.token` | `<access-token>` |
-| `CODY_AUTH_REFRESH_TOKEN` | `auth.refresh_token` | `<refresh-token>` |
 | `CODY_CODING_PLAN_KEY` | `model_api_key`（兼容旧配置） | `sk-sp-...` |
 | `CODY_ENABLE_THINKING` | `enable_thinking` | `true` |
 | `CODY_THINKING_BUDGET` | `thinking_budget` | `10000` |

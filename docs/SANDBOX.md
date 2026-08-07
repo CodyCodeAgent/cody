@@ -109,7 +109,10 @@ Seatbelt 和容器内核只能稳定约束 socket/IP，不能安全地把 DNS �
 
 ## 5. 环境变量与秘密
 
-宿主环境不会被隐式继承。只有 `sandbox.env` 和单次执行请求明确给出的变量进入 guest。
+guest 不会隐式继承宿主环境。只有 `sandbox.env` 和单次执行请求明确给出的变量进入
+guest。启动 Docker/Podman CLI 的可信宿主进程会保留 `DOCKER_HOST`、
+`DOCKER_CONTEXT`、`DOCKER_CONFIG` 和 `CONTAINER_HOST`，以连接 Colima、Docker
+context、Podman Machine 或远程 daemon；这些连接配置不会自动传进容器。
 模型 API Key、云凭证和登录 token 应保留在可信宿主，不要复制到 Sandbox。
 
 `sandbox.env` 适合非敏感构建配置，例如 cache 路径、locale 或工具开关。若 guest 必须
@@ -173,6 +176,9 @@ Transport 负责远端 create、exec、spawn、pause、resume、snapshot、resto
 terminate。认证、租户隔离、镜像供应链、日志保留和 egress policy 由 provider adapter
 及部署平台负责。
 
+Cody 不自带远程 sandbox 服务或特定厂商 transport。没有真实 provider endpoint 时，
+只能验证上述 contract，不能把它记录成托管远程沙箱 E2E 通过。
+
 ## 9. 信任边界
 
 Sandboxed guest：
@@ -215,4 +221,4 @@ Trusted host：
 | resume 找不到 snapshot | state/object storage 是否持久化；远程 reference 是否过期 |
 | 宿主命令仍被执行 | 确认 Run 绑定的 `SandboxHandle`，不要在自定义 Python handler 中直接 subprocess |
 
-**最后更新：2026-07-12**
+**最后更新：2026-08-08**

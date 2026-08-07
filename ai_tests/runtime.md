@@ -13,7 +13,8 @@
 ```bash
 export CODY_LIVE_API_KEY="$CODY_MODEL_API_KEY"
 export CODY_LIVE_BASE_URL="$CODY_MODEL_BASE_URL"
-uv run python scripts/verify_live_capabilities.py | tee /tmp/cody-live-report.json
+uv run python scripts/verify_live_capabilities.py --retries 1 \
+  | tee /tmp/cody-live-report.json
 unset CODY_LIVE_API_KEY
 ```
 
@@ -21,8 +22,11 @@ unset CODY_LIVE_API_KEY
 
 - 进程退出码为 0。
 - 每个 case 的 `status` 都是 `passed`。
+- `attempts` 和 `evidence.prior_errors` 必须纳入报告；重试后通过不应掩盖首次失败。
 - 报告包含真实 `run_id`、token usage 和各表面的可观察证据。
 - 报告不包含 API Key。
+- verifier 的 contract test 保证 30 个内置工具及 SDK/CLI/TUI/Web/Runtime 关键产品面
+  都映射到真实能力 case；新增工具或产品面必须同步补用例。
 
 ### 验证方法
 
@@ -106,6 +110,17 @@ uv run pytest -q \
 
 没有真实服务时必须标记 `SKIP (external dependency)`；boto3 Stubber 仅证明 adapter contract。
 
+### 自动化命令
+
+```bash
+CODY_VERIFY_POSTGRES_DSN='postgresql://...' \
+CODY_VERIFY_S3_ENDPOINT='https://...' \
+CODY_VERIFY_S3_BUCKET='cody-validation' \
+CODY_VERIFY_S3_ACCESS_KEY='...' \
+CODY_VERIFY_S3_SECRET_KEY='...' \
+python scripts/verify_production_backends.py postgres s3
+```
+
 ## TC-RUNTIME-006：真实容器/Linux/远程 Sandbox
 
 **优先级**：P1
@@ -117,6 +132,14 @@ uv run pytest -q \
 | Remote | create/exec/snapshot/pause/restore/fork/terminate，重启后 snapshot reference 仍有效 |
 
 当前机器缺少对应 binary/service 时逐项标记 SKIP，并记录缺失命令或 endpoint。
+
+```bash
+python scripts/verify_production_backends.py docker podman bubblewrap remote
+```
+
+Bubblewrap/Podman 的 rootless 资源限制依赖宿主 user namespace、cgroup delegation 和用户
+session 配置；报告必须记录 rootless 或 rootful，不能用 argv 单测代替实际隔离执行。
+Remote 仅验证 Cody 自带的 transport contract；仓库没有内置 hosted provider。
 
 ## 清理
 

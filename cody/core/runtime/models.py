@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -167,24 +167,7 @@ class StepRecord:
         )
 
     def _replace(self, **changes: Any) -> "StepRecord":
-        data = {
-            "run_id": self.run_id,
-            "step_type": self.step_type,
-            "step_id": self.step_id,
-            "status": self.status,
-            "parent_step_id": self.parent_step_id,
-            "node_id": self.node_id,
-            "agent_id": self.agent_id,
-            "input_ref": self.input_ref,
-            "output_ref": self.output_ref,
-            "error_ref": self.error_ref,
-            "checkpoint_id": self.checkpoint_id,
-            "metadata": dict(self.metadata),
-            "started_at": self.started_at,
-            "ended_at": self.ended_at,
-        }
-        data.update(changes)
-        return StepRecord(**data)
+        return replace(self, **changes)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "StepRecord":

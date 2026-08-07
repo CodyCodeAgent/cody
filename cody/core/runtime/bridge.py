@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import Any, cast
 
 from .events import RunEvent, RunEventType
 
@@ -77,7 +77,7 @@ def run_event_to_stream_event(event: RunEvent) -> Any:
 
 def _payload_for_event(event: Any) -> dict[str, Any]:
     if is_dataclass(event):
-        raw = asdict(event)
+        raw = asdict(cast(Any, event))
     elif hasattr(event, "__dict__"):
         raw = dict(vars(event))
     else:
@@ -96,7 +96,7 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     if is_dataclass(value):
-        return _json_safe(asdict(value))
+        return _json_safe(asdict(cast(Any, value)))
     if hasattr(value, "to_dict"):
         try:
             return _json_safe(value.to_dict())

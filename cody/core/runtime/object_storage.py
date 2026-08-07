@@ -50,7 +50,15 @@ class FileSystemObjectStorage:
 class S3ObjectStorage:
     """S3-compatible adapter using an injected client or optional boto3."""
 
-    def __init__(self, bucket: str, *, prefix: str = "cody", client: Any = None, **client_kwargs: Any):
+    def __init__(
+        self,
+        bucket: str,
+        *,
+        prefix: str = "cody",
+        client: Any = None,
+        put_options: dict[str, Any] | None = None,
+        **client_kwargs: Any,
+    ):
         if client is None:
             try:
                 import boto3
@@ -60,12 +68,24 @@ class S3ObjectStorage:
         self.client = client
         self.bucket = bucket
         self.prefix = prefix.strip("/")
+        self.put_options = dict(put_options or {})
 
     def _key(self, key: str) -> str:
         return f"{self.prefix}/{key}" if self.prefix else key
 
     def put(self, key: str, data: bytes, *, content_type: str) -> None:
-        self.client.put_object(Bucket=self.bucket, Key=self._key(key), Body=data, ContentType=content_type)
+        reserved = {"Bucket", "Key", "Body", "ContentType"}
+        overlap = reserved.intersection(self.put_options)
+        if overlap:
+            names = ", ".join(sorted(overlap))
+            raise ValueError(f"S3 put_options cannot override managed fields: {names}")
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=self._key(key),
+            Body=data,
+            ContentType=content_type,
+            **self.put_options,
+        )
 
     def get(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=self._key(key))["Body"].read()
@@ -119,4 +139,3 @@ class ObjectArtifactStore:
             return record
         envelope = json.loads(self.objects.get(str(key)).decode("utf-8"))
         return replace(record, content=envelope["content"])
-

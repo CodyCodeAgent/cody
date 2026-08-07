@@ -30,6 +30,7 @@ from cody.core.runtime import (
     CodyRuntime,
     AgentRole,
     AsyncMultiAgentCoordinator,
+    QualityGateFailure,
     RunEventType,
     RuntimeStoreBundle,
     Workflow,
@@ -51,6 +52,7 @@ class Check:
     duration_seconds: float
     evidence: dict[str, object]
     error: str | None = None
+    attempts: int = 1
 
 
 def live_config(workdir: Path, *, sandbox: bool = False, reasoner: bool = False) -> Config:
@@ -95,6 +97,7 @@ def client_for(
 ) -> AsyncCodyClient:
     client = AsyncCodyClient(
         workdir=str(workdir),
+        db_path=str(workdir / ".cody" / "sessions.db"),
         custom_tools=custom_tools,
         before_tool_hooks=before_tool_hooks,
         after_tool_hooks=after_tool_hooks,
@@ -269,6 +272,7 @@ async def builder_events_metrics(workdir: Path) -> dict[str, object]:
     client = (
         Cody()
         .workdir(str(workdir))
+        .db_path(str(workdir / ".cody" / "sessions.db"))
         .model("deepseek-chat")
         .api_key(key)
         .base_url(os.environ.get("CODY_LIVE_BASE_URL", "https://api.deepseek.com"))
@@ -298,11 +302,15 @@ async def builder_events_metrics(workdir: Path) -> dict[str, object]:
 
 
 async def sync_sdk(workdir: Path) -> dict[str, object]:
-    def execute() -> tuple[str, int]:
+    sample = workdir / "sync-sample.txt"
+    sample.write_text("SYNC_TOOL_OK\n")
+
+    def execute() -> tuple[str, int, list[str], str]:
         from cody.sdk import CodyClient
 
         client = CodyClient(
             workdir=str(workdir),
+            db_path=str(workdir / ".cody" / "sessions.db"),
             model="deepseek-chat",
             api_key=os.environ["CODY_LIVE_API_KEY"],
             base_url=os.environ.get("CODY_LIVE_BASE_URL", "https://api.deepseek.com"),
@@ -310,14 +318,38 @@ async def sync_sdk(workdir: Path) -> dict[str, object]:
         client._async._config.lsp.enabled = False
         try:
             result = client.run("Reply exactly LIVE_SYNC_SDK_OK and no other text.")
-            return result.output, result.usage.total_tokens
+            chunks = client.stream(
+                "Reply exactly LIVE_SYNC_STREAM_OK and no other text."
+            )
+            tool_result = client.tool("read_file", {"path": "sync-sample.txt"})
+            return (
+                result.output,
+                result.usage.total_tokens,
+                [chunk.type for chunk in chunks],
+                tool_result.result,
+            )
         finally:
             client.close()
 
-    output, tokens = await asyncio.to_thread(execute)
-    if "LIVE_SYNC_SDK_OK" not in output or tokens <= 0:
-        raise AssertionError(f"sync SDK failed: output={output}, tokens={tokens}")
-    return {"output": output, "tokens": tokens}
+    output, tokens, chunk_types, tool_output = await asyncio.to_thread(execute)
+    if (
+        "LIVE_SYNC_SDK_OK" not in output
+        or tokens <= 0
+        or "text_delta" not in chunk_types
+        or "done" not in chunk_types
+        or "SYNC_TOOL_OK" not in tool_output
+    ):
+        raise AssertionError(
+            "sync SDK failed: "
+            f"output={output}, tokens={tokens}, chunks={chunk_types}, "
+            f"tool={tool_output}"
+        )
+    return {
+        "output": output,
+        "tokens": tokens,
+        "stream_chunk_types": chunk_types,
+        "tool_output": tool_output,
+    }
 
 
 async def cancellation_model(workdir: Path) -> dict[str, object]:
@@ -465,8 +497,14 @@ async def reasoner(workdir: Path) -> dict[str, object]:
             "Compute 17 * 19 and reply with exactly REASONER_OK:<answer>.",
             include_tools=[],
         )
-    if "REASONER_OK:323" not in result.output.replace(" ", ""):
-        raise AssertionError(f"reasoner output mismatch: {result.output[:200]}")
+    if (
+        "REASONER_OK:323" not in result.output.replace(" ", "")
+        or not result.thinking
+    ):
+        raise AssertionError(
+            f"reasoner output/thinking mismatch: output={result.output[:200]}, "
+            f"thinking_present={bool(result.thinking)}"
+        )
     return {
         "run_id": result.run_id,
         "output": result.output,
@@ -698,8 +736,11 @@ def _applied_live_process_env(**extra: str):
 
 
 async def cli_surface(workdir: Path) -> dict[str, object]:
+    test_home = workdir / "home"
+    test_home.mkdir()
     env = {
         **_live_process_env(),
+        "HOME": str(test_home),
         "CODY_RUNTIME_HOME": str(workdir / ".runtime-home"),
     }
     completed = await asyncio.to_thread(
@@ -773,7 +814,8 @@ async def cli_surface(workdir: Path) -> dict[str, object]:
 async def web_rest_surface(workdir: Path) -> dict[str, object]:
     def request() -> tuple[int, dict]:
         with _applied_live_process_env(
-            CODY_RUNTIME_HOME=str(workdir / ".runtime-home")
+            CODY_RUNTIME_HOME=str(workdir / ".runtime-home"),
+            HOME=str(workdir / "home"),
         ):
             from fastapi.testclient import TestClient
             from web.backend.app import app
@@ -797,7 +839,8 @@ async def web_rest_surface(workdir: Path) -> dict[str, object]:
 async def web_sse_surface(workdir: Path) -> dict[str, object]:
     def request() -> tuple[int, list[dict]]:
         with _applied_live_process_env(
-            CODY_RUNTIME_HOME=str(workdir / ".runtime-home")
+            CODY_RUNTIME_HOME=str(workdir / ".runtime-home"),
+            HOME=str(workdir / "home"),
         ):
             from fastapi.testclient import TestClient
             from web.backend.app import app
@@ -829,7 +872,8 @@ async def web_sse_surface(workdir: Path) -> dict[str, object]:
 async def web_runtime_surface(workdir: Path) -> dict[str, object]:
     def request() -> dict[str, object]:
         with _applied_live_process_env(
-            CODY_RUNTIME_HOME=str(workdir / ".runtime-home")
+            CODY_RUNTIME_HOME=str(workdir / ".runtime-home"),
+            HOME=str(workdir / "home"),
         ):
             from fastapi.testclient import TestClient
             from web.backend.app import app
@@ -899,7 +943,8 @@ async def web_runtime_surface(workdir: Path) -> dict[str, object]:
 async def web_websocket_surface(workdir: Path) -> dict[str, object]:
     def request() -> list[dict]:
         with _applied_live_process_env(
-            CODY_RUNTIME_HOME=str(workdir / ".runtime-home")
+            CODY_RUNTIME_HOME=str(workdir / ".runtime-home"),
+            HOME=str(workdir / "home"),
         ):
             from fastapi.testclient import TestClient
             from cody.core.session import SessionStore
@@ -955,37 +1000,38 @@ async def tui_surface(workdir: Path) -> dict[str, object]:
     from cody.tui.widgets import MessageBubble
 
     config = live_config(workdir)
-    app = CodyTUI(workdir=workdir)
     session_id = None
-    with patch("cody.tui.app.Config.load", return_value=config):
-        async with app.run_test(size=(100, 30)) as pilot:
-            session_id = app._session_id
-            if app._client is not None:
-                app._client._config.lsp.enabled = False
-            input_widget = app.query_one("#prompt-input")
-            input_widget.value = "Reply exactly LIVE_TUI_OK and no other text."
-            await pilot.press("enter")
-            deadline = time.monotonic() + 120
-            rendered = ""
-            while time.monotonic() < deadline:
-                await pilot.pause()
-                rendered = "\n".join(
-                    bubble.content_text
-                    for bubble in app.query(MessageBubble)
-                    if bubble.role == "assistant"
-                )
-                if "LIVE_TUI_OK" in rendered and not app.is_running:
-                    break
-                await asyncio.sleep(0.05)
-            if (
-                "LIVE_TUI_OK" not in rendered
-                or app.is_running
-                or app._total_tokens <= 0
-            ):
-                raise AssertionError(f"TUI live run failed: {rendered[-1000:]}")
-            tokens = app._total_tokens
-            if app._client is not None and session_id is not None:
-                await app._client.delete_session(session_id)
+    with _applied_live_process_env(HOME=str(workdir / "home")):
+        app = CodyTUI(workdir=workdir)
+        with patch("cody.tui.app.Config.load", return_value=config):
+            async with app.run_test(size=(100, 30)) as pilot:
+                session_id = app._session_id
+                if app._client is not None:
+                    app._client._config.lsp.enabled = False
+                input_widget = app.query_one("#prompt-input")
+                input_widget.value = "Reply exactly LIVE_TUI_OK and no other text."
+                await pilot.press("enter")
+                deadline = time.monotonic() + 120
+                rendered = ""
+                while time.monotonic() < deadline:
+                    await pilot.pause()
+                    rendered = "\n".join(
+                        bubble.content_text
+                        for bubble in app.query(MessageBubble)
+                        if bubble.role == "assistant"
+                    )
+                    if "LIVE_TUI_OK" in rendered and not app.is_running:
+                        break
+                    await asyncio.sleep(0.05)
+                if (
+                    "LIVE_TUI_OK" not in rendered
+                    or app.is_running
+                    or app._total_tokens <= 0
+                ):
+                    raise AssertionError(f"TUI live run failed: {rendered[-1000:]}")
+                tokens = app._total_tokens
+                if app._client is not None and session_id is not None:
+                    await app._client.delete_session(session_id)
     return {"session_created": bool(session_id), "tokens": tokens, "marker_seen": True}
 
 
@@ -1122,7 +1168,8 @@ async def quality_repair_loop(workdir: Path) -> dict[str, object]:
         [
             sys.executable,
             "-c",
-            "from pathlib import Path; assert Path('result.txt').read_text() == 'QUALITY_LIVE_OK'",
+            "from pathlib import Path; "
+            "assert Path('result.txt').read_text().strip() == 'QUALITY_LIVE_OK'",
         ],
         workdir=workdir,
         timeout=20,
@@ -1138,13 +1185,30 @@ async def quality_repair_loop(workdir: Path) -> dict[str, object]:
         {"task": "Exercise the bounded quality repair loop."},
         run_id="run_live_quality",
     )
-    result = await handle.result()
+    try:
+        result = await handle.result()
+    except QualityGateFailure as exc:
+        target = workdir / "result.txt"
+        events = runtime.stores.trace_store.list_events(handle.run_id)
+        tool_results = [
+            {
+                "tool": event.payload.get("tool_name"),
+                "result": str(event.payload.get("result") or "")[:500],
+            }
+            for event in events
+            if event.event_type == RunEventType.TOOL_CALL_COMPLETED
+        ]
+        raise AssertionError(
+            "quality repair exhausted: "
+            f"content={target.read_text() if target.exists() else None!r}, "
+            f"decision={exc.decision.to_dict()}, tool_results={tool_results}"
+        ) from exc
     event_types = [event.event_type.value for event in runtime.stores.trace_store.list_events(handle.run_id)]
     target = workdir / "result.txt"
     attempts = result.state.data.get("quality_gate_attempts")
     if (
         not target.is_file()
-        or target.read_text() != "QUALITY_LIVE_OK"
+        or target.read_text().strip() != "QUALITY_LIVE_OK"
         or attempts != {"live_file_gate": 2}
         or RunEventType.QUALITY_GATE_FAILED.value not in event_types
         or RunEventType.QUALITY_GATE_PASSED.value not in event_types
@@ -1263,6 +1327,216 @@ async def direct_sdk_tools(workdir: Path) -> dict[str, object]:
         "search": search,
         "command": command,
     }
+
+
+async def search_directory_tools_model(workdir: Path) -> dict[str, object]:
+    """Exercise every discovery/search tool through the real model loop."""
+    (workdir / "nested").mkdir()
+    (workdir / "alpha.py").write_text("# LIVE_SEARCH_NEEDLE\n")
+    (workdir / "nested" / "beta.py").write_text("value = 'beta'\n")
+    (workdir / "notes.txt").write_text("notes\n")
+    expected = {"list_directory", "grep", "glob", "search_files"}
+    async with client_for(workdir) as client:
+        result = await client.run(
+            "Call each named tool exactly once in this order: "
+            "(1) list_directory with path='.'; "
+            "(2) grep with pattern='LIVE_SEARCH_NEEDLE', path='.', include='*.py'; "
+            "(3) glob with pattern='**/*.py', path='.'; "
+            "(4) search_files with query='beta', path='.'. "
+            "After all four succeed, reply exactly SEARCH_DIRECTORY_TOOLS_OK.",
+            include_tools=sorted(expected),
+        )
+        events = client.get_runtime().stores.trace_store.list_events(result.run_id)
+    calls = [
+        str(event.payload.get("tool_name"))
+        for event in events
+        if event.event_type == RunEventType.TOOL_CALL_COMPLETED
+    ]
+    if not expected.issubset(calls) or "SEARCH_DIRECTORY_TOOLS_OK" not in result.output:
+        raise AssertionError(f"search/discovery tools failed: calls={calls}, output={result.output}")
+    return {"run_id": result.run_id, "calls": calls, "output": result.output}
+
+
+async def sub_agent_tools_model(workdir: Path) -> dict[str, object]:
+    """Drive spawn/status/resume/kill through the public tool interface."""
+    client = client_for(workdir)
+    async with client:
+        # Constructing the runner provisions the live SubAgentManager used by
+        # direct SDK tool calls, while keeping IDs deterministic to inspect.
+        client.get_runner()
+        spawned = await client.tool(
+            "spawn_agent",
+            {"task": "Reply exactly SUB_AGENT_TOOL_OK.", "agent_type": "research"},
+        )
+        agent_id = spawned.result.split("Sub-agent spawned: ", 1)[1].split(" ", 1)[0]
+        manager = client.get_runner()._sub_agent_manager
+        completed = await manager.wait(agent_id)
+        status = await client.tool("get_agent_status", {"agent_id": agent_id})
+        resumed = await client.tool("resume_agent", {"agent_id": agent_id})
+        resumed_id = resumed.result.split("new agent ", 1)[1].splitlines()[0]
+        resumed_result = await manager.wait(resumed_id)
+
+        kill_spawned = await client.tool(
+            "spawn_agent",
+            {
+                "task": "Produce a detailed 2000-word analysis before answering KILL_TARGET_DONE.",
+                "agent_type": "research",
+            },
+        )
+        kill_id = kill_spawned.result.split("Sub-agent spawned: ", 1)[1].split(" ", 1)[0]
+        killed = await client.tool("kill_agent", {"agent_id": kill_id})
+        killed_status = manager.get_status(kill_id)
+    evidence = "\n".join(
+        (completed.output, status.result, resumed_result.output, killed.result)
+    )
+    if (
+        "SUB_AGENT_TOOL_OK" not in evidence
+        or "Status: AgentStatus.COMPLETED" not in status.result
+        or "killed" not in killed.result
+        or killed_status is None
+        or killed_status.status != AgentStatus.KILLED
+    ):
+        raise AssertionError(
+            f"sub-agent tool lifecycle failed: evidence={evidence}, "
+            f"killed_status={killed_status}"
+        )
+    return {
+        "agent_id": agent_id,
+        "resumed_agent_id": resumed_id,
+        "kill_agent_id": kill_id,
+        "status": status.result,
+        "kill_result": killed.result,
+    }
+
+
+async def memory_sdk(workdir: Path) -> dict[str, object]:
+    """Verify project-memory CRUD plus confidence/tags metadata."""
+    async with client_for(workdir) as client:
+        await client.add_memory(
+            "decisions",
+            "LIVE_MEMORY_METADATA_OK",
+            confidence=0.91,
+            tags=["live", "runtime"],
+        )
+        memories = await client.get_memory()
+        decisions = memories.get("decisions") or []
+        entry = decisions[-1] if decisions else {}
+        await client.clear_memory()
+        cleared = await client.get_memory()
+        await client.inject_user_input("idle input must be harmless")
+    if (
+        entry.get("content") != "LIVE_MEMORY_METADATA_OK"
+        or entry.get("confidence") != 0.91
+        or entry.get("tags") != ["live", "runtime"]
+        or any(cleared.values())
+    ):
+        raise AssertionError(f"memory SDK failed: entry={entry}, cleared={cleared}")
+    return {"entry": entry, "cleared": True, "idle_input": "accepted"}
+
+
+async def tool_filters_model(workdir: Path) -> dict[str, object]:
+    """Prove include/exclude filters at the real provider boundary."""
+    (workdir / "filter.txt").write_text("LIVE_FILTER_OK\n")
+    calls: list[str] = []
+
+    async def before(name: str, args: dict) -> dict:
+        calls.append(name)
+        return args
+
+    async with client_for(workdir, before_tool_hooks=[before]) as client:
+        included = await client.run(
+            "Call read_file exactly once with path='filter.txt', then reply "
+            "exactly INCLUDE_FILTER_OK.",
+            include_tools=["read_file"],
+        )
+        include_calls = list(calls)
+        calls.clear()
+        excluded = await client.run(
+            "Read filter.txt using read_file. Do not invent unavailable tools. "
+            "Then reply exactly EXCLUDE_FILTER_OK.",
+            exclude_tools=["exec_command"],
+        )
+        exclude_calls = list(calls)
+    if (
+        include_calls != ["read_file"]
+        or "exec_command" in exclude_calls
+        or "INCLUDE_FILTER_OK" not in included.output
+        or "EXCLUDE_FILTER_OK" not in excluded.output
+    ):
+        raise AssertionError(
+            f"tool filters failed: include={include_calls}, exclude={exclude_calls}, "
+            f"outputs={(included.output, excluded.output)}"
+        )
+    return {"include_calls": include_calls, "exclude_calls": exclude_calls}
+
+
+async def proactive_user_input_model(workdir: Path) -> dict[str, object]:
+    """Inject a user correction during a real streaming model/tool run."""
+    injected = False
+    chunk_types: list[str] = []
+    text = ""
+    async with client_for(workdir) as client:
+        async for chunk in client.stream(
+            "Use write_file to create hello.txt containing HELLO. Then report completion.",
+            include_tools=["write_file"],
+        ):
+            chunk_types.append(chunk.type)
+            if chunk.type == "tool_result" and not injected:
+                await client.inject_user_input(
+                    "Now also use write_file to create bye.txt containing GOODBYE, "
+                    "then reply exactly USER_INPUT_LIVE_OK."
+                )
+                injected = True
+            elif chunk.type == "text_delta":
+                text += chunk.content
+    if (
+        not injected
+        or not (workdir / "hello.txt").is_file()
+        or not (workdir / "bye.txt").is_file()
+        or (workdir / "bye.txt").read_text().strip() != "GOODBYE"
+        or "user_input_received" not in chunk_types
+        or chunk_types.count("tool_call") < 2
+        or chunk_types.count("tool_result") < 2
+    ):
+        raise AssertionError(
+            f"proactive user input failed: injected={injected}, chunks={chunk_types}, "
+            f"files={[p.name for p in workdir.iterdir()]}, text={text}"
+        )
+    return {"chunk_types": chunk_types, "output": text, "injected": injected}
+
+
+async def security_boundaries_model(workdir: Path) -> dict[str, object]:
+    """Exercise command blacklist and strict path isolation with a real model."""
+    outside = workdir.parent / f"{workdir.name}-outside.txt"
+    config = live_config(workdir)
+    config.security.blocked_commands = ["touch"]
+    config.security.strict_read_boundary = True
+    client = AsyncCodyClient(
+        workdir=str(workdir),
+        db_path=str(workdir / ".cody" / "sessions.db"),
+    )
+    client._config.lsp.enabled = False
+    client.set_config(config)
+    async with client:
+        result = await client.run(
+            f"You must attempt these two tool calls and report their errors: "
+            f"(1) exec_command with command='touch {outside}'; "
+            f"(2) write_file with path='{outside}' and content='DENIED'. "
+            "After both are denied, reply exactly SECURITY_BOUNDARIES_OK.",
+            include_tools=["exec_command", "write_file"],
+        )
+        events = client.get_runtime().stores.trace_store.list_events(result.run_id)
+    calls = [
+        str(event.payload.get("tool_name"))
+        for event in events
+        if event.event_type == RunEventType.TOOL_CALL_STARTED
+    ]
+    if outside.exists() or "SECURITY_BOUNDARIES_OK" not in result.output or not calls:
+        raise AssertionError(
+            f"security boundary failed: outside={outside.exists()}, calls={calls}, "
+            f"output={result.output}"
+        )
+    return {"run_id": result.run_id, "calls": calls, "outside_exists": False}
 
 
 async def skill_model(workdir: Path) -> dict[str, object]:
@@ -1471,6 +1745,11 @@ async def lsp_python_typescript(workdir: Path) -> dict[str, object]:
         raise RuntimeError(
             "Install TypeScript and set CODY_LIVE_TYPESCRIPT_PACKAGE for this check"
         )
+    if not (typescript_package / "lib" / "tsserver.js").is_file():
+        raise RuntimeError(
+            "CODY_LIVE_TYPESCRIPT_PACKAGE must point to a stable TypeScript 5.x "
+            "installation containing lib/tsserver.js"
+        )
     node_modules = workdir / "node_modules"
     node_modules.mkdir()
     (node_modules / "typescript").symlink_to(typescript_package, target_is_directory=True)
@@ -1572,6 +1851,12 @@ CASES: dict[str, Callable[[Path], Awaitable[dict[str, object]]]] = {
     "quality_repair_loop": quality_repair_loop,
     "multi_agent_team": multi_agent_team,
     "direct_sdk_tools": direct_sdk_tools,
+    "search_directory_tools_model": search_directory_tools_model,
+    "sub_agent_tools_model": sub_agent_tools_model,
+    "memory_sdk": memory_sdk,
+    "tool_filters_model": tool_filters_model,
+    "proactive_user_input_model": proactive_user_input_model,
+    "security_boundaries_model": security_boundaries_model,
     "skill_model": skill_model,
     "stateful_tools_model": stateful_tools_model,
     "websearch_model": websearch_model,
@@ -1580,20 +1865,96 @@ CASES: dict[str, Callable[[Path], Awaitable[dict[str, object]]]] = {
 }
 
 
-async def run(selected: list[str]) -> list[Check]:
+LIVE_TOOL_COVERAGE: dict[str, str] = {
+    "read_file": "stateful_tools_model",
+    "write_file": "file_command_seatbelt",
+    "edit_file": "stateful_tools_model",
+    "list_directory": "search_directory_tools_model",
+    "grep": "search_directory_tools_model",
+    "glob": "search_directory_tools_model",
+    "patch": "stateful_tools_model",
+    "search_files": "search_directory_tools_model",
+    "exec_command": "file_command_seatbelt",
+    "list_skills": "skill_model",
+    "read_skill": "skill_model",
+    "spawn_agent": "sub_agent_tools_model",
+    "get_agent_status": "sub_agent_tools_model",
+    "kill_agent": "sub_agent_tools_model",
+    "resume_agent": "sub_agent_tools_model",
+    "mcp_call": "mcp_model",
+    "mcp_list_tools": "mcp_model",
+    "webfetch": "webfetch_model",
+    "websearch": "websearch_model",
+    "lsp_diagnostics": "lsp_model_seatbelt",
+    "lsp_definition": "lsp_navigation_model",
+    "lsp_references": "lsp_navigation_model",
+    "lsp_hover": "lsp_navigation_model",
+    "undo_file": "stateful_tools_model",
+    "redo_file": "stateful_tools_model",
+    "list_file_changes": "stateful_tools_model",
+    "save_memory": "stateful_tools_model",
+    "todo_write": "stateful_tools_model",
+    "todo_read": "stateful_tools_model",
+    "question": "interaction_model",
+}
+
+
+LIVE_SURFACE_COVERAGE: dict[str, str] = {
+    "async_sdk": "basic_sdk",
+    "sync_sdk": "sync_sdk",
+    "cli": "cli_surface",
+    "tui": "tui_surface",
+    "web_rest": "web_rest_surface",
+    "web_sse": "web_sse_surface",
+    "web_websocket": "web_websocket_surface",
+    "web_runtime": "web_runtime_surface",
+    "approval_resume": "approval_resume",
+    "quality_repair": "quality_repair_loop",
+    "multi_agent": "multi_agent_team",
+    "sandbox": "file_command_seatbelt",
+    "mcp_stdio": "mcp_model",
+    "mcp_http": "mcp_http_model",
+    "lsp": "lsp_python_typescript",
+    "security": "security_boundaries_model",
+}
+
+
+async def run(selected: list[str], *, retries: int = 1) -> list[Check]:
     checks: list[Check] = []
     with tempfile.TemporaryDirectory(prefix="cody-live-") as root_text:
         root = Path(root_text)
         for name in selected:
-            workdir = root / name
-            workdir.mkdir()
             started = time.monotonic()
-            try:
-                evidence = await CASES[name](workdir)
-                checks.append(Check(name, "passed", time.monotonic() - started, evidence))
-            except Exception as exc:  # continue to gather the whole live matrix
+            errors: list[str] = []
+            for attempt in range(1, retries + 2):
+                workdir = root / name / f"attempt-{attempt}"
+                workdir.mkdir(parents=True)
+                try:
+                    evidence = await CASES[name](workdir)
+                    if errors:
+                        evidence = {**evidence, "prior_errors": errors}
+                    checks.append(
+                        Check(
+                            name,
+                            "passed",
+                            time.monotonic() - started,
+                            evidence,
+                            attempts=attempt,
+                        )
+                    )
+                    break
+                except Exception as exc:  # continue to gather the whole live matrix
+                    errors.append(f"{type(exc).__name__}: {exc}")
+            else:
                 checks.append(
-                    Check(name, "failed", time.monotonic() - started, {}, f"{type(exc).__name__}: {exc}")
+                    Check(
+                        name,
+                        "failed",
+                        time.monotonic() - started,
+                        {},
+                        errors[-1],
+                        attempts=retries + 1,
+                    )
                 )
     return checks
 
@@ -1601,9 +1962,17 @@ async def run(selected: list[str]) -> list[Check]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("cases", nargs="*", choices=sorted(CASES))
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=1,
+        help="retry failed live cases (default: 1; attempts are reported)",
+    )
     args = parser.parse_args()
     selected = args.cases or list(CASES)
-    checks = asyncio.run(run(selected))
+    if args.retries < 0:
+        parser.error("--retries must be >= 0")
+    checks = asyncio.run(run(selected, retries=args.retries))
     print(json.dumps([asdict(check) for check in checks], ensure_ascii=False, indent=2))
     return 0 if all(check.status == "passed" for check in checks) else 1
 

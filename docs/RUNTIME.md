@@ -261,6 +261,7 @@ from cody.core.runtime import S3ObjectStorage
 objects = S3ObjectStorage(
     "cody-artifacts",
     prefix="production",
+    put_options={"ServerSideEncryption": "AES256"},
     endpoint_url="https://s3.example.com",
     region_name="us-east-1",
 )
@@ -305,11 +306,13 @@ adapter。扩展应只依赖公共类型，不修改 Runtime 内核；恢复所�
 ## 12. 当前边界
 
 - SQLite 适合单机；多进程生产部署使用 PostgreSQL 或自定义 Store。
-- S3/PostgreSQL、Docker/Podman、Bubblewrap 和 Remote Sandbox 需要对应外部服务或
-  系统依赖，安装包不会自动提供它们。
+- S3/PostgreSQL、Docker/Podman 和 Bubblewrap 需要对应外部服务或系统依赖，安装包
+  不会自动提供它们。
+- Remote Sandbox 只提供 provider-neutral transport/handle adapter，不包含托管远程
+  沙箱服务；部署方必须实现并注册 transport。
 - `local-policy` 只做路径、命令和环境策略检查，不是 OS 安全边界。
 - 视觉输入是否可用由所配置模型端点决定；文本模型不会因为 Cody 支持图片 payload
   就自动获得视觉能力。
 - 自定义 Python 扩展是可信代码，不能用 guest Sandbox 隔离。
 
-**最后更新：2026-07-12**
+**最后更新：2026-08-08**

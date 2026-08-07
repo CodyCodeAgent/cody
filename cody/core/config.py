@@ -5,8 +5,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Literal, Optional, Union
-from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +22,25 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 class AuthConfig(BaseModel):
-    """Authentication configuration"""
-    type: Literal['oauth', 'api_key'] = 'api_key'
-    token: Optional[str] = None
-    refresh_token: Optional[str] = None
+    """Web API-key authentication configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal['api_key'] = 'api_key'
     api_key: Optional[str] = None
-    expires_at: Optional[datetime] = None
+
+
+def _strip_legacy_auth(data: dict) -> None:
+    """Migrate removed pseudo-OAuth fields without persisting secrets."""
+
+    auth = data.get("auth")
+    if not isinstance(auth, dict):
+        return
+    auth.pop("token", None)
+    auth.pop("refresh_token", None)
+    auth.pop("expires_at", None)
+    if auth.get("type") != "api_key":
+        auth["type"] = "api_key"
 
 
 class SkillConfig(BaseModel):
@@ -258,6 +270,7 @@ class Config(BaseModel):
             merged.pop("coding_plan_key", None)
             merged.pop("coding_plan_protocol", None)
             merged.pop("claude_oauth_token", None)
+            _strip_legacy_auth(merged)
             return cls._apply_env_overrides(cls(**merged))
 
         path = Path(path)
@@ -273,6 +286,7 @@ class Config(BaseModel):
         data.pop("coding_plan_key", None)
         data.pop("coding_plan_protocol", None)
         data.pop("claude_oauth_token", None)
+        _strip_legacy_auth(data)
         return cls._apply_env_overrides(cls(**data))
 
     @staticmethod
@@ -287,18 +301,9 @@ class Config(BaseModel):
         env_api_key = os.environ.get("CODY_MODEL_API_KEY")
         if env_api_key:
             config.model_api_key = env_api_key
-        env_auth_type = os.environ.get("CODY_AUTH_TYPE")
-        if env_auth_type in ("api_key", "oauth"):
-            config.auth.type = env_auth_type
         env_auth_api_key = os.environ.get("CODY_AUTH_API_KEY")
         if env_auth_api_key:
             config.auth.api_key = env_auth_api_key
-        env_auth_token = os.environ.get("CODY_AUTH_TOKEN")
-        if env_auth_token:
-            config.auth.token = env_auth_token
-        env_auth_refresh_token = os.environ.get("CODY_AUTH_REFRESH_TOKEN")
-        if env_auth_refresh_token:
-            config.auth.refresh_token = env_auth_refresh_token
         # Legacy: CODY_CODING_PLAN_KEY maps to model_api_key
         env_coding_plan = os.environ.get("CODY_CODING_PLAN_KEY")
         if env_coding_plan and not config.model_api_key:
@@ -410,8 +415,6 @@ class Config(BaseModel):
         if "compaction" in data:
             data["compaction"].pop("model_api_key", None)
         if "auth" in data:
-            data["auth"].pop("token", None)
-            data["auth"].pop("refresh_token", None)
             data["auth"].pop("api_key", None)
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
         # Restrict file permissions (owner read/write only)

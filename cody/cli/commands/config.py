@@ -23,7 +23,7 @@ def config_show():
     if "model_api_key" in data:
         data["model_api_key"] = _mask_api_key(data["model_api_key"])
     if "auth" in data:
-        for key in ("api_key", "token", "refresh_token"):
+        for key in ("api_key",):
             if key in data["auth"]:
                 data["auth"][key] = _mask_api_key(data["auth"][key])
     import json as _json

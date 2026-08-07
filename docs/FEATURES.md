@@ -59,7 +59,7 @@ Quality Gate、Sandbox，以及 CLI/TUI/Web/SDK 四种产品表面。
 - 多 Agent specialist task DAG、capability routing、fallback agent 和确定性结果聚合
 - Quality Gate + 有限次数 repair loop，decision 保存为 Review Artifact
 - SQLite 单机 store；PostgreSQL 多进程 store；Filesystem/S3 Artifact payload
-- macOS Seatbelt、Linux Bubblewrap、Docker/Podman 和 Remote Sandbox
+- macOS Seatbelt、Linux Bubblewrap、Docker/Podman 和 provider-neutral Remote Sandbox adapter
 - CLI、TUI、Web、SDK 共享 timeline、metrics、artifact 和审批状态
 
 完整契约见 [Runtime 使用与部署](RUNTIME.md) 和 [Sandbox 指南](SANDBOX.md)。
@@ -707,7 +707,7 @@ cody run "使用项目 B 的配置"
 
 ## 路线图
 
-### v2.0.2 — Canonical Agent Runtime 与生产化硬化 ✅ 已完成
+### v3.0.0 — Canonical Agent Runtime 与生产化硬化 ✅ 已完成
 
 - [x] SDK、CLI、TUI、Web 统一通过 `CodyRuntime` 创建 canonical Run
 - [x] canonical `RunEvent`、Run/Step、Checkpoint、Artifact、Approval、Audit 和 Control stores

@@ -212,7 +212,19 @@ class DockerSandboxBackend(SandboxBackend):
             name,
             "--workdir",
             str(spec.workdir),
+            "--read-only",
         ]
+        temporary = Path("/tmp").resolve()
+        configured_roots = {
+            root.resolve()
+            for root in (
+                *spec.filesystem.read_roots,
+                *spec.filesystem.write_roots,
+                *spec.filesystem.denied_roots,
+            )
+        }
+        if temporary not in configured_roots:
+            args.extend(("--tmpfs", "/tmp:rw,noexec,nosuid,size=64m"))
         if spec.network.mode == NetworkMode.DISABLED:
             args.extend(("--network", "none"))
         elif spec.network.mode in {NetworkMode.ALLOWLIST, NetworkMode.PROXIED}:

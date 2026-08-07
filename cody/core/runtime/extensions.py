@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from importlib.metadata import entry_points
+import builtins
 from typing import Any, Callable
 
 
@@ -58,13 +59,17 @@ class RuntimeExtensionRegistry:
     def create(self, kind: RuntimeExtensionKind | str, name: str, **kwargs: Any) -> Any:
         return self.require(kind, name).factory(**kwargs)
 
-    def list(self, kind: RuntimeExtensionKind | str | None = None) -> list[RuntimeExtension]:
+    def list(
+        self, kind: RuntimeExtensionKind | str | None = None
+    ) -> builtins.list[RuntimeExtension]:
         selected = list(self._extensions.values())
         if kind is not None:
             selected = [item for item in selected if item.kind == RuntimeExtensionKind(kind)]
         return sorted(selected, key=lambda item: (item.kind.value, item.name))
 
-    def discover(self, *, group: str = ENTRY_POINT_GROUP) -> list[RuntimeExtension]:
+    def discover(
+        self, *, group: str = ENTRY_POINT_GROUP
+    ) -> builtins.list[RuntimeExtension]:
         """Load extensions declared through the standard package entry point."""
 
         discovered = []

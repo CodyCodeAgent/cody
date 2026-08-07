@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from .approval import ApprovalStatus, InMemoryApprovalStore, SQLiteApprovalStore
 from .audit import InMemoryRuntimeAuditStore, RuntimeAuditRecord, SQLiteRuntimeAuditStore
@@ -260,7 +260,7 @@ class RuntimeInterface:
                 self._audit(action, actor_id=actor_id, response=response, kwargs=kwargs)
                 return response
 
-        actions = {
+        actions: dict[str, Callable[..., RuntimeAPIResponse]] = {
             "runs.list": self.list_runs,
             "runs.get": self.get_run,
             "runs.steps": self.list_steps,

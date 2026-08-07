@@ -181,8 +181,9 @@ class AsyncMultiAgentCoordinator:
             results = await gather
         else:
             cancel_wait = asyncio.create_task(self.cancel_event.wait())
+            waiters: set[asyncio.Future[Any]] = {gather, cancel_wait}
             done, _ = await asyncio.wait(
-                {gather, cancel_wait},
+                waiters,
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if cancel_wait in done and self.cancel_event.is_set():
@@ -274,12 +275,12 @@ class AsyncMultiAgentCoordinator:
             ],
         ]
         seen: set[str] = set()
-        return [
-            agent_id
-            for agent_id in ordered
-            if agent_id in self._backends
-            and not (agent_id in seen or seen.add(agent_id))
-        ]
+        candidates: list[str] = []
+        for agent_id in ordered:
+            if agent_id in self._backends and agent_id not in seen:
+                seen.add(agent_id)
+                candidates.append(agent_id)
+        return candidates
 
     def _skip_blocked_dependencies(
         self,

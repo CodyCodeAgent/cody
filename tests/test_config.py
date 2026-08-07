@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from cody.core.config import (
     AuthConfig,
@@ -19,10 +20,7 @@ _CODY_ENV_VARS = [
     "CODY_MODEL",
     "CODY_MODEL_BASE_URL",
     "CODY_MODEL_API_KEY",
-    "CODY_AUTH_TYPE",
     "CODY_AUTH_API_KEY",
-    "CODY_AUTH_TOKEN",
-    "CODY_AUTH_REFRESH_TOKEN",
     "CODY_CODING_PLAN_KEY",
     "CODY_ENABLE_THINKING",
     "CODY_THINKING_BUDGET",
@@ -69,17 +67,17 @@ def test_default_config():
 def test_auth_config_defaults():
     auth = AuthConfig()
     assert auth.type == "api_key"
-    assert auth.token is None
     assert auth.api_key is None
-    assert auth.refresh_token is None
-    assert auth.expires_at is None
 
 
-def test_auth_config_oauth():
-    auth = AuthConfig(type="oauth", token="tok123", refresh_token="ref456")
-    assert auth.type == "oauth"
-    assert auth.token == "tok123"
-    assert auth.refresh_token == "ref456"
+def test_auth_config_rejects_removed_oauth_mode():
+    with pytest.raises(ValidationError):
+        AuthConfig(type="oauth")  # type: ignore[arg-type]
+
+
+def test_auth_config_rejects_removed_oauth_fields():
+    with pytest.raises(ValidationError):
+        AuthConfig(token="removed")  # type: ignore[call-arg]
 
 
 # ── SkillConfig ──────────────────────────────────────────────────────────────
@@ -375,23 +373,32 @@ def test_config_env_coding_plan_key_maps_to_model_api_key(tmp_path, monkeypatch)
 
 
 def test_auth_secrets_load_from_environment_without_persistence(tmp_path, monkeypatch):
-    monkeypatch.setenv("CODY_AUTH_TYPE", "api_key")
     monkeypatch.setenv("CODY_AUTH_API_KEY", "web-test-secret")
-    monkeypatch.setenv("CODY_AUTH_TOKEN", "access-test-secret")
-    monkeypatch.setenv("CODY_AUTH_REFRESH_TOKEN", "refresh-test-secret")
 
     config = Config.load(workdir=tmp_path)
     assert config.auth.type == "api_key"
     assert config.auth.api_key == "web-test-secret"
-    assert config.auth.token == "access-test-secret"
-    assert config.auth.refresh_token == "refresh-test-secret"
 
     path = tmp_path / "config.json"
     config.save(path)
     saved = json.loads(path.read_text())
     assert "api_key" not in saved["auth"]
-    assert "token" not in saved["auth"]
-    assert "refresh_token" not in saved["auth"]
+
+
+def test_config_load_migrates_removed_oauth_fields(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({
+        "auth": {
+            "type": "oauth",
+            "token": "legacy-access",
+            "refresh_token": "legacy-refresh",
+            "expires_at": "2026-01-01T00:00:00Z",
+        }
+    }))
+
+    config = Config.load(path)
+
+    assert config.auth == AuthConfig()
 
 
 def test_config_env_coding_plan_key_does_not_override_model_api_key(tmp_path, monkeypatch):

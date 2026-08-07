@@ -23,6 +23,7 @@ from cody.core.sandbox import (
     seatbelt_profile,
     sandbox_spec_from_config,
 )
+from cody.core.sandbox.process import _sandbox_env
 from cody.core.config import Config
 
 
@@ -163,6 +164,22 @@ def test_disabled_sandbox_preserves_legacy_network_compatibility(tmp_path):
     assert generated.network.mode == NetworkMode.UNRESTRICTED
 
 
+def test_sandbox_process_inherits_daemon_transport_but_not_host_secrets(monkeypatch):
+    monkeypatch.setenv("DOCKER_HOST", "unix:///tmp/docker.sock")
+    monkeypatch.setenv("DOCKER_CONTEXT", "cody")
+    monkeypatch.setenv("DOCKER_CONFIG", "/tmp/docker-config")
+    monkeypatch.setenv("CONTAINER_HOST", "ssh://podman")
+    monkeypatch.setenv("CODY_MODEL_API_KEY", "must-not-leak")
+
+    env = _sandbox_env(None, {})
+
+    assert env["DOCKER_HOST"] == "unix:///tmp/docker.sock"
+    assert env["DOCKER_CONTEXT"] == "cody"
+    assert env["DOCKER_CONFIG"] == "/tmp/docker-config"
+    assert env["CONTAINER_HOST"] == "ssh://podman"
+    assert "CODY_MODEL_API_KEY" not in env
+
+
 def test_sandbox_config_explicit_environment_reaches_spec(tmp_path):
     config = Config()
     config.sandbox.enabled = True
@@ -196,6 +213,8 @@ def test_docker_create_argv_enforces_resources_mounts_and_no_network(tmp_path):
         ).normalized()
     )
     rendered = " ".join(argv)
+    assert "--read-only" in rendered
+    assert "--tmpfs /tmp:rw,noexec,nosuid,size=64m" in rendered
     assert "--network none" in rendered
     assert "--cpus 2" in rendered
     assert "--memory 512m" in rendered
@@ -235,6 +254,10 @@ class FakeRemote:
         self.calls.append("exec")
         return SandboxExecutionResult("remote", request.argv, "ok", "", 0, 0.1)
 
+    async def spawn(self, remote_id, request):
+        self.calls.append("spawn")
+        return object()
+
     async def pause(self, remote_id):
         self.calls.append("pause")
 
@@ -262,6 +285,7 @@ async def test_remote_backend_preserves_full_lifecycle(tmp_path):
     backend = RemoteSandboxBackend(transport)
     handle = await backend.create(spec(tmp_path, backend="remote"))
     result = await handle.exec(SandboxExecutionRequest(argv=("echo", "ok")))
+    process = await handle.spawn(SandboxExecutionRequest(argv=("sleep", "1")))
     await handle.pause()
     await handle.resume()
     snapshot = await handle.snapshot()
@@ -270,7 +294,8 @@ async def test_remote_backend_preserves_full_lifecycle(tmp_path):
     await handle.terminate()
     await fork.terminate()
     assert result.stdout == "ok"
+    assert process is not None
     assert transport.calls == [
-        "create", "exec", "pause", "resume", "snapshot", "restore",
+        "create", "exec", "spawn", "pause", "resume", "snapshot", "restore",
         "fork", "terminate", "terminate",
     ]

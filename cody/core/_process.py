@@ -2,9 +2,22 @@
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional, Protocol
 
 logger = logging.getLogger(__name__)
+
+
+class TerminableProcess(Protocol):
+    """Common lifecycle surface shared by local and sandboxed processes."""
+
+    @property
+    def returncode(self) -> int | None: ...
+
+    def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
+
+    async def wait(self) -> Any: ...
 
 
 async def cancel_task_silently(task: Optional[asyncio.Task]) -> None:
@@ -19,7 +32,7 @@ async def cancel_task_silently(task: Optional[asyncio.Task]) -> None:
 
 
 async def terminate_process(
-    process: Optional[asyncio.subprocess.Process],
+    process: Optional[TerminableProcess],
     timeout: float = 5.0,
 ) -> None:
     """Terminate a subprocess gracefully, escalating to kill on timeout.

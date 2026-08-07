@@ -25,6 +25,7 @@ from typing import Any, AsyncGenerator, Literal, Optional, Union
 from uuid import uuid4
 
 from pydantic_ai import Agent
+from pydantic_ai._agent_graph import ModelRequestNode
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
@@ -1338,21 +1339,46 @@ class AgentRunner:
         InteractionRequestEvents are yielded to the caller even while
         a tool is blocked waiting for a human response.
         """
-        # Inject proactive user input alongside tool results.
-        user_messages = self._user_input_queue.drain_all()
-        if user_messages:
-            combined = "\n".join(user_messages)
-            node.user_prompt = combined  # type: ignore[union-attr]
-            yield UserInputReceivedEvent(content=combined)
+        # CallToolsNode only honors user_prompt when its model response
+        # contains function calls. A final text response needs to be turned
+        # into another ModelRequest by run_events after this node completes.
+        has_tool_calls = any(
+            getattr(part, "part_kind", "") == "tool-call"
+            for part in getattr(getattr(node, "model_response", None), "parts", ())
+        )
+        if has_tool_calls:
+            user_messages = self._user_input_queue.drain_all()
+            if user_messages:
+                combined = "\n".join(user_messages)
+                node.user_prompt = combined  # type: ignore[union-attr]
+                yield UserInputReceivedEvent(content=combined)
 
         _merged_q: asyncio.Queue = asyncio.Queue()
         _TOOL_STREAM_DONE = object()
+
+        def _drain_user_input() -> UserInputReceivedEvent | None:
+            """Attach queued input before CallToolsNode builds its next request."""
+            messages = self._user_input_queue.drain_all()
+            if not messages:
+                return None
+            combined = "\n".join(messages)
+            existing = getattr(node, "user_prompt", None)
+            if existing:
+                combined = f"{existing}\n{combined}"
+            node.user_prompt = combined  # type: ignore[union-attr]
+            return UserInputReceivedEvent(content="\n".join(messages))
 
         async def _consume_tool_stream():
             try:
                 async with node.stream(agent_run.ctx) as tool_stream:
                     async for ev in tool_stream:
-                        await _merged_q.put(("tool", ev))
+                        # Backpressure is intentional. The public consumer may
+                        # call inject_user_input() after seeing a tool event;
+                        # CallToolsNode must not finish and freeze its next
+                        # ModelRequest until that input has been attached.
+                        acknowledged = asyncio.Event()
+                        await _merged_q.put(("tool", (ev, acknowledged)))
+                        await acknowledged.wait()
                 await _merged_q.put(("done", _TOOL_STREAM_DONE))
             except Exception as exc:
                 await _merged_q.put(("error", exc))
@@ -1400,27 +1426,36 @@ class AgentRunner:
                     yield item
                     continue
                 # kind == "tool"
-                event = item
-                if isinstance(event, FunctionToolCallEvent):
-                    part = event.part
-                    args = _parse_tool_args(part.args)
-                    yield ToolCallEvent(
-                        tool_name=part.tool_name,
-                        args=args,
-                        tool_call_id=part.tool_call_id,
-                    )
-                elif isinstance(event, FunctionToolResultEvent):
-                    result_part = event.result
-                    if result_part.part_kind == "tool-return":
-                        content = result_part.content
-                        if not isinstance(content, str):
-                            content = str(content)
-                        yield ToolResultEvent(
-                            tool_name=result_part.tool_name,
-                            tool_call_id=result_part.tool_call_id,
-                            result=content,
+                event, acknowledged = item
+                try:
+                    if isinstance(event, FunctionToolCallEvent):
+                        part = event.part
+                        args = _parse_tool_args(part.args)
+                        yield ToolCallEvent(
+                            tool_name=part.tool_name,
+                            args=args,
+                            tool_call_id=part.tool_call_id,
                         )
-                        self._update_circuit_breaker(content, None)
+                    elif isinstance(event, FunctionToolResultEvent):
+                        result_part = event.result
+                        if result_part.part_kind == "tool-return":
+                            content = result_part.content
+                            if not isinstance(content, str):
+                                content = str(content)
+                            yield ToolResultEvent(
+                                tool_name=result_part.tool_name,
+                                tool_call_id=result_part.tool_call_id,
+                                result=content,
+                            )
+                            self._update_circuit_breaker(content, None)
+
+                    injected = _drain_user_input()
+                    if injected is not None:
+                        yield injected
+                finally:
+                    # Always release the producer, including when the caller
+                    # closes the async generator after receiving an event.
+                    acknowledged.set()
         finally:
             if item_task is not None and not item_task.done():
                 item_task.cancel()
@@ -1643,6 +1678,36 @@ class AgentRunner:
                             cancel_event,
                         ):
                             yield _trace_step(ev)
+
+                        # Input commonly arrives through SDK/Web after the
+                        # persisted tool_result, while the provider is already
+                        # producing its next (possibly final) text response.
+                        # Pydantic AI ignores CallToolsNode.user_prompt for a
+                        # final text response, so replace its cached End with a
+                        # real ModelRequest and keep the same graph/usage state.
+                        pending_input = self._user_input_queue.drain_all()
+                        if pending_input:
+                            combined = "\n".join(pending_input)
+                            yield _trace_step(UserInputReceivedEvent(content=combined))
+                            node_has_tool_calls = any(
+                                getattr(part, "part_kind", "") == "tool-call"
+                                for part in getattr(node.model_response, "parts", ())
+                            )
+                            next_node = getattr(node, "_next_node", None)
+                            if node_has_tool_calls and isinstance(
+                                next_node, ModelRequestNode
+                            ):
+                                # Preserve every tool-return part: providers
+                                # reject an assistant tool_calls message unless
+                                # all IDs are answered in the next request.
+                                next_node.request.parts = [
+                                    *next_node.request.parts,
+                                    UserPromptPart(content=combined),
+                                ]
+                            else:
+                                node._next_node = ModelRequestNode(  # type: ignore[attr-defined]
+                                    ModelRequest(parts=[UserPromptPart(content=combined)])
+                                )
 
                     elif isinstance(node, End):
                         # Final result

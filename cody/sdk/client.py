@@ -11,7 +11,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator, Literal, Optional, overload
+from typing import Any, AsyncIterator, Literal, Optional, overload
 
 from .config import (
     CircuitBreakerConfig as SDKCircuitBreakerConfig,
@@ -580,7 +580,7 @@ class AsyncCodyClient:
 
         # Core objects (lazy-initialized)
         self._runner = None
-        self._runtime = None
+        self._runtime: Any | None = None
         self._active_runtime_run = None
         self._session_store = None
         self._core_config = None

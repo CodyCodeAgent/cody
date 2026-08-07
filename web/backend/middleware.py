@@ -32,7 +32,7 @@ PUBLIC_PATHS: Set[str] = {"/health", "/api/health", "/docs", "/openapi.json", "/
 
 
 def validate_credential(credential: str) -> bool:
-    """Validate a credential string (token or API key).
+    """Validate a Web API key.
 
     Returns True if auth is not configured or credential is valid.
     Raises AuthError if credential is invalid.
@@ -53,7 +53,7 @@ def validate_credential(credential: str) -> bool:
 
 
 async def auth_middleware(request: Request, call_next):
-    """Authenticate requests using Bearer token or API key."""
+    """Authenticate requests using an API key in the Bearer header."""
     path = request.url.path
     if path in PUBLIC_PATHS or path.startswith("/docs"):
         return await call_next(request)

@@ -22,6 +22,14 @@ _SAFE_HOST_ENV = {
     "TMPDIR",
     "USER",
     "VIRTUAL_ENV",
+    # Container clients need their daemon endpoint/context when the engine is
+    # provided by Colima, Docker Desktop, Podman Machine, or a remote socket.
+    # These values identify transports and config locations; credential values
+    # are still excluded from implicit inheritance.
+    "CONTAINER_HOST",
+    "DOCKER_CONFIG",
+    "DOCKER_CONTEXT",
+    "DOCKER_HOST",
 }
 
 
@@ -119,12 +127,15 @@ async def run_process(
     limit = max(0, request.capture_limit)
     stdout = stdout[-limit:] if limit else b""
     stderr = stderr[-limit:] if limit else b""
+    returncode = 124 if timed_out else process.returncode
+    if returncode is None:
+        raise RuntimeError("Sandbox process exited without a return code")
     return SandboxExecutionResult(
         sandbox_id=sandbox_id,
         argv=request.argv,
         stdout=stdout.decode(errors="replace"),
         stderr=stderr.decode(errors="replace"),
-        returncode=process.returncode if not timed_out else 124,
+        returncode=returncode,
         duration_seconds=time.monotonic() - started,
         timed_out=timed_out,
     )

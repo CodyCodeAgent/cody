@@ -97,3 +97,49 @@ def test_s3_object_storage_round_trips_runtime_artifact_through_boto3(tmp_path):
     assert hydrated is not None
     assert hydrated.content == artifact.content
     stubber.assert_no_pending_responses()
+
+
+def test_s3_object_storage_passes_encryption_options_to_put_object():
+    boto3 = pytest.importorskip("boto3")
+    from botocore.stub import Stubber
+
+    client = boto3.client(
+        "s3",
+        region_name="us-east-1",
+        aws_access_key_id="test",
+        aws_secret_access_key="test",
+    )
+    stubber = Stubber(client)
+    stubber.add_response(
+        "put_object",
+        {},
+        {
+            "Bucket": "cody-test",
+            "Key": "tenant/report.json",
+            "Body": b"encrypted",
+            "ContentType": "application/json",
+            "ServerSideEncryption": "AES256",
+        },
+    )
+    stubber.activate()
+    objects = S3ObjectStorage(
+        "cody-test",
+        prefix="tenant",
+        client=client,
+        put_options={"ServerSideEncryption": "AES256"},
+    )
+
+    objects.put("report.json", b"encrypted", content_type="application/json")
+
+    stubber.assert_no_pending_responses()
+
+
+def test_s3_object_storage_rejects_managed_put_option_override():
+    objects = S3ObjectStorage(
+        "cody-test",
+        client=object(),
+        put_options={"Bucket": "other"},
+    )
+
+    with pytest.raises(ValueError, match="managed fields: Bucket"):
+        objects.put("report.json", b"data", content_type="application/json")

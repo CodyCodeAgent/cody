@@ -19,7 +19,11 @@ vi.mock("../../src/api/client", () => ({
 
 describe("RuntimePage", () => {
   it("shows canonical run state, metrics, approvals and timeline", async () => {
-    render(<MemoryRouter><RuntimePage /></MemoryRouter>);
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RuntimePage />
+      </MemoryRouter>
+    );
     await waitFor(() => expect(screen.getAllByText("Fix tests").length).toBeGreaterThan(0));
     expect(screen.getByText("run.waiting")).toBeInTheDocument();
     expect(screen.getByText("Approve")).toBeInTheDocument();

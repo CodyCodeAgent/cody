@@ -153,7 +153,7 @@ Cody 的模型层使用 OpenAI-compatible Chat Completions 接口。配置模型
 - 审计日志（SQLite 持久化）
 - 速率限制（滑动窗口）
 - 文件修改 undo/redo
-- macOS Seatbelt、Linux Bubblewrap、Docker/Podman 和远程 Sandbox 后端
+- macOS Seatbelt、Linux Bubblewrap、Docker/Podman，以及可注入 transport 的 Remote Sandbox adapter
 - 审批等待持久化、进程重启恢复、工具幂等收据和秘密脱敏
 
 ---
@@ -263,4 +263,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-07-12 | **版本:** 2.0.2
+**最后更新:** 2026-08-08 | **版本:** 3.0.0

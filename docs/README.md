@@ -1,6 +1,6 @@
 # Cody 文档索引
 
-本文档目录以 Cody 2.0.2 的代码为准。CLI、TUI、Web 和 SDK 都是 Canonical
+本文档目录以 Cody 3.0.0 的代码为准。CLI、TUI、Web 和 SDK 都是 Canonical
 Runtime 的产品表面；历史评审和迭代记录不作为当前 API 规范。
 
 ## 从这里开始

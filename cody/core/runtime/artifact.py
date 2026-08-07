@@ -66,6 +66,10 @@ class ArtifactRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ArtifactRecord":
+        raw_content = data.get("content", {})
+        content: dict[str, Any] | str = (
+            raw_content if isinstance(raw_content, (dict, str)) else {}
+        )
         return cls(
             artifact_id=data.get("artifact_id") or f"artifact_{uuid4().hex}",
             parent_artifact_id=data.get("parent_artifact_id"),
@@ -76,7 +80,7 @@ class ArtifactRecord:
             artifact_type=ArtifactType(data.get("artifact_type", ArtifactType.GENERIC.value)),
             name=data.get("name"),
             mime_type=data.get("mime_type") or "application/json",
-            content=data.get("content") if "content" in data else {},
+            content=content,
             metadata=dict(data.get("metadata") or {}),
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else _utc_now(),
         )

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 import inspect
 import json
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 from .artifact import ArtifactRecord, ArtifactType, InMemoryArtifactStore, SQLiteArtifactStore
 from .events import RunEvent, RunEventType
@@ -111,7 +111,13 @@ def registry_tool_backend(
         if policy is not None:
             policy.check(spec)
         spec.validate_args(args)
-        output = spec.handler(args, state, node)
+        raw_output = spec.handler(args, state, node)
+        if inspect.isawaitable(raw_output):
+            raise TypeError(
+                "registry_tool_backend only supports synchronous handlers; "
+                "use idempotent_registry_tool_node_handler for async tools"
+            )
+        output = cast(ToolOutput, raw_output)
         if artifact_store is not None:
             artifact = artifact_store.save(ArtifactRecord(
                 run_id=state.run_id,
@@ -159,6 +165,7 @@ def idempotent_registry_tool_node_handler(
         lock = locks.setdefault(receipt_id, asyncio.Lock())
 
         async with lock:
+            output: ToolOutput
             receipt = artifact_store.get(receipt_id)
             if receipt is not None:
                 output = _receipt_output(receipt)
@@ -188,9 +195,13 @@ def idempotent_registry_tool_node_handler(
                 {"args": args, "idempotency_key": key},
             )
             try:
-                output = spec.handler(args, state, node)
-                if inspect.isawaitable(output):
-                    output = await output
+                raw_output = spec.handler(args, state, node)
+                if inspect.isawaitable(raw_output):
+                    output = await cast(
+                        Awaitable[ToolOutput], raw_output
+                    )
+                else:
+                    output = raw_output
             except Exception as exc:
                 _append_tool_event(
                     trace_store,

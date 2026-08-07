@@ -8,7 +8,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 2.0.2
+**版本：** 3.0.0
 
 ---
 
@@ -531,8 +531,8 @@ RunEvent 投影兼容聊天事件。
 
 ## 认证
 
-生产服务通过 `CODY_AUTH_TYPE` 与 `CODY_AUTH_API_KEY`（或 OAuth token 环境变量）配置
-认证。凭证不由 `/config` 持久化，也不会在 `GET /config` 返回。
+生产服务通过 `CODY_AUTH_API_KEY` 配置 API Key 认证。凭证不由 `/config` 持久化，
+也不会在 `GET /config` 返回。
 
 Server 支持可选的认证中间件。配置 `auth` 后，所有非公开端点（`/health`, `/docs` 除外）都需要认证。
 

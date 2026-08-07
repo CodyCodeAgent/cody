@@ -15,11 +15,14 @@ cd "$ROOT"
 # Ensure PyInstaller is available
 if command -v uv &>/dev/null; then
     uv pip install --quiet pyinstaller
+    PYINSTALLER=(uv run pyinstaller)
 else
-    pip install --quiet pyinstaller
+    python -m pip install --quiet pyinstaller
+    PYINSTALLER=(python -m PyInstaller)
 fi
 
-pyinstaller \
+"${PYINSTALLER[@]}" \
+    --noconfirm \
     --onedir \
     --strip \
     --name "$NAME" \
@@ -36,6 +39,8 @@ pyinstaller \
     --exclude-module=logfire \
     --exclude-module=textual \
     --exclude-module=cody.tui \
+    --exclude-module=web.tests \
+    --exclude-module=pytest \
     --recursive-copy-metadata=pydantic_ai \
     --recursive-copy-metadata=fastapi \
     --recursive-copy-metadata=uvicorn \

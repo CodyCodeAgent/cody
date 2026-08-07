@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import os
 from pathlib import Path
+from typing import Any, cast
 
 from .approval import InMemoryApprovalStore, SQLiteApprovalStore
 from .artifact import InMemoryArtifactStore, SQLiteArtifactStore
@@ -117,14 +118,16 @@ class RuntimeStoreBundle:
 
     def interface(self, *, action_policy: RuntimeActionPolicy | None = None) -> RuntimeInterface:
         return RuntimeInterface(
-            trace_store=self.trace_store,
-            checkpoint_store=self.checkpoint_store,
-            artifact_store=self.artifact_store,
-            approval_store=self.approval_store,
-            run_store=self.run_store,
-            audit_store=self.audit_store,
+            # Store backends are structurally compatible. The legacy concrete
+            # constructor annotations have not yet been replaced by protocols.
+            trace_store=cast(Any, self.trace_store),
+            checkpoint_store=cast(Any, self.checkpoint_store),
+            artifact_store=cast(Any, self.artifact_store),
+            approval_store=cast(Any, self.approval_store),
+            run_store=cast(Any, self.run_store),
+            audit_store=cast(Any, self.audit_store),
             action_policy=action_policy,
-            control_store=self.control_store,
+            control_store=cast(Any, self.control_store),
         )
 
 

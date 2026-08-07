@@ -10,7 +10,10 @@ vi.mock("../../src/api/client", () => ({
     onEvent: null,
   }),
   getSession: vi.fn().mockRejectedValue(new Error("no session")),
-  getConfigStatus: vi.fn().mockResolvedValue({ is_ready: true, missing_fields: [] }),
+  // These rendering-only tests do not exercise config loading. Keep the
+  // request pending so it cannot schedule an unrelated state update after
+  // the synchronous assertion has completed.
+  getConfigStatus: vi.fn(() => new Promise(() => {})),
 }));
 
 describe("ChatWindow", () => {

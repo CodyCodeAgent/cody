@@ -37,7 +37,7 @@ export CODY_MODEL_BASE_URL="<用户提供的值>"
 cody --version
 ```
 
-**验证**：输出应包含版本号（当前代码为 `2.0.2`）。如果命令不存在，尝试：
+**验证**：输出应包含版本号（当前代码为 `3.0.0`）。如果命令不存在，尝试：
 
 ```bash
 # 检查项目 venv 中是否有
@@ -98,6 +98,28 @@ kill $WEB_PID 2>/dev/null
 
 **验证**：`/health` 返回 JSON，包含 `status` 字段。
 
+### 6. 准备真实 LSP 依赖（完整 Runtime 回归需要）
+
+`scripts/verify_live_capabilities.py` 的 LSP case 需要可执行的
+`pyright-langserver`、`typescript-language-server` 和 `gopls`。TypeScript 必须固定在
+稳定的 5.x；不要直接安装未固定版本，因为 TypeScript 7 的包结构不再包含 verifier
+要求的 `lib/tsserver.js`。
+
+```bash
+mkdir -p /tmp/cody-lsp-live /tmp/cody-lsp-bin
+npm install --prefix /tmp/cody-lsp-live \
+  pyright@1.1.411 typescript-language-server@5.3.0 typescript@5.9.3
+GOBIN=/tmp/cody-lsp-bin go install golang.org/x/tools/gopls@v0.18.1
+
+export PATH="/tmp/cody-lsp-bin:/tmp/cody-lsp-live/node_modules/.bin:$PATH"
+export CODY_LIVE_TYPESCRIPT_PACKAGE="/tmp/cody-lsp-live/node_modules/typescript"
+test -f "$CODY_LIVE_TYPESCRIPT_PACKAGE/lib/tsserver.js"
+```
+
+若官方 Go proxy 在当前网络不可达，可显式使用组织允许的 mirror；报告必须记录所用
+`gopls` 版本。缺少语言服务器时应标记 `SKIP (external dependency)`，不能把“未启动、
+返回空 diagnostics”记为通过。
+
 ## 环境检查汇总
 
 AI 执行完上述步骤后，应输出环境检查报告：
@@ -108,10 +130,10 @@ AI 执行完上述步骤后，应输出环境检查报告：
 | 检查项 | 结果 | 备注 |
 |--------|------|------|
 | LLM 配置 | PASS | 用户已提供 model/key/url |
-| cody 安装 | PASS | v2.0.2 |
+| cody 安装 | PASS | v3.0.0 |
 | LLM 连通 | PASS | 响应正常 |
 | 测试目录 | PASS | /tmp/cody_ai_test_xxx |
-| Python SDK | PASS | v2.0.2 |
+| Python SDK | PASS | v3.0.0 |
 | Web 后端 | SKIP | 未执行 web 测试 |
 ```
 

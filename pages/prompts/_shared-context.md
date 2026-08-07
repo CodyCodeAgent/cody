@@ -6,7 +6,7 @@ Cody 是一个**开源 AI Agent 框架**（Python），让开发者能快速构�
 
 - GitHub: https://github.com/CodyCodeAgent/cody
 - PyPI: `pip install cody-ai`
-- 版本: v2.0.2 · MIT 开源
+- 版本: v3.0.0 · MIT 开源
 
 核心特点：
 - 30 个内置工具（文件读写、grep/glob、Shell 执行、LSP 代码智能、Web 抓取等）

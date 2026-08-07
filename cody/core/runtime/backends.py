@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
 from .adapters import AgentCallable, ApprovalCallable, ToolCallable
 from .bridge import stream_event_to_run_event
@@ -10,6 +10,9 @@ from .trace import InMemoryTraceStore, SQLiteTraceStore
 from .workflow import WorkflowNode, WorkflowState
 
 ToolBackend = Callable[[dict[str, Any], WorkflowState, WorkflowNode], dict[str, Any] | str | None]
+AsyncAgentCallable = Callable[
+    [str, WorkflowState, WorkflowNode], Awaitable[dict[str, Any]]
+]
 
 
 def agent_runner_backend(runner: Any) -> AgentCallable:
@@ -55,7 +58,7 @@ def agent_runner_streaming_backend(
     runner: Any,
     *,
     trace_store: InMemoryTraceStore | SQLiteTraceStore | None = None,
-) -> AgentCallable:
+) -> AsyncAgentCallable:
     """Create an async agent backend backed by ``AgentRunner.run_stream``.
 
     The returned callable is intended for ``AsyncWorkflowExecutor``. It consumes

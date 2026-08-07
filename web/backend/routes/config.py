@@ -65,8 +65,6 @@ async def get_config(workdir: Optional[str] = None):
             data["model_api_key"] = "***" if key else ""
         if "auth" in data:
             data["auth"].pop("api_key", None)
-            data["auth"].pop("token", None)
-            data["auth"].pop("refresh_token", None)
         return data
 
     except CodyAPIError:
