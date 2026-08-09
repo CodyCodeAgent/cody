@@ -11,18 +11,20 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator, Literal, Optional, overload
+from typing import Any, AsyncIterator, Literal, Optional, overload
 
 from .config import (
     CircuitBreakerConfig as SDKCircuitBreakerConfig,
     InteractionConfig as SDKInteractionConfig,
     MCPServerConfig as SDKMCPServerConfig,
+    SandboxConfig as SDKSandboxConfig,
     SDKConfig,
     config as make_config,
 )
 from .errors import (
     CodyConfigError,
     CodyNotFoundError,
+    CodyTimeoutError,
     CodyToolError,
 )
 from .events import (
@@ -43,12 +45,15 @@ from .types import (
     SessionInfo,
     StreamChunk,
     ToolResult,
-    _event_to_chunk,
+    Usage,
+    _event_to_chunk as _event_to_chunk,
+    _runtime_event_to_chunk,
     _usage_from_result,
 )
 
 
 from ..core.deps import UNSET, _UnsetType
+from ..core.runtime.control import WorkflowCancelled, WorkflowWaiting
 from ..core.storage import (
     AuditLoggerProtocol,
     FileHistoryProtocol,
@@ -90,6 +95,7 @@ class CodyBuilder:
     _auto_start_mcp: bool = False
     _interaction: SDKInteractionConfig | None = None
     _circuit_breaker: SDKCircuitBreakerConfig | None = None
+    _sandbox: SDKSandboxConfig | None = None
     _skill_dirs: list[str] = field(default_factory=list)
     _lsp_languages: list[str] = field(default_factory=lambda: ["python", "typescript", "go"])
     _event_handlers: list[tuple] = field(default_factory=list)
@@ -110,7 +116,7 @@ class CodyBuilder:
         return self
 
     def model(self, model: str) -> "CodyBuilder":
-        """Set model name (e.g., 'claude-sonnet-4-0', 'gpt-4o')."""
+        """Set the model name supported by the configured OpenAI-compatible endpoint."""
         self._model = model
         return self
 
@@ -230,6 +236,27 @@ class CodyBuilder:
                 loop_similarity_threshold=loop_similarity_threshold,
                 model_prices=model_prices or {},
             )
+        return self
+
+    def sandbox(
+        self,
+        config: SDKSandboxConfig | None = None,
+        *,
+        enabled: bool = True,
+        backend: str = "auto",
+        image: str | None = None,
+        network_mode: Literal["disabled", "allowlist", "proxied", "unrestricted"] = "disabled",
+        fail_if_unavailable: bool = True,
+    ) -> "CodyBuilder":
+        """Configure the canonical Run sandbox."""
+
+        self._sandbox = config or SDKSandboxConfig(
+            enabled=enabled,
+            backend=backend,
+            image=image,
+            network_mode=network_mode,
+            fail_if_unavailable=fail_if_unavailable,
+        )
         return self
 
     def mcp_server(self, server: dict | SDKMCPServerConfig) -> "CodyBuilder":
@@ -434,6 +461,8 @@ class CodyBuilder:
             cfg.interaction = self._interaction
         if self._circuit_breaker is not None:
             cfg.circuit_breaker = self._circuit_breaker
+        if self._sandbox is not None:
+            cfg.sandbox = self._sandbox
         cfg.skill_dirs = self._skill_dirs
         cfg.mcp.servers = self._mcp_servers
         cfg.lsp.languages = self._lsp_languages
@@ -551,6 +580,8 @@ class AsyncCodyClient:
 
         # Core objects (lazy-initialized)
         self._runner = None
+        self._runtime: Any | None = None
+        self._active_runtime_run = None
         self._session_store = None
         self._core_config = None
 
@@ -617,6 +648,11 @@ class AsyncCodyClient:
                 self._core_config.security.strict_read_boundary = True
             if self._config.security.blocked_commands:
                 self._core_config.security.blocked_commands = self._config.security.blocked_commands
+            # SDK sandbox settings are a complete policy object.
+            from ..core.config import SandboxConfig as CoreSandboxConfig
+            sdk_sandbox = self._config.sandbox
+            if sdk_sandbox != SDKSandboxConfig():
+                self._core_config.sandbox = CoreSandboxConfig(**sdk_sandbox.to_dict())
             # Apply custom skill directories from SDK config
             if self._config.skill_dirs:
                 existing = set(self._core_config.skills.custom_dirs)
@@ -666,6 +702,10 @@ class AsyncCodyClient:
         This is the public API for CLI/TUI to inject a Config with overrides
         (thinking, extra_roots, etc.) without reaching into private attributes.
         """
+        if self._runtime is not None:
+            raise CodyConfigError(
+                "Cannot replace config while a Runtime is active; close the client first"
+            )
         self._core_config = config
         self._runner = None  # Force lazy re-creation with updated config
 
@@ -690,6 +730,37 @@ class AsyncCodyClient:
                 memory_store=self._injected_memory_store,
             )
         return self._runner
+
+    def get_runtime(
+        self,
+        *,
+        durable: bool = True,
+        stores=None,
+        **runtime_kwargs,
+    ):
+        """Return the canonical Runtime backed by this client's AgentRunner.
+
+        Custom tools, hooks, model configuration, permissions, and storage
+        injections already configured on the SDK client remain active because
+        the Runtime uses the same underlying runner.
+        """
+
+        if self._runtime is None:
+            from ..core.runtime import CodyRuntime, RuntimeStoreBundle
+
+            bundle = stores
+            if bundle is None:
+                bundle = (
+                    RuntimeStoreBundle.for_workdir(self.workdir)
+                    if durable
+                    else RuntimeStoreBundle.in_memory()
+                )
+            self._runtime = CodyRuntime(
+                self.get_runner(),
+                stores=bundle,
+                **runtime_kwargs,
+            )
+        return self._runtime
 
     def get_session_store(self):
         """Get or create the underlying SessionStore.
@@ -786,7 +857,11 @@ class AsyncCodyClient:
 
     async def close(self):
         """Clean up resources."""
-        if self._runner:
+        if self._runtime is not None:
+            await self._runtime.close()
+            self._runtime = None
+            self._runner = None
+        elif self._runner:
             await self._runner.stop_mcp()
             await self._runner.stop_lsp()
             self._runner = None
@@ -859,6 +934,7 @@ class AsyncCodyClient:
                 session_id=session_id,
             ))
 
+        handle = None
         try:
             if stream:
                 return self._stream_run(
@@ -880,21 +956,26 @@ class AsyncCodyClient:
                     model=self._config.model.model or "",
                 ))
 
-            runner = self.get_runner()
-            # Always use session to enable multi-turn by default
-            store = self.get_session_store()
-            result, sid = await runner.run_with_session(
-                prompt, store, session_id,
+            runtime = self.get_runtime()
+            handle = await runtime.start(
+                prompt,
+                session_store=self.get_session_store(),
+                session_id=session_id,
                 include_tools=include_tools, exclude_tools=exclude_tools,
                 cancel_event=cancel_event,
             )
+            runtime_result = await handle.result()
+            result = runtime_result.model_result
+            sid = runtime_result.session_id
+            usage = _usage_from_result(result) if result is not None else Usage()
 
             run_result = RunResult(
-                output=result.output,
+                output=runtime_result.output,
                 session_id=sid,
-                usage=_usage_from_result(result),
-                thinking=result.thinking,
-                metadata=result.metadata,
+                run_id=handle.run_id,
+                usage=usage,
+                thinking=(result.thinking if result is not None else None),
+                metadata=(result.metadata if result is not None else None),
             )
 
             # Emit MODEL_RESPONSE with usage
@@ -909,7 +990,7 @@ class AsyncCodyClient:
             # Record metrics
             if self._metrics:
                 self._metrics.end_run(
-                    result.output,
+                    runtime_result.output,
                     TokenUsage(
                         input_tokens=run_result.usage.input_tokens,
                         output_tokens=run_result.usage.output_tokens,
@@ -918,7 +999,7 @@ class AsyncCodyClient:
                 )
 
             # Fire tool events from traces
-            if self._events and result.tool_traces:
+            if self._events and result is not None and result.tool_traces:
                 for trace in result.tool_traces:
                     await self._events.dispatch_async(ToolEvent(
                         event_type=EventType.TOOL_CALL,
@@ -937,10 +1018,27 @@ class AsyncCodyClient:
                     event_type=EventType.RUN_END,
                     prompt=str(prompt),
                     session_id=session_id,
-                    result=result.output,
+                    result=runtime_result.output,
                 ))
 
             return run_result
+
+        except WorkflowCancelled:
+            cancelled = RunResult(
+                output="(cancelled)",
+                session_id=session_id,
+                run_id=(handle.run_id if handle is not None else None),
+            )
+            if self._metrics and self._metrics._current_run is not None:
+                self._metrics.end_run(cancelled.output, TokenUsage(0, 0, 0))
+            if self._events:
+                await self._events.dispatch_async(RunEvent(
+                    event_type=EventType.RUN_END,
+                    prompt=str(prompt),
+                    session_id=session_id,
+                    result=cancelled.output,
+                ))
+            return cancelled
 
         except Exception as e:
             # Ensure metrics run is closed on exception
@@ -983,99 +1081,122 @@ class AsyncCodyClient:
         if not self._lsp_started:
             await self.start_lsp()
 
-        runner = self.get_runner()
-        store = self.get_session_store()
+        runtime = self.get_runtime()
+        handle = await runtime.start(
+            prompt,
+            session_store=self.get_session_store(),
+            session_id=session_id,
+            cancel_event=cancel_event,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+        )
+        self._active_runtime_run = handle
 
         in_thinking = False
         stream_started = False
+        sid = handle.record.session_id if handle.record is not None else session_id
 
-        async for event, sid in runner.run_stream_with_session(
-            prompt, store, session_id, cancel_event=cancel_event,
-            include_tools=include_tools, exclude_tools=exclude_tools,
-        ):
-            chunk = _event_to_chunk(event, sid)
+        try:
+            async for event in handle.events():
+                model_result = None
+                if event.event_type.value == "run.completed":
+                    model_result = (await handle.result()).model_result
+                chunk = _runtime_event_to_chunk(event, sid, model_result)
+                if chunk is None:
+                    continue
+                if chunk.type == "session_start" and chunk.session_id:
+                    sid = chunk.session_id
 
-            # ── SDK event dispatch ──
-            if self._events:
-                # Emit STREAM_START on first non-session_start chunk
-                if not stream_started and chunk.type != "session_start":
-                    stream_started = True
-                    await self._events.dispatch_async(SDKStreamEvent(
-                        event_type=EventType.STREAM_START,
-                        chunk_type="stream_start",
-                    ))
-
-                if chunk.type == "thinking":
-                    if not in_thinking:
-                        in_thinking = True
-                        await self._events.dispatch_async(SDKThinkingEvent(
-                            event_type=EventType.THINKING_START,
-                            content="",
-                            is_start=True,
-                        ))
-                    await self._events.dispatch_async(SDKThinkingEvent(
-                        event_type=EventType.THINKING_CHUNK,
-                        content=chunk.content,
-                    ))
-                else:
-                    # End thinking block when a non-thinking chunk arrives
-                    if in_thinking:
-                        in_thinking = False
-                        await self._events.dispatch_async(SDKThinkingEvent(
-                            event_type=EventType.THINKING_END,
-                            content="",
-                            is_end=True,
-                        ))
-
-                    if chunk.type == "tool_call":
-                        await self._events.dispatch_async(ToolEvent(
-                            event_type=EventType.TOOL_CALL,
-                            tool_name=chunk.tool_name or chunk.content,
-                            args=chunk.args or {},
-                        ))
-                    elif chunk.type == "tool_result":
-                        await self._events.dispatch_async(ToolEvent(
-                            event_type=EventType.TOOL_RESULT,
-                            tool_name=chunk.tool_name or "",
-                            result=chunk.content,
-                        ))
-                    elif chunk.type == "text_delta":
+                # ── SDK event dispatch ──
+                if self._events:
+                    # Emit STREAM_START on first non-session_start chunk
+                    if not stream_started and chunk.type != "session_start":
+                        stream_started = True
                         await self._events.dispatch_async(SDKStreamEvent(
-                            event_type=EventType.STREAM_CHUNK,
-                            chunk_type=chunk.type,
+                            event_type=EventType.STREAM_START,
+                            chunk_type="stream_start",
+                        ))
+
+                    if chunk.type == "thinking":
+                        if not in_thinking:
+                            in_thinking = True
+                            await self._events.dispatch_async(SDKThinkingEvent(
+                                event_type=EventType.THINKING_START,
+                                content="",
+                                is_start=True,
+                            ))
+                        await self._events.dispatch_async(SDKThinkingEvent(
+                            event_type=EventType.THINKING_CHUNK,
                             content=chunk.content,
                         ))
-                    elif chunk.type == "compact":
-                        await self._events.dispatch_async(SDKContextCompactEvent(
-                            event_type=EventType.CONTEXT_COMPACT,
-                            original_messages=chunk.original_messages,
-                            compacted_messages=chunk.compacted_messages,
-                            tokens_saved=chunk.estimated_tokens_saved,
-                        ))
-                    elif chunk.type == "done":
-                        usage = chunk.usage
-                        await self._events.dispatch_async(ModelEvent(
-                            event_type=EventType.MODEL_RESPONSE,
-                            model=self._config.model.model or "",
-                            input_tokens=usage.input_tokens if usage else 0,
-                            output_tokens=usage.output_tokens if usage else 0,
+                    else:
+                        # End thinking block when a non-thinking chunk arrives
+                        if in_thinking:
+                            in_thinking = False
+                            await self._events.dispatch_async(SDKThinkingEvent(
+                                event_type=EventType.THINKING_END,
+                                content="",
+                                is_end=True,
+                            ))
+
+                        if chunk.type == "tool_call":
+                            await self._events.dispatch_async(ToolEvent(
+                                event_type=EventType.TOOL_CALL,
+                                tool_name=chunk.tool_name or chunk.content,
+                                args=chunk.args or {},
+                            ))
+                        elif chunk.type == "tool_result":
+                            await self._events.dispatch_async(ToolEvent(
+                                event_type=EventType.TOOL_RESULT,
+                                tool_name=chunk.tool_name or "",
+                                result=chunk.content,
+                            ))
+                        elif chunk.type == "text_delta":
+                            await self._events.dispatch_async(SDKStreamEvent(
+                                event_type=EventType.STREAM_CHUNK,
+                                chunk_type=chunk.type,
+                                content=chunk.content,
+                            ))
+                        elif chunk.type == "compact":
+                            await self._events.dispatch_async(SDKContextCompactEvent(
+                                event_type=EventType.CONTEXT_COMPACT,
+                                original_messages=chunk.original_messages,
+                                compacted_messages=chunk.compacted_messages,
+                                tokens_saved=chunk.estimated_tokens_saved,
+                            ))
+                        elif chunk.type == "done":
+                            usage = chunk.usage
+                            await self._events.dispatch_async(ModelEvent(
+                                event_type=EventType.MODEL_RESPONSE,
+                                model=self._config.model.model or "",
+                                input_tokens=usage.input_tokens if usage else 0,
+                                output_tokens=usage.output_tokens if usage else 0,
+                            ))
+
+                    # Emit STREAM_END on done/cancelled/circuit_breaker
+                    if chunk.type in ("done", "cancelled", "circuit_breaker"):
+                        if in_thinking:
+                            in_thinking = False
+                            await self._events.dispatch_async(SDKThinkingEvent(
+                                event_type=EventType.THINKING_END,
+                                content="",
+                                is_end=True,
+                            ))
+                        await self._events.dispatch_async(SDKStreamEvent(
+                            event_type=EventType.STREAM_END,
+                            chunk_type="stream_end",
                         ))
 
-                # Emit STREAM_END on done/cancelled/circuit_breaker
-                if chunk.type in ("done", "cancelled", "circuit_breaker"):
-                    if in_thinking:
-                        in_thinking = False
-                        await self._events.dispatch_async(SDKThinkingEvent(
-                            event_type=EventType.THINKING_END,
-                            content="",
-                            is_end=True,
-                        ))
-                    await self._events.dispatch_async(SDKStreamEvent(
-                        event_type=EventType.STREAM_END,
-                        chunk_type="stream_end",
-                    ))
+                yield chunk
 
-            yield chunk
+            try:
+                await handle.result()
+            except WorkflowCancelled:
+                # Cancellation is represented by the terminal stream chunk.
+                pass
+        finally:
+            if self._active_runtime_run is handle:
+                self._active_runtime_run = None
 
     # Alias for stream() — matches the name used in demos/docs
     run_stream = stream
@@ -1150,10 +1271,25 @@ class AsyncCodyClient:
         effective_workdir = Path(workdir) if workdir else self.workdir
         cfg = self._get_config()
         sm = SkillManager(config=cfg, workdir=effective_workdir)
-        # Build deps directly from client state — no need to create an
-        # AgentRunner (which requires model_base_url) just to call a tool.
-        fh = self._injected_file_history if not isinstance(self._injected_file_history, _UnsetType) else None
-        al = self._injected_audit_logger if not isinstance(self._injected_audit_logger, _UnsetType) else None
+        # Reuse live service/state dependencies when a Runner already exists
+        # (for example after start_lsp/start_mcp or an Agent run). Basic file
+        # tools still work without constructing a model-backed Runner.
+        runner = self._runner
+        fh = (
+            self._injected_file_history
+            if not isinstance(self._injected_file_history, _UnsetType)
+            else getattr(runner, "_file_history", None)
+        )
+        al = (
+            self._injected_audit_logger
+            if not isinstance(self._injected_audit_logger, _UnsetType)
+            else getattr(runner, "_audit_logger", None)
+        )
+        memory = (
+            self._injected_memory_store
+            if not isinstance(self._injected_memory_store, _UnsetType)
+            else getattr(runner, "_memory_store", None)
+        )
         deps = CodyDeps(
             config=cfg,
             workdir=effective_workdir,
@@ -1162,6 +1298,13 @@ class AsyncCodyClient:
             strict_read_boundary=cfg.security.strict_read_boundary,
             file_history=fh,
             audit_logger=al,
+            memory_store=memory,
+            permission_manager=getattr(runner, "_permission_manager", None),
+            todo_list=getattr(runner, "_todo_list", None),
+            mcp_client=getattr(runner, "_mcp_client", None),
+            sub_agent_manager=getattr(runner, "_sub_agent_manager", None),
+            lsp_client=getattr(runner, "_lsp_client", None),
+            sandbox=getattr(runner, "_service_sandbox", None),
         )
 
         start_time = time.time()
@@ -1502,6 +1645,40 @@ class AsyncCodyClient:
             action: One of "approve", "reject", "revise", "answer".
             content: Response content (e.g., the user's answer or revision).
         """
+        runtime = self.get_runtime()
+        approval = runtime.stores.approval_store.get(request_id)
+        if approval is not None:
+            response_payload = {"action": action, "content": content}
+            if action == "reject":
+                runtime.stores.approval_store.reject(
+                    request_id, response=response_payload
+                )
+            else:
+                runtime.approve(request_id, response_payload)
+
+            active = self._active_runtime_run
+            if active is not None and active.run_id == approval.run_id:
+                # The interaction event is observable just before the worker
+                # persists WAITING. Wait for that safe boundary, resume, then
+                # let the existing stream handle follow the new execution.
+                deadline = asyncio.get_running_loop().time() + 5.0
+                while True:
+                    record = runtime.stores.run_store.get_run(active.run_id)
+                    if record is not None and record.status.value == "waiting":
+                        try:
+                            await active.result()
+                        except WorkflowWaiting:
+                            pass
+                        resumed = await runtime.resume(active.run_id)
+                        active.follow(resumed)
+                        break
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise CodyTimeoutError(
+                            "Timed out waiting for the interaction checkpoint"
+                        )
+                    await asyncio.sleep(0.01)
+            return
+
         from ..core.interaction import InteractionResponse
         runner = self.get_runner()
         response = InteractionResponse(
@@ -1663,6 +1840,11 @@ class CodyClient:
 
     def health(self) -> dict:
         return _run_async(self._async.health())
+
+    def get_runtime(self, **kwargs):
+        """Return the canonical async Runtime configured by this client."""
+
+        return self._async.get_runtime(**kwargs)
 
     def run(self, prompt, *, session_id: Optional[str] = None):
         return _run_async(self._async.run(prompt, session_id=session_id))

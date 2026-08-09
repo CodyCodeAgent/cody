@@ -20,7 +20,9 @@ cody/
 ├── core/           # 框架核心引擎（不依赖任何接入层）
 │   ├── config.py       # 配置管理
 │   ├── runner.py       # Agent 执行引擎 + CodyDeps
-│   ├── tools.py        # 内置工具（文件、搜索、命令、todo、question）
+│   ├── tools/          # 30 个声明式注册工具（28 core + 2 MCP）
+│   ├── runtime/        # canonical Run、workflow、stores、治理与观测
+│   ├── sandbox/        # Seatbelt/Bubblewrap/container/remote 执行边界
 │   ├── session.py      # 会话管理（SQLite）
 │   ├── skill_manager.py # Skill 加载与管理
 │   ├── sub_agent.py    # 子 Agent 编排
@@ -39,7 +41,7 @@ cody/
 │   ├── types.py        # SDK 响应类型 — RunResult, Usage, StreamChunk 等
 │   ├── errors.py       # SDK 错误层级 — 10 种细粒度错误类型
 │   └── config.py       # SDK 配置 — SDKConfig, ModelConfig, config() 工厂
-├── skills/         # 内置 Skills（git, github, docker, npm, python, rust, go, java, web, cicd, testing）
+├── skills/         # 内置 Skills（docker, git, npm, python, testing）
 ├── client.py       # 向后兼容 shim — re-export sdk/ 的公开符号
 ├── tui/            # TUI 界面（Textual），调用 core
 │   ├── __init__.py    # 重导出 run_tui, CodyTUI, MessageBubble, StreamBubble
@@ -48,16 +50,16 @@ cody/
 └── cli/            # CLI 界面（Click），调用 core
     ├── __init__.py    # 重导出 main, _handle_command, _build_history_from_session
     ├── main.py        # Click group + run/chat/tui 核心命令
-    ├── commands/      # 子命令模块（init, sessions, skills, config）
+    ├── commands/      # init/sessions/skills/config/runtime 子命令
     ├── rendering.py   # 流式渲染 + spinner
     └── utils.py       # 辅助函数 + console 单例
 
-web/backend/        # 统一 Web Backend（FastAPI:8000），直接导入 core
+web/backend/        # FastAPI 参考产品，使用同一 canonical Runtime
 ```
 
 **关键约束：**
 - `core/` 内的代码 **不允许** 导入 `cli/`、`tui/`、`sdk/` 或 `web/`
-- 所有接入层都通过 `core/` 提供的接口工作
+- 所有执行表面都通过 `CodyRuntime`/canonical `RunEvent` 工作，不得维护第二套 Run 状态机
 - `cody/sdk/` 是一等公民模块，直接包装 core，提供 Builder 模式、事件流、指标等高级 API
 - `cody/client.py` 是向后兼容 shim，仅 re-export `sdk/` 的公开符号，新代码应直接使用 `cody.sdk`
 - 新功能应该加在 `core/`，然后在各接入层暴露
@@ -65,10 +67,10 @@ web/backend/        # 统一 Web Backend（FastAPI:8000），直接导入 core
 ### 依赖方向
 
 ```
-cli/ ────→
-tui/ ────→  core/*
-sdk/   ──→  core/*（in-process，无 HTTP）
-web/backend/ ──→ core/*（直接 import）
+cli/ ──────────→ sdk/ ──→ core/runtime → core/runner
+tui/ ──────────→ sdk/ ──→ core/runtime → core/runner
+web/backend/ ───────────→ core/runtime → core/runner
+sdk/ ───────────────────→ core/runtime → core/runner
 ```
 
 禁止反向依赖。禁止 `core/` 依赖任何 CLI（click, rich）、TUI（textual）或 Web（fastapi）的库。
@@ -250,6 +252,8 @@ python3 -m pytest tests/ -v
 |------|------|
 | `./` | 根目录文档（README.md、CHANGELOG.md、CONTRIBUTING.md、CLAUDE.md 等） |
 | `docs/` | 所有项目文档（CLI.md、API.md、ARCHITECTURE.md、FEATURES.md 等） |
+| `web/` | Web 架构、端点和前端说明 |
+| `ai_tests/` | 真实模型/产品黑盒回归手册 |
 
 ### 提交前检查清单
 
@@ -260,41 +264,25 @@ python3 -m pytest tests/ -v
 
 > **原则**：文档是代码的一部分，不是事后补充。代码合并前，文档必须先更新。
 >
-> **提示**：使用 `find . -name "*.md"` 列出所有 Markdown 文档，逐一检查是否需要更新。
+> **提示**：使用 `rg --files -g '*.md'` 列出所有 Markdown 文档，并从
+> `docs/README.md` 检查文档角色与权威性。
 
 ---
 
-## 当前状态
+## 当前质量门槛
 
-| 模块 | 测试数 | 状态 |
-|------|--------|------|
-| core/tools/ | 51 | 完善 |
-| core/skill_manager.py | 40 | 完善 |
-| core/lsp_client.py | 34 | 完善 |
-| core/config.py | 33 | 完善 |
-| core/runner.py | 24 | 完善 |
-| core/auth.py | 23 | 完善 |
-| core/web.py | 22 | 完善 |
-| client.py | 22 | 完善 |
-| sdk/ | 65 | 完善 |
-| core/sub_agent.py | 21 | 完善 |
-| web/backend (WS) | 21 | 完善 |
-| web/backend (projects) | 20 | 完善 |
-| core/audit.py | 19 | 完善 |
-| core/permissions.py | 18 | 完善 |
-| core/context.py | 16 | 完善 |
-| cli/ | 25 | 完善 |
-| core/rate_limiter.py | 16 | 完善 |
-| core/file_history.py | 15 | 完善 |
-| core/session.py | 14 | 完善 |
-| core/mcp_client.py | 14 | 完善 |
-| tui/ | 17 | 完善 |
-| core/errors.py | 11 | 完善 |
-| web/backend (middleware) | 9 | 完善 |
+测试数量会随功能变化，不在开发规范中维护易过期的固定数字。合并前必须通过：
 
-**总计：652+ 个测试（576 core/sdk + 76 web），ruff 零告警**
+```bash
+uv run pytest -q
+uv run ruff check .
+cd web && npm test -- --run && npm run build
+```
 
-**当前版本：v1.7.4（见 CHANGELOG.md）**
+Runtime/Sandbox 变更还必须覆盖恢复、审批、取消、幂等、跨进程 control 和 fail-closed
+行为。需要真实模型时使用 `scripts/verify_live_capabilities.py`，密钥只从环境变量注入。
+
+**当前版本：以 `cody/_version.py` 为唯一来源。**
 
 ---
 
@@ -313,8 +301,9 @@ python3 -m pytest tests/ -v
 2. **看 `core/runner.py`** — 理解框架核心引擎（模块 docstring 有架构概览）
 3. **看 `core/tools/`** — 理解工具注册模式（`registry.py` 中的 `*_TOOLS` 列表）
 4. **看 `cody/sdk/client.py`** — 理解 SDK 如何包装 core（Builder 模式、事件流、指标）
-5. **看 `web/backend/app.py`** — 理解 Web Backend 如何调用 core
-6. **看本文件** — 了解代码规范
-7. **看 `docs/API.md`** — 了解对外 API
+5. **看 `core/runtime/service.py`** — 理解 canonical Run 和恢复主链
+6. **看 `core/sandbox/`** — 理解所有 guest 进程的执行边界
+7. **看 `web/backend/app.py`** — 理解 Web 如何投影 Runtime
+8. **看 `docs/README.md`** — 从权威文档索引继续阅读
 
 有问题看测试——每个模块都有对应的测试文件，是最好的"活文档"。

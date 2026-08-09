@@ -21,6 +21,7 @@ from .commands.sessions import sessions
 from .commands.skills import skills
 from .commands.config import config
 from .commands.init_cmd import init
+from .commands.runtime import approvals, artifacts, runs, timeline
 
 
 @click.group()
@@ -37,6 +38,10 @@ main.add_command(sessions)
 main.add_command(skills)
 main.add_command(config)
 main.add_command(init)
+main.add_command(runs)
+main.add_command(approvals)
+main.add_command(artifacts)
+main.add_command(timeline)
 
 
 # ── Run command ──────────────────────────────────────────────────────────────
@@ -207,7 +212,7 @@ def chat(model, thinking, thinking_budget, workdir, extra_roots, session_id, con
 
     Examples:
         cody chat
-        cody chat --model claude-sonnet-4-0
+        cody chat --model deepseek-v4-flash
         cody chat --continue
         cody chat --session abc123
         cody chat --max-tokens 50000 --max-cost 1.0
@@ -359,7 +364,7 @@ def tui(model, thinking, thinking_budget, workdir, extra_roots, session_id, cont
 
     Examples:
         cody tui
-        cody tui --model claude-sonnet-4-0
+        cody tui --model deepseek-v4-flash
         cody tui --continue
         cody tui --max-tokens 50000 --max-cost 1.0
         cody tui --workdir /proj/frontend --allow-root /proj/backend

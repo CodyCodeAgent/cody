@@ -120,3 +120,38 @@ export interface SessionDetail {
   updated_at: string;
   messages: { role: string; content: string; timestamp: string; images?: ImageAttachment[] }[];
 }
+
+export interface RuntimeRun {
+  run_id: string;
+  task: string;
+  status: string;
+  workflow_id?: string;
+  session_id?: string;
+  workdir?: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface RuntimeEvent {
+  event_id: string;
+  event_type: string;
+  timestamp: string;
+  step_id?: string;
+  payload: Record<string, unknown>;
+}
+
+export interface RuntimeArtifact {
+  artifact_id: string;
+  artifact_type: string;
+  name?: string;
+  step_id?: string;
+  content: unknown;
+}
+
+export interface RuntimeApproval {
+  approval_id: string;
+  run_id: string;
+  node_id: string;
+  status: string;
+  request: Record<string, unknown>;
+}

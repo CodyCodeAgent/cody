@@ -2,13 +2,15 @@
 
 ## 概述
 
-Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程代理所需的完整基础设施：多模型支持、30 个内置工具（28 core + 2 MCP）、Agent Skills 开放标准、子 Agent 编排、MCP 集成，以及 CLI/TUI/Web/SDK 四种运行方式。
+Cody 是一个**开源 Agent Runtime + Coding Agent 参考实现**，提供 canonical Run、
+可恢复工作流、30 个内置工具（28 core + 2 MCP）、Agent Skills、MCP/LSP、多 Agent、
+Quality Gate、Sandbox，以及 CLI/TUI/Web/SDK 四种产品表面。
 
 开源地址：[https://github.com/CodyCodeAgent/cody](https://github.com/CodyCodeAgent/cody.git)
 
 ## 核心定位
 
-> **Cody 是一个完整的 AI Coding Agent 框架——核心引擎（core）实现所有功能逻辑，CLI、Web、TUI 是参考实现，SDK 让你用几行代码构建自己的 AI 编程工具。**
+> **Cody 是可嵌入、可编排、可恢复、可治理、可观测的 Agent Runtime；CLI、Web、TUI 是参考产品，SDK 是第一等集成入口。**
 > 引擎做厚，壳子做薄。框架完整度是核心竞争力。
 
 **目标用户：**
@@ -17,9 +19,9 @@ Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程代理�
 - **个人程序员** — 通过 CLI/TUI/Web 直接使用，同时也是框架最好的 dogfooding 方式
 
 **核心价值：**
-- **框架完整度** — 从工具调用到子 Agent 编排，从会话管理到安全审计，开箱即用
-- **Agent Skills 开放标准** — 兼容 Anthropic 发布的 Agent Skills 标准，已被 26+ 平台采纳
-- **多模型支持** — Anthropic、OpenAI、Google、DeepSeek、阿里通义千问、智谱 GLM 等
+- **Runtime 完整度** — 从工具调用到 workflow、多 Agent、恢复、审批、存储和审计，开箱即用
+- **Agent Skills 开放标准** — 使用可移植的 YAML frontmatter + Markdown 目录格式
+- **模型可替换** — 连接 DeepSeek、Qwen、GLM、本地模型或任意 OpenAI-compatible 网关
 - **开源可控** — 完整源码，自由定制，数据留在本地
 
 ---
@@ -29,8 +31,7 @@ Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程代理�
 ### 1. 核心 AI 能力
 
 **基于 Pydantic AI 构建：**
-- 多模型支持（Anthropic、OpenAI、Google、DeepSeek 等）
-- 自定义 OpenAI 兼容 API 支持（智谱 GLM、阿里通义千问/DashScope 等）
+- OpenAI-compatible 模型端点（DeepSeek、Qwen、GLM、本地模型和企业网关）
 - 多模态输入 — 支持文本+图片混合提示（Web 端），通过 `Prompt` 类型和 pydantic-ai `BinaryContent` 传递
 - 结构化输出
 - 工具调用（Function Calling）
@@ -43,9 +44,25 @@ Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程代理�
 - Thinking 模式（`--thinking` 开启，`--thinking-budget` 控制 token 预算）
 
 **认证方式：**
-- API Key（通过交互式配置向导 `cody config setup` 设置）
+- 模型 API Key 通过 `CODY_MODEL_API_KEY` 或部署平台 secret manager 注入，不写入配置文件
 - 支持 OpenAI 兼容 API（`model_base_url` + `model_api_key`）
 - 多模型配置
+
+### 1.1 Canonical Runtime 与生产能力
+
+- 单一权威执行路径：Runtime → Workflow Scheduler → Agent/Tool/Approval/Gate executor
+- Run/Step/Event/Checkpoint/Artifact/Approval/Audit/Control 共享稳定标识
+- sequential、parallel、join、condition、fallback、nested workflow
+- 节点 timeout/retry、全局 cancellation、step/token/cost/time 预算
+- waiting approval 不占 worker，跨进程 approve/reject 后从 checkpoint 恢复
+- failed/cancelled Run 可 retry；历史 checkpoint 可 fork；进程崩溃可 recover
+- 多 Agent specialist task DAG、capability routing、fallback agent 和确定性结果聚合
+- Quality Gate + 有限次数 repair loop，decision 保存为 Review Artifact
+- SQLite 单机 store；PostgreSQL 多进程 store；Filesystem/S3 Artifact payload
+- macOS Seatbelt、Linux Bubblewrap、Docker/Podman 和 provider-neutral Remote Sandbox adapter
+- CLI、TUI、Web、SDK 共享 timeline、metrics、artifact 和审批状态
+
+完整契约见 [Runtime 使用与部署](RUNTIME.md) 和 [Sandbox 指南](SANDBOX.md)。
 
 ### 2. 内置工具集（28 core + 2 MCP = 30 个）
 
@@ -93,7 +110,8 @@ Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程代理�
 
 ### 3. Skill 系统（Agent Skills 开放标准）
 
-> 完全兼容 [Agent Skills 开放标准](https://agentskills.io/) — Anthropic 发布，已被 Claude Code、GitHub Copilot、Codex CLI、Cursor 等 26+ 平台采纳。
+> 兼容 [Agent Skills 开放标准](https://agentskills.io/)，Skill 可在采用相同目录和
+> frontmatter 约定的 Agent 工具之间迁移。
 
 **SKILL.md 格式（YAML frontmatter + Markdown）：**
 ```markdown
@@ -117,9 +135,9 @@ skill-name/
 └── assets/           # 可选 — 模板、数据文件
 ```
 
-**两层优先级加载：**
+**默认目录：**
 ```
-.cody/skills/          # 项目 Skills（最高优先级）
+.cody/skills/          # 项目 Skills
 ~/.cody/skills/        # 全局 Skills
 ```
 
@@ -237,9 +255,10 @@ Cody 框架提供同一核心引擎的多种接入方式，适用于不同场景
 
 **安装：**
 ```bash
-pip install cody-ai            # 仅安装核心 SDK（4 个依赖）
+pip install cody-ai            # 3 个直接核心依赖
 pip install cody-ai[cli]       # 含 CLI
-pip install cody-ai[all]       # 全部功能
+pip install cody-ai[all]       # SDK + CLI + TUI + Web
+pip install cody-ai[production] # PostgreSQL + S3 adapters
 ```
 
 **基本使用：**
@@ -247,7 +266,7 @@ pip install cody-ai[all]       # 全部功能
 from cody import Cody
 
 # Builder 模式创建客户端
-client = Cody().workdir("/path/to/project").model("claude-sonnet-4-0").build()
+client = Cody().workdir("/path/to/project").model("deepseek-v4-flash").build()
 
 # 同步执行
 result = client.run("重构 auth.py，提取通用逻辑到 utils.py")
@@ -306,9 +325,9 @@ def on_done(event):
 
 启动 HTTP 服务：
 ```bash
-cody-web                  # 生产模式
-cody-web --dev            # 开发模式（含 Vite HMR）
-cody-web --port 9000      # 指定端口
+cody-web run              # 生产模式
+cody-web run --dev        # 开发模式（含 Vite HMR）
+cody-web run --port 9000  # 指定端口
 ```
 
 **API 接口：**
@@ -443,6 +462,7 @@ cody tui --session <id>      # 恢复指定会话
 - WebSocket 断连恢复 — stream task 不因断连取消，重连后自动接管正在运行的 stream
 - 空闲超时 — 10 分钟无事件自动停止，防止永久卡住
 - 运行时指标 — `GET /metrics` 端点返回 total_runs、total_tokens、total_cost_usd、uptime
+- Runtime 控制台 — Run 创建/列表、pause/cancel/resume/retry/recover/fork、审批、metrics、timeline 和 artifact
 - GFM Markdown 渲染 — 支持表格、任务列表、删除线等（`remark-gfm`）
 - 项目侧边栏 — 快速切换/删除项目
 - 深色主题 UI
@@ -452,7 +472,8 @@ cody tui --session <id>      # 恢复指定会话
 **`.cody/config.json`（项目级）：**
 ```json
 {
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["github", "docker"],
     "disabled": ["web"]
@@ -460,10 +481,13 @@ cody tui --session <id>      # 恢复指定会话
   "mcp": {
     "servers": [...]
   },
-  "tools": {
-    "shell": {
-      "allowed_commands": ["git", "npm", "docker"]
-    }
+  "security": {
+    "allowed_commands": ["git", "npm", "docker"]
+  },
+  "sandbox": {
+    "enabled": true,
+    "backend": "auto",
+    "network_mode": "disabled"
   }
 }
 ```
@@ -471,8 +495,8 @@ cody tui --session <id>      # 恢复指定会话
 **`~/.cody/config.json`（全局）：**
 ```json
 {
-  "model_api_key": "sk-...",
-  "default_model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["git"]
   }
@@ -483,9 +507,9 @@ cody tui --session <id>      # 恢复指定会话
 
 | 方式 | 配置 | 说明 |
 |------|------|------|
-| 交互式配置 | `cody config setup` | 推荐方式，引导配置并保存 |
-| OpenAI 兼容 API | `model_base_url` + `model_api_key` | 智谱 GLM、阿里 DashScope 等 |
-| API Key | `model_api_key`（通过 `cody config setup` 配置） | 可选 |
+| 运行环境 Secret | `CODY_MODEL_API_KEY` | 推荐；不写入配置文件 |
+| OpenAI-compatible API | `model` + `model_base_url` | DeepSeek、Qwen、GLM、本地或企业网关 |
+| 进程内 SDK | `api_key=` / `.api_key()` | 由调用方 secret manager 注入 |
 
 ### 8. 安全特性
 
@@ -624,7 +648,7 @@ await client.clear_memory()
 from cody import Cody
 
 # 构建自己的 AI 代码审查系统
-client = Cody().workdir(repo_path).model("claude-sonnet-4-0").build()
+client = Cody().workdir(repo_path).model("deepseek-v4-flash").build()
 
 # 自动代码审查
 diff = get_pr_diff()
@@ -682,6 +706,24 @@ cody run "使用项目 B 的配置"
 ---
 
 ## 路线图
+
+### v3.0.0 — Canonical Agent Runtime 与生产化硬化 ✅ 已完成
+
+- [x] SDK、CLI、TUI、Web 统一通过 `CodyRuntime` 创建 canonical Run
+- [x] canonical `RunEvent`、Run/Step、Checkpoint、Artifact、Approval、Audit 和 Control stores
+- [x] async workflow scheduler：parallel/join/condition/fallback/nested、timeout/retry/cancel
+- [x] waiting approval 释放 worker；新进程 resume/recover；checkpoint retry/fork
+- [x] 幂等工具收据，避免恢复或回退时重复执行副作用
+- [x] async 多 Agent task DAG、并发 specialist、fallback agent 和 Artifact 聚合
+- [x] Quality Gate evaluator、review artifact 和受预算限制的 repair loop
+- [x] actor/project/service account、权限、step/time/token/cost 预算和递归秘密脱敏
+- [x] SQLite 单机、PostgreSQL 多进程、Filesystem/S3 Artifact payload adapter
+- [x] Runtime CLI、Web REST、SSE/WebSocket 与 React Runtime console
+- [x] macOS Seatbelt、Linux Bubblewrap、Docker/Podman 和 Remote Sandbox contract
+- [x] Sandbox snapshot/restore/fork 生命周期覆盖 command、quality、stdio MCP、LSP 和子 Agent
+- [x] RuntimeExtensionRegistry：tool/skill/model/agent/workflow/evaluator/store/auth/presentation
+
+当前部署约束和外部依赖见 [Runtime 使用与部署](RUNTIME.md#12-当前边界)。
 
 ### v0.1.0 — 框架原型 ✅ 已完成
 - [x] 基础 Agent 框架（Pydantic AI）
@@ -825,11 +867,11 @@ cody run "使用项目 B 的配置"
 - [x] `to_prompt_xml()` — 生成 `<available_skills>` XML 注入 system prompt
 - [x] Runner system prompt 自动注入 skills XML
 
-**阿里云百炼 Coding Plan**
+**阿里云百炼 Coding Plan（历史 v1.0.1 接口）**
 - [x] 集成百炼 Coding Plan API（Qwen3.5、GLM-5、Kimi K2.5、MiniMax M2.5 等）
 - [x] 支持 OpenAI 兼容协议
-- [x] CLI `--coding-plan-key` / `--coding-plan-protocol` 参数
-- [x] 环境变量 `CODY_CODING_PLAN_KEY` / `CODY_CODING_PLAN_PROTOCOL`
+- [x] 当时提供专用 CLI/环境变量；v2 已统一为 `model`、`model_base_url` 和
+  `CODY_MODEL_API_KEY`。`CODY_CODING_PLAN_KEY` 仅保留兼容映射。
 
 **v1.0.1 总计：446 个 Python 测试，ruff 零告警**
 
@@ -923,4 +965,4 @@ cody run "使用项目 B 的配置"
 
 ---
 
-**最后更新：** 2026-03-20
+**最后更新：** 2026-07-12

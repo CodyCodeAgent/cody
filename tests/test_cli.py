@@ -247,6 +247,12 @@ def test_config_set_valid(runner, tmp_path, monkeypatch):
     assert result.exit_code in (0, 1)
 
 
+def test_config_set_rejects_persisting_api_key(runner):
+    result = runner.invoke(main, ['config', 'set', 'model_api_key', 'test-secret'])
+    assert result.exit_code != 0
+    assert 'not persisted' in result.output
+
+
 def test_handle_clear(store):
     from io import StringIO
     from rich.console import Console

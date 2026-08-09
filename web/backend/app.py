@@ -51,6 +51,7 @@ from .routes.projects import router as projects_router
 from .routes.tasks import router as tasks_router
 from .routes.task_chat import router as task_chat_router
 from .routes.chat import router as chat_router
+from .routes.runtime_routes import router as runtime_router
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
@@ -120,6 +121,7 @@ app.include_router(audit_router)
 app.include_router(agents_router)
 app.include_router(config_router)
 app.include_router(metrics_router)
+app.include_router(runtime_router)
 
 
 # ── Web routes ──────────────────────────────────────────────────────────────

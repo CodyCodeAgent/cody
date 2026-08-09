@@ -1,5 +1,12 @@
 # Cody Agent 内核 & SDK 深度审查
 
+> **历史评审（归档）**：本文记录 2026-03 阶段的代码审查、问题清单和实现草案，
+> 不作为 Cody 2.0.2 的当前 API 规范。P0/P1/P2 项已完成；随后新增的 canonical
+> Runtime、可恢复 workflow、多 Agent coordinator、Quality Gate、durable approval、
+> PostgreSQL/S3 stores 和 Sandbox 见 [架构设计](ARCHITECTURE.md)、
+> [Runtime 使用与部署](RUNTIME.md) 与 [Sandbox 指南](SANDBOX.md)。文中“后续做”、
+> 旧模型名和代码片段应按历史上下文阅读。
+
 > 审查日期：2026-03-26 | 版本：v2.0.0
 > 定位：Cody 是可嵌入的 AI Agent 框架/SDK，Core + SDK 是产品，CLI/TUI/Web 是参考实现。
 

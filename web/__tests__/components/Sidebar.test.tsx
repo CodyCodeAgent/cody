@@ -43,7 +43,7 @@ beforeEach(() => {
 describe("Sidebar", () => {
   it("renders project list", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Sidebar />
       </MemoryRouter>
     );
@@ -55,18 +55,18 @@ describe("Sidebar", () => {
 
   it("navigates to project on click", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Sidebar />
       </MemoryRouter>
     );
     await waitFor(() => screen.getByText("Project Alpha"));
     await userEvent.click(screen.getByText("Project Alpha"));
-    expect(mockNavigate).toHaveBeenCalledWith("/chat/p1");
+    expect(mockNavigate).toHaveBeenCalledWith("/project/p1");
   });
 
   it("navigates to home on '+ New' click", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Sidebar />
       </MemoryRouter>
     );
@@ -77,7 +77,7 @@ describe("Sidebar", () => {
 
   it("highlights current project", async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Sidebar currentProjectId="p1" />
       </MemoryRouter>
     );

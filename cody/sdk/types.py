@@ -47,6 +47,7 @@ class Usage:
 class RunResult:
     output: str
     session_id: Optional[str] = None
+    run_id: Optional[str] = None
     usage: Usage = field(default_factory=Usage)
     thinking: Optional[str] = None
     metadata: Optional[TaskMetadata] = None
@@ -70,6 +71,7 @@ class StreamChunk:
     type: str
     content: str = ""
     session_id: Optional[str] = None
+    run_id: Optional[str] = None
     # Tool call details (populated when type="tool_call")
     tool_name: Optional[str] = None
     args: Optional[dict] = None
@@ -291,3 +293,99 @@ def _usage_from_result(result: CodyResult) -> Usage:
     if not total_t:
         total_t = input_t + output_t
     return Usage(input_tokens=input_t, output_tokens=output_t, total_tokens=total_t)
+
+
+def _runtime_event_to_chunk(
+    event,
+    session_id: Optional[str] = None,
+    model_result: Optional[CodyResult] = None,
+) -> Optional[StreamChunk]:
+    """Convert a persisted canonical RunEvent into the legacy SDK stream shape."""
+
+    from ..core.runtime.events import RunEventType
+
+    payload = event.payload
+    common = {"session_id": session_id, "run_id": event.run_id}
+    event_type = event.event_type
+    if event_type == RunEventType.SESSION_STARTED:
+        return SessionStartChunk(
+            session_id=str(payload.get("session_id") or session_id or ""),
+            run_id=event.run_id,
+        )
+    if event_type == RunEventType.MODEL_TEXT_DELTA:
+        return TextDeltaChunk(content=str(payload.get("content") or ""), **common)
+    if event_type == RunEventType.MODEL_THINKING_DELTA:
+        return ThinkingChunk(content=str(payload.get("content") or ""), **common)
+    if event_type == RunEventType.TOOL_CALL_STARTED:
+        name = str(payload.get("tool_name") or "")
+        return ToolCallChunk(
+            content=name,
+            tool_name=name,
+            args=payload.get("args") or {},
+            tool_call_id=payload.get("tool_call_id"),
+            **common,
+        )
+    if event_type == RunEventType.TOOL_CALL_COMPLETED:
+        return ToolResultChunk(
+            content=str(payload.get("result") or ""),
+            tool_name=str(payload.get("tool_name") or ""),
+            tool_call_id=payload.get("tool_call_id"),
+            **common,
+        )
+    if event_type == RunEventType.CONTEXT_COMPACTED:
+        return CompactChunk(
+            original_messages=int(payload.get("original_messages") or 0),
+            compacted_messages=int(payload.get("compacted_messages") or 0),
+            estimated_tokens_saved=int(payload.get("estimated_tokens_saved") or 0),
+            used_llm=bool(payload.get("used_llm")),
+            **common,
+        )
+    if event_type == RunEventType.CONTEXT_PRUNED:
+        return PruneChunk(
+            messages_pruned=int(payload.get("messages_pruned") or 0),
+            estimated_tokens_saved=int(payload.get("estimated_tokens_saved") or 0),
+            **common,
+        )
+    if event_type == RunEventType.MODEL_RETRYING:
+        return RetryChunk(
+            content=str(payload.get("error") or ""),
+            retry_attempt=int(payload.get("attempt") or 0),
+            retry_max_attempts=int(payload.get("max_attempts") or 0),
+            **common,
+        )
+    if event_type == RunEventType.CIRCUIT_BREAKER_TRIGGERED:
+        reason = str(payload.get("reason") or "")
+        tokens = int(payload.get("tokens_used") or 0)
+        cost = float(payload.get("cost_usd") or 0)
+        return CircuitBreakerChunk(
+            content=f"Circuit breaker: {reason} (tokens={tokens}, cost=${cost:.4f})",
+            **common,
+        )
+    if event_type == RunEventType.HUMAN_INPUT_REQUESTED:
+        request = payload.get("request") or {}
+        return InteractionRequestChunk(
+            content=str(request.get("prompt") or ""),
+            # Canonical Runtime interactions are addressed by their durable
+            # approval id. Legacy transient events may still carry request.id.
+            request_id=payload.get("approval_id") or request.get("id"),
+            interaction_kind=request.get("kind"),
+            options=request.get("options") or None,
+            **common,
+        )
+    if event_type == RunEventType.USER_INPUT_RECEIVED:
+        return UserInputReceivedChunk(content=str(payload.get("content") or ""), **common)
+    if event_type == RunEventType.RUN_CANCELLED:
+        return CancelledChunk(**common)
+    if event_type == RunEventType.RUN_COMPLETED:
+        usage = _usage_from_result(model_result) if model_result is not None else Usage(
+            input_tokens=int((payload.get("usage") or {}).get("input_tokens") or 0),
+            output_tokens=int((payload.get("usage") or {}).get("output_tokens") or 0),
+            total_tokens=int((payload.get("usage") or {}).get("total_tokens") or 0),
+        )
+        return DoneChunk(
+            content=str(payload.get("output") or ""),
+            usage=usage,
+            message_history=(model_result.all_messages() if model_result is not None else None),
+            **common,
+        )
+    return None

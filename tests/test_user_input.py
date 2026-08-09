@@ -1,9 +1,17 @@
 """Tests for UserInputQueue and proactive user input injection."""
 
+import asyncio
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
+from pydantic_ai import FunctionToolCallEvent, FunctionToolResultEvent
+from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+
 from cody.core.user_input import UserInputQueue
-from cody.core.runner import UserInputReceivedEvent
+from cody.core.runner import ToolResultEvent, UserInputReceivedEvent
 
 
 # ── UserInputQueue ──────────────────────────────────────────────────────────
@@ -91,3 +99,47 @@ async def test_inject_multiple_messages(tmp_path):
     await runner.inject_user_input("msg1")
     await runner.inject_user_input("msg2")
     assert runner._user_input_queue.drain_all() == ["msg1", "msg2"]
+
+
+@pytest.mark.asyncio
+async def test_input_injected_after_tool_result_reaches_next_model_request(tmp_path):
+    """The tool producer must wait for consumers to inject at the boundary."""
+    from cody.core.config import Config
+    from cody.core.runner import AgentRunner
+
+    config = Config(model="test", model_base_url="http://fake", model_api_key="fake")
+    with patch("cody.core.runner.Agent"):
+        runner = AgentRunner(config=config, workdir=tmp_path)
+
+    class FakeCallToolsNode:
+        user_prompt = None
+        prompt_seen_at_completion = None
+
+        @asynccontextmanager
+        async def stream(self, _ctx):
+            async def events():
+                yield FunctionToolCallEvent(
+                    ToolCallPart("probe", {}, tool_call_id="call-1")
+                )
+                yield FunctionToolResultEvent(
+                    ToolReturnPart("probe", "PROBE_OK", tool_call_id="call-1")
+                )
+                self.prompt_seen_at_completion = self.user_prompt
+
+            yield events()
+
+    node = FakeCallToolsNode()
+    seen = []
+    async for event in runner._stream_tool_node(
+        node,
+        SimpleNamespace(ctx=None),
+        asyncio.Queue(),
+        lambda: [],
+    ):
+        seen.append(event)
+        if isinstance(event, ToolResultEvent):
+            await runner.inject_user_input("DO_THE_NEXT_STEP")
+
+    assert any(isinstance(event, UserInputReceivedEvent) for event in seen)
+    assert node.user_prompt == "DO_THE_NEXT_STEP"
+    assert node.prompt_seen_at_completion == "DO_THE_NEXT_STEP"

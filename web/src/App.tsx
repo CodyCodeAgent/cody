@@ -5,6 +5,7 @@ import ProjectDetailPage from "./pages/ProjectDetailPage";
 import TaskChatPage from "./pages/TaskChatPage";
 import SkillsPage from "./pages/SkillsPage";
 import SettingsPage from "./pages/SettingsPage";
+import RuntimePage from "./pages/RuntimePage";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/task/:taskId" element={<TaskChatPage />} />
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/runtime" element={<RuntimePage />} />
       </Routes>
     </BrowserRouter>
   );

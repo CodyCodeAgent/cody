@@ -49,7 +49,7 @@ async for chunk in client.stream("写一篇长文章", cancel_event=cancel):
 ```
 
 **8. 思考模式（Thinking）**：
-callout-info 说明：部分模型（如 claude-sonnet-4-0）支持思考模式，流里会额外出现 thinking chunk。
+callout-info 说明：部分端点模型（如 qwen3.5）支持思考模式，流里会额外出现 thinking chunk。
 ```python
 client = Cody().workdir(".").thinking(True, budget=10000).build()
 async for chunk in client.stream("分析这段代码的性能瓶颈"):
@@ -126,7 +126,7 @@ async for chunk in client.stream("任务", cancel_event=cancel):
         "group": "工具篇", "badge": "green", "time": "8",
         "prev_file": "03-streaming.html", "prev_title": "流式输出全解",
         "next_file": "05-custom-tools.html", "next_title": "注册自定义工具",
-        "desc": "tool() 方法调用 28+ 内置工具，include/exclude_tools 过滤，便捷方法，LSP 工具",
+        "desc": "tool() 方法调用 30 个内置工具，include/exclude_tools 过滤，便捷方法，LSP 工具",
         "goal": "读者能直接调用任意内置工具、过滤工具范围、使用便捷方法快速操作文件和执行命令。",
         "content": """
 **1. 引言**：两种工具使用方式——让 AI 自动调用（run/stream）vs 手动直接调用（tool()）。手动调用适合：自动化脚本、测试、精确控制。
@@ -152,7 +152,7 @@ async with AsyncCodyClient(workdir=".") as client:
 ```
 说明 `ToolResult.result` 字段（str）。
 
-**3. 28+ 内置工具清单**（表格，分类展示）：
+**3. 30 个内置工具清单**（表格，分类展示）：
 | 分类 | 工具 |
 |------|------|
 | 文件 I/O | read_file, write_file, edit_file, list_directory |
@@ -266,7 +266,7 @@ from pydantic_ai import RunContext
 from cody.core.deps import CodyDeps
 
 async def my_tool(ctx: RunContext[CodyDeps], param1: str, param2: int = 0) -> str:
-    """工具描述——AI 根据这段 docstring 决定何时调用此工具。"""
+    '''工具描述——AI 根据这段 docstring 决定何时调用此工具。'''
     return "结果字符串"
 ```
 重点说明三个要求：必须 async、第一个参数必须是 ctx、返回 str、docstring 决定 AI 行为。
@@ -279,7 +279,7 @@ from cody.sdk import Cody
 import httpx
 
 async def fetch_jira_ticket(ctx: RunContext[CodyDeps], ticket_id: str) -> str:
-    """从 Jira 获取指定工单的标题、描述和状态。传入工单 ID，如 PROJ-123。"""
+    '''从 Jira 获取指定工单的标题、描述和状态。传入工单 ID，如 PROJ-123。'''
     async with httpx.AsyncClient() as c:
         resp = await c.get(
             f"https://your-jira.atlassian.net/rest/api/2/issue/{ticket_id}",
@@ -312,7 +312,7 @@ client = (
 **6. before_tool 中间件**（工具调用前拦截）：
 ```python
 async def log_and_guard(tool_name: str, args: dict) -> dict | None:
-    """返回 dict 继续执行；返回 None 拒绝调用。"""
+    '''返回 dict 继续执行；返回 None 拒绝调用。'''
     print(f"[工具调用] {tool_name}: {args}")
     # 安全检查：禁止删除操作
     if tool_name == "exec_command" and "rm" in args.get("command", ""):
@@ -328,7 +328,7 @@ client = Cody().workdir(".").before_tool(log_and_guard).build()
 import os
 
 async def redact_secrets(tool_name: str, args: dict, result: str) -> str:
-    """对工具输出脱敏。"""
+    '''对工具输出脱敏。'''
     secret = os.environ.get("DB_PASSWORD", "")
     if secret and secret in result:
         result = result.replace(secret, "***")
@@ -348,7 +348,7 @@ from pydantic_ai import RunContext
 from cody.core.deps import CodyDeps
 
 async def my_tool(ctx: RunContext[CodyDeps], arg1: str, arg2: int = 0) -> str:
-    """描述：AI 根据 docstring 决定何时调用。必须清晰说明功能、参数含义、使用场景。"""
+    '''描述：AI 根据 docstring 决定何时调用。必须清晰说明功能、参数含义、使用场景。'''
     return "result"
 
 # 注册
@@ -444,7 +444,7 @@ client = (
 ```
 
 **6. 多模态 Prompt —— 发送图片**：
-callout-info：需要模型支持视觉（Claude claude-sonnet-4-0, GPT-4V 等）。
+callout-info：需要所配置的端点模型支持视觉；文本模型不会自动获得图片理解能力。
 ```python
 import base64
 from cody.core.prompt import MultimodalPrompt, ImageData
@@ -1294,7 +1294,7 @@ except InteractionTimeoutError as e:
 from cody.core.storage import SessionStoreProtocol
 
 class PostgresSessionStore:
-    """满足 SessionStoreProtocol 的 PostgreSQL 实现。"""
+    '''满足 SessionStoreProtocol 的 PostgreSQL 实现。'''
     def __init__(self, conn_string: str):
         self.conn_string = conn_string
 
@@ -1515,8 +1515,6 @@ def build_html_template(article):
     group = article["group"]
     badge = article["badge"]
     time_ = article["time"]
-    filename = article["file"] + ".html"
-
     sidebar_html = build_sidebar(n)
     prevnext_html = build_prevnext(article)
 

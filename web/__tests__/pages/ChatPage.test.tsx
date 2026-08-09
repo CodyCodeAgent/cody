@@ -30,12 +30,16 @@ vi.mock("../../src/api/client", () => ({
     updated_at: "",
     messages: [],
   }),
+  getConfigStatus: vi.fn().mockResolvedValue({ is_ready: true, missing_fields: [] }),
 }));
 
 describe("ChatPage", () => {
   it("loads project and renders chat window", async () => {
     render(
-      <MemoryRouter initialEntries={["/chat/p1"]}>
+      <MemoryRouter
+        initialEntries={["/chat/p1"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/chat/:projectId" element={<ChatPage />} />
         </Routes>
@@ -51,7 +55,10 @@ describe("ChatPage", () => {
 
   it("renders sidebar with Projects header", async () => {
     render(
-      <MemoryRouter initialEntries={["/chat/p1"]}>
+      <MemoryRouter
+        initialEntries={["/chat/p1"]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Routes>
           <Route path="/chat/:projectId" element={<ChatPage />} />
         </Routes>

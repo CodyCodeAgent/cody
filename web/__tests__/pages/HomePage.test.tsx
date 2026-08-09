@@ -36,17 +36,18 @@ vi.mock("../../src/api/client", () => ({
 describe("HomePage", () => {
   it("renders title and new project button", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <HomePage />
       </MemoryRouter>
     );
     expect(screen.getByText("Cody")).toBeInTheDocument();
     expect(screen.getByText("New Project")).toBeInTheDocument();
+    await screen.findByText("My Project");
   });
 
   it("shows recent projects", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <HomePage />
       </MemoryRouter>
     );
@@ -57,18 +58,18 @@ describe("HomePage", () => {
 
   it("navigates to project on click", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <HomePage />
       </MemoryRouter>
     );
     await waitFor(() => screen.getByText("My Project"));
     await userEvent.click(screen.getByText("My Project"));
-    expect(mockNavigate).toHaveBeenCalledWith("/chat/p1");
+    expect(mockNavigate).toHaveBeenCalledWith("/project/p1");
   });
 
   it("shows project wizard when New Project is clicked", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <HomePage />
       </MemoryRouter>
     );

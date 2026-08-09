@@ -1,6 +1,8 @@
 # Cody - 技能开发指南
 
-技能（Skills）是 Cody 框架的核心组件之一，遵循 [Agent Skills Open Standard](https://agentskills.io/) 规范（已被 26+ 平台采用，包括 Claude Code、Cursor、GitHub Copilot 等）。通过技能，你可以为 AI Agent 提供特定领域的专业知识和最佳实践。
+技能（Skills）是 Cody 框架的核心组件之一，遵循
+[Agent Skills Open Standard](https://agentskills.io/) 的目录和 YAML frontmatter 规范。
+通过技能，你可以为 AI Agent 提供可移植的专业知识和工作流。
 
 > **跨平台兼容**：基于 Cody 框架创建的技能可以直接在其他支持 Agent Skills 标准的平台上使用，反之亦然。
 
@@ -77,11 +79,12 @@ git--test    # 不能有连续连字符
 
 ### 步骤 1：创建技能目录
 
-技能可以放在三个位置（优先级从高到低）：
+技能可以来自四类位置（优先级从高到低）：
 
-1. **项目级** — `.cody/skills/<skill-name>/`
-2. **用户级** — `~/.cody/skills/<skill-name>/`
-3. **内置** — `{install}/skills/<skill-name>/`
+1. **自定义目录** — `skills.custom_dirs` 或 `CODY_SKILL_DIRS`
+2. **项目级** — `.cody/skills/<skill-name>/`
+3. **用户级** — `~/.cody/skills/<skill-name>/`
+4. **内置** — `{install}/skills/<skill-name>/`
 
 ```bash
 # 项目级技能
@@ -220,20 +223,14 @@ pytest --cov=src
 
 ## 内置技能参考
 
-Cody 自带 11 个内置技能：
+Cody 3.0.0 自带 5 个内置技能：
 
 | 技能 | 说明 |
 |------|------|
 | `git` | Git 版本控制操作 |
-| `github` | GitHub 集成（PR、Issue 等） |
 | `docker` | Docker 容器管理 |
 | `npm` | Node.js 包管理 |
 | `python` | Python 开发最佳实践 |
-| `rust` | Rust 开发最佳实践 |
-| `go` | Go 开发最佳实践 |
-| `java` | Java 开发（Maven/Gradle） |
-| `web` | Web 搜索和抓取 |
-| `cicd` | CI/CD 配置（GitHub Actions 等） |
 | `testing` | 通用测试最佳实践 |
 
 ### 查看内置技能
@@ -268,7 +265,7 @@ cody skills disable my-skill
 ```json
 {
   "skills": {
-    "enabled": ["git", "github", "my-skill"],
+    "enabled": ["git", "python", "my-skill"],
     "disabled": ["docker"]
   }
 }
@@ -500,9 +497,10 @@ cody run "创建一个用户 API，包含测试"
 
 技能按以下优先级加载（高优先级覆盖低优先级）：
 
-1. **项目级** — `.cody/skills/`
-2. **用户级** — `~/.cody/skills/`
-3. **内置** — `{install}/skills/`
+1. **自定义目录** — `skills.custom_dirs` / `CODY_SKILL_DIRS`
+2. **项目级** — `.cody/skills/`
+3. **用户级** — `~/.cody/skills/`
+4. **内置** — `{install}/skills/`
 
 同名技能，高优先级的会覆盖低优先级的。
 
@@ -540,7 +538,7 @@ compatibility: cursor,codex-cli
 ```json
 {
   "skills": {
-    "disabled": ["docker", "java"]
+    "disabled": ["docker", "npm"]
   }
 }
 ```
@@ -570,7 +568,7 @@ cat .cody/skills/<skill-name>/SKILL.md
 
 ## Agent Skills 开放标准
 
-Cody 遵循 [Agent Skills Open Standard](https://agentskills.io/)，该标准已被 26+ 平台采用：
+Cody 遵循 [Agent Skills Open Standard](https://agentskills.io/)，核心互操作约定包括：
 
 - Claude Code
 - Codex CLI
@@ -652,4 +650,4 @@ async with AsyncCodyClient(workdir="/path/to/project") as client:
 
 ---
 
-**最后更新:** 2026-03-04
+**最后更新:** 2026-07-12

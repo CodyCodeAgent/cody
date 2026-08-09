@@ -119,6 +119,12 @@ def test_put_config_partial_update():
         MockPath.return_value = MagicMock()
 
         client = TestClient(app)
-        resp = client.put("/config", json={"model": "claude-haiku-3-5"})
+        resp = client.put("/config", json={"model": "deepseek-v4-flash"})
 
     assert resp.status_code == 200
+
+
+def test_put_config_rejects_api_key_persistence():
+    client = TestClient(app)
+    response = client.put("/config", json={"model_api_key": "test-secret"})
+    assert response.status_code == 422

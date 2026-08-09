@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from cody.core import Config
 from cody.core.errors import CodyAPIError, ErrorCode
@@ -23,9 +23,11 @@ router = APIRouter(tags=["config"])
 
 class ConfigUpdateRequest(BaseModel):
     """Fields that can be updated via the web UI."""
+
+    model_config = ConfigDict(extra="forbid")
+
     model: Optional[str] = None
     model_base_url: Optional[str] = None
-    model_api_key: Optional[str] = None
     enable_thinking: Optional[bool] = None
     thinking_budget: Optional[int] = None
     # Circuit breaker overrides
@@ -63,8 +65,6 @@ async def get_config(workdir: Optional[str] = None):
             data["model_api_key"] = "***" if key else ""
         if "auth" in data:
             data["auth"].pop("api_key", None)
-            data["auth"].pop("token", None)
-            data["auth"].pop("refresh_token", None)
         return data
 
     except CodyAPIError:
@@ -93,7 +93,6 @@ async def update_config(
             enable_thinking=body.enable_thinking,
             thinking_budget=body.thinking_budget,
             model_base_url=body.model_base_url,
-            model_api_key=body.model_api_key,
         )
 
         # Apply circuit breaker overrides

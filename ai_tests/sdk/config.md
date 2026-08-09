@@ -158,7 +158,7 @@ cody config show 2>&1 | tee /tmp/cody_config_show.log
 
 ```bash
 # 完整的 key 不应该出现在输出中
-if grep -q "sk-sp-9ecbb004a9cd4d288735137eee97bc27" /tmp/cody_config_show.log; then
+if grep -q "${CODY_TEST_API_KEY:?set CODY_TEST_API_KEY}" /tmp/cody_config_show.log; then
     echo "FAIL: full API key exposed"
 else
     echo "PASS: API key is masked"

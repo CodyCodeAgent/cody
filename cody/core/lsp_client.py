@@ -13,6 +13,7 @@ Supported language servers:
 """
 
 import asyncio
+import inspect
 import json
 import logging
 from dataclasses import dataclass
@@ -20,6 +21,14 @@ from enum import Enum
 from pathlib import Path
 
 from ._process import cancel_task_silently, terminate_process
+from .sandbox import (
+    FilesystemPolicy,
+    LocalPolicySandboxBackend,
+    SandboxExecutionRequest,
+    SandboxHandle,
+    SandboxProcess,
+    SandboxSpec,
+)
 from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
@@ -114,8 +123,10 @@ class LSPClient:
         await lsp.stop_all()
     """
 
-    def __init__(self, workdir: Path):
+    def __init__(self, workdir: Path, sandbox: SandboxHandle | None = None):
         self.workdir = workdir.resolve()
+        self.sandbox = sandbox
+        self._owned_sandbox: SandboxHandle | None = None
         self._servers: dict[str, "_LSPServer"] = {}
 
     async def start(self, language: str) -> bool:
@@ -128,12 +139,25 @@ class LSPClient:
             logger.warning("No LSP server known for language: %s", language)
             return False
 
+        if self.sandbox is None:
+            self._owned_sandbox = await LocalPolicySandboxBackend().create(
+                SandboxSpec(
+                    run_id="lsp_service",
+                    workdir=self.workdir,
+                    backend="local-policy",
+                    filesystem=FilesystemPolicy(
+                        read_roots=(self.workdir,), write_roots=(self.workdir,)
+                    ),
+                )
+            )
+            self.sandbox = self._owned_sandbox
         server = _LSPServer(
             language=language,
             command=spec["command"],
             args=spec["args"],
             extensions=spec["extensions"],
             workdir=self.workdir,
+            sandbox=self.sandbox,
         )
 
         try:
@@ -154,6 +178,10 @@ class LSPClient:
     async def stop_all(self) -> None:
         for lang in list(self._servers):
             await self.stop(lang)
+        if self._owned_sandbox is not None:
+            await self._owned_sandbox.terminate()
+            self._owned_sandbox = None
+            self.sandbox = None
 
     @property
     def running_servers(self) -> list[str]:
@@ -182,10 +210,19 @@ class LSPClient:
             return []
 
         content = full_path.read_text(errors="ignore")
+        prepare = getattr(server, "prepare_diagnostics", None)
+        waiter = getattr(server, "wait_for_diagnostics", None)
+        if callable(prepare):
+            prepare(uri)
         await server.did_open(uri, server.language, content)
 
-        # Give the server a moment to analyze
-        await asyncio.sleep(0.5)
+        # Wait for the server's publishDiagnostics notification. This also
+        # distinguishes a valid empty result from "not published yet".
+        waiting = waiter(uri, timeout=5.0) if callable(waiter) else None
+        if inspect.isawaitable(waiting):
+            await waiting
+        else:
+            await asyncio.sleep(0.5)
 
         return server.get_cached_diagnostics(uri)
 
@@ -308,32 +345,40 @@ class _LSPServer:
         args: list[str],
         extensions: set[str],
         workdir: Path,
+        sandbox: SandboxHandle | None,
     ):
         self.language = language
         self.command = command
         self.args = args
         self.extensions = extensions
         self.workdir = workdir
+        self.sandbox = sandbox
 
-        self._process: Optional[asyncio.subprocess.Process] = None
+        self._process: Optional[SandboxProcess | asyncio.subprocess.Process] = None
         self._request_id = 0
         self._pending: dict[int, asyncio.Future] = {}
         self._reader_task: Optional[asyncio.Task] = None
         self._diagnostics: dict[str, list[Diagnostic]] = {}
+        self._diagnostic_events: dict[str, asyncio.Event] = {}
+        self._response_errors: list[dict[str, Any]] = []
         self._buf = b""
 
     @property
     def pid(self) -> Optional[int]:
-        return self._process.pid if self._process else None
+        return getattr(self._process, "pid", None) if self._process else None
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        self._process = await asyncio.create_subprocess_exec(
-            self.command, *self.args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        if self.sandbox is None:
+            raise RuntimeError(
+                "LSP execution requires a SandboxHandle; bind one before start"
+            )
+        self._process = await self.sandbox.spawn(
+            SandboxExecutionRequest(
+                argv=(self.command, *self.args),
+                cwd=self.workdir,
+            )
         )
         self._reader_task = asyncio.create_task(self._reader_loop())
         await self._initialize()
@@ -419,13 +464,45 @@ class _LSPServer:
 
     def _handle_message(self, msg: dict) -> None:
         """Handle incoming LSP message."""
+        # Language servers can issue requests back to the client during
+        # initialization. They remain blocked until a JSON-RPC response is
+        # sent (typescript-language-server requests workspace/configuration).
+        if "id" in msg and "method" in msg:
+            method = msg.get("method", "")
+            params = msg.get("params") or {}
+            if method == "workspace/configuration":
+                result: Any = [{} for _ in params.get("items", [])]
+            elif method == "workspace/workspaceFolders":
+                result = [
+                    {
+                        "uri": f"file://{self.workdir}",
+                        "name": self.workdir.name,
+                    }
+                ]
+            else:
+                # Registration, progress creation, showMessageRequest, and
+                # other optional server requests all accept a null response.
+                result = None
+            self._send_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": result}
+            )
+            return
+
         # Response to a request
         if "id" in msg and "method" not in msg:
             req_id = msg["id"]
             future = self._pending.pop(req_id, None)
             if future and not future.done():
                 if "error" in msg:
-                    future.set_result(None)
+                    self._response_errors.append(dict(msg["error"]))
+                    logger.warning(
+                        "LSP response error for '%s': %s",
+                        self.language,
+                        msg["error"],
+                    )
+                    future.set_exception(
+                        RuntimeError(str(msg["error"].get("message") or msg["error"]))
+                    )
                 else:
                     future.set_result(msg.get("result"))
             return
@@ -450,6 +527,33 @@ class _LSPServer:
                 source=d.get("source"),
             ))
         self._diagnostics[uri] = diags
+        event = self._diagnostic_events.get(uri)
+        if event is not None:
+            event.set()
+
+    def prepare_diagnostics(self, uri: str) -> None:
+        event = self._diagnostic_events.setdefault(uri, asyncio.Event())
+        event.clear()
+
+    async def wait_for_diagnostics(self, uri: str, *, timeout: float) -> None:
+        event = self._diagnostic_events.setdefault(uri, asyncio.Event())
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "LSP diagnostics timed out for %s after %.1fs", uri, timeout
+            )
+            return
+        if self._diagnostics.get(uri):
+            return
+        # Some servers publish an initial empty set while the workspace is
+        # still loading, followed shortly by the real diagnostics. Debounce
+        # that empty notification so callers do not observe a false success.
+        event.clear()
+        try:
+            await asyncio.wait_for(event.wait(), timeout=1.5)
+        except asyncio.TimeoutError:
+            pass
 
     def get_cached_diagnostics(self, uri: str) -> list[Diagnostic]:
         return self._diagnostics.get(uri, [])
@@ -458,7 +562,7 @@ class _LSPServer:
 
     async def _initialize(self) -> None:
         """Send LSP initialize + initialized."""
-        await self.request(
+        result = await self.request(
             "initialize",
             {
                 "processId": None,
@@ -473,6 +577,8 @@ class _LSPServer:
                 },
             },
         )
+        if result is None:
+            raise RuntimeError(f"LSP initialize timed out for {self.language}")
         self._send_notification("initialized", {})
 
     async def did_open(self, uri: str, language_id: str, text: str) -> None:

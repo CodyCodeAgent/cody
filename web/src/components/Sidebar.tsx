@@ -64,6 +64,9 @@ export default function Sidebar({
         )}
       </ul>
       <div className="sidebar-footer">
+        <button className="sidebar-nav-btn" onClick={() => navigate("/runtime")}>
+          Runtime
+        </button>
         <button className="sidebar-nav-btn" onClick={() => navigate("/skills")}>
           Skills
         </button>

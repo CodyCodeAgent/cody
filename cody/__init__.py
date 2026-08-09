@@ -16,6 +16,12 @@ _LAZY_IMPORTS = {
     "ToolResult": (".sdk.types", "ToolResult"),
     "Usage": (".sdk.types", "Usage"),
     "config": (".sdk.config", "config"),
+    "CodyRuntime": (".core.runtime", "CodyRuntime"),
+    "RuntimeRun": (".core.runtime", "RuntimeRun"),
+    "RuntimeRunResult": (".core.runtime", "RuntimeRunResult"),
+    "SandboxManager": (".core.sandbox", "SandboxManager"),
+    "SandboxSpec": (".core.sandbox", "SandboxSpec"),
+    "RemoteSandboxBackend": (".core.sandbox", "RemoteSandboxBackend"),
 }
 
 __all__ = ["__version__"] + list(_LAZY_IMPORTS.keys())

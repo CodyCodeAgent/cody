@@ -13,7 +13,7 @@ pip install -e ".[dev]"
 cd web && npm install
 
 # 开发模式 — 一条命令启动前后端（含 Vite HMR）
-cody-web --dev
+cody-web run --dev
 # 打开浏览器 → http://localhost:5173
 ```
 
@@ -21,7 +21,7 @@ cody-web --dev
 
 ```bash
 cd web && npm run build    # 输出到 web/dist/
-cody-web                   # 后端自动托管编译后的前端
+cody-web run               # 后端自动托管编译后的前端
 # 打开浏览器 → http://localhost:8000
 ```
 
@@ -33,12 +33,14 @@ cody-web                   # 后端自动托管编译后的前端
 浏览器 (React SPA, port 5173)
   │
   ├── HTTP /api/*  ──→  FastAPI (port 8000)  ──→  cody.core
-  └── WS /ws/chat/*  ──→  FastAPI (port 8000)  ──→  AgentRunner.run_stream()
+  ├── HTTP /runtime/* ─→  CodyRuntime + shared durable stores
+  └── WS /ws/chat/*  ──→  FastAPI (port 8000)  ──→  CodyRuntime / RunEvent
 ```
 
 - **前端** — React 18 + TypeScript + Vite，通过 Vite proxy 连接后端
-- **后端** — FastAPI 统一应用，直接 import `cody.core`（无 HTTP 中间层）
-- **数据库** — 项目存 `web.db`（SQLite），会话存 `~/.cody/sessions.db`
+- **后端** — FastAPI 统一应用，在进程内使用 `CodyRuntime`（无额外服务跳转）
+- **数据库** — 项目存 `web.db`，会话存 `~/.cody/sessions.db`，Run 数据按 workdir
+  存在 `~/.cody/runtime/<project-id>/`
 
 ---
 
@@ -47,13 +49,14 @@ cody-web                   # 后端自动托管编译后的前端
 ```
 web/src/
 ├── main.tsx              # 入口
-├── App.tsx               # 路由（/ → HomePage, /chat/:id → ChatPage）
+├── App.tsx               # Home、Chat 与 Runtime 路由
 ├── index.css             # 全局样式（暗色主题）
 ├── types/index.ts        # TypeScript 接口定义
 ├── api/client.ts         # HTTP + WebSocket 客户端
 ├── pages/
 │   ├── HomePage.tsx      # 项目列表 + 创建入口
-│   └── ChatPage.tsx      # 对话页面
+│   ├── ChatPage.tsx      # 对话页面
+│   └── RuntimePage.tsx   # Run/审批/timeline/artifact 控制台
 └── components/
     ├── ProjectWizard.tsx  # 目录浏览 + 项目创建表单
     ├── ChatWindow.tsx     # 消息列表 + 输入框（WebSocket 连接）
@@ -66,6 +69,7 @@ web/src/
 1. **项目创建** — `ProjectWizard` 浏览目录 → 选择路径 → `POST /api/projects` → 自动创建 `.cody/` 和关联 session
 2. **实时对话** — `ChatWindow` 建立 `WS /ws/chat/{projectId}` → 发送消息 → 接收流式事件（`text_delta` / `tool_call` / `done`）
 3. **会话持久化** — 每个项目绑定一个 Cody session，多轮对话自动保持上下文
+4. **Runtime 管理** — `RuntimePage` 通过 `/runtime/*` 查询并控制同一 workdir 的 durable Run
 
 ---
 
@@ -84,6 +88,7 @@ web/backend/
     ├── chat.py           # WebSocket 对话代理
     ├── directories.py    # 目录浏览
     ├── run.py            # POST /run, /run/stream（Agent 执行）
+    ├── runtime_routes.py # Canonical Runtime 查询、控制、审批和产物
     ├── sessions.py       # 会话管理
     ├── skills.py         # 技能管理
     ├── tool.py           # 工具直调
@@ -103,6 +108,7 @@ web/backend/
 | **工具** | `POST /tool` | 直接调用工具 |
 | **会话** | `GET/POST /sessions`, `GET/DELETE /sessions/{id}` | 会话管理 |
 | **技能** | `GET /skills`, `GET /skills/{name}` | 技能查询 |
+| **Runtime** | `/runtime/runs`, `/timeline`, `/metrics`, `/checkpoints`, `/approvals`, `/artifacts`, `/audit` | 可恢复 Run 管理与控制 |
 | **Agent** | `POST /agent/spawn`, `GET/DELETE /agent/{id}` | 子 Agent 管理 |
 | **审计** | `GET /audit` | 审计日志 |
 | **健康** | `GET /health`, `GET /api/health` | 健康检查 |
@@ -122,13 +128,16 @@ web/backend/
 ## 测试
 
 ```bash
-# 前端测试（Vitest + jsdom，33 个）
+# 前端测试（Vitest + jsdom）
 cd web
-npx vitest run
+npm test -- --run
 
-# 后端测试（Pytest，45 个）
+# TypeScript + 生产构建
+npm run build
+
+# 后端测试
 cd /path/to/cody
-PYTHONPATH=. python3 -m pytest web/tests/ -v
+uv run pytest web/tests/ -q
 ```
 
 | 测试文件 | 覆盖内容 |
@@ -136,6 +145,7 @@ PYTHONPATH=. python3 -m pytest web/tests/ -v
 | `__tests__/api/client.test.ts` | API 客户端 mock 测试 |
 | `__tests__/components/*.test.tsx` | React 组件测试 |
 | `__tests__/pages/*.test.tsx` | 页面路由测试 |
+| `__tests__/pages/RuntimePage.test.tsx` | Runtime console 状态与控制 |
 | `tests/test_projects.py` | 项目 CRUD |
 | `tests/test_chat.py` | WebSocket 对话 |
 | `tests/test_directories.py` | 目录浏览 |
@@ -144,6 +154,7 @@ PYTHONPATH=. python3 -m pytest web/tests/ -v
 | `tests/test_skills.py` | 技能查询 |
 | `tests/test_tool.py` | 工具调用 |
 | `tests/test_health.py` | 健康检查 |
+| `tests/test_runtime_routes.py` | Runtime REST、恢复和审批 |
 
 ---
 
@@ -167,9 +178,16 @@ PYTHONPATH=. python3 -m pytest web/tests/ -v
 
 - Vite dev server（5173）通过 proxy 转发 `/api` 和 `/ws` 到后端（8000）
 - 生产构建后，后端自动托管 `web/dist/` 静态文件，并提供 SPA fallback
-- 后端直接 import `cody.core`，不经过 HTTP SDK — 零网络开销
+- 后端在进程内使用 canonical Runtime；兼容 REST/WS 消息从 persisted `RunEvent` 派生
 - 每个项目创建时会自动初始化 `.cody/config.json` 并创建关联的 Cody session
+- Settings 只保存非敏感配置；模型 Key 必须通过服务进程的 `CODY_MODEL_API_KEY` 或
+  secret manager 注入
 - 流式状态栏 — 显示 Thinking/Running/Generating 状态 + 实时耗时 + Stop 按钮
 - WebSocket 断连恢复 — streaming 中 WS 断连时自动重置状态并提示 "Connection lost"
 - 空闲超时 — 120s 无事件自动停止 streaming，防止永久卡住
 - GFM Markdown — `remark-gfm` 支持表格、删除线、任务列表等 GitHub 风格 Markdown
+
+完整端点见 [HTTP API](../docs/API.md)，运行语义见
+[Runtime 使用与部署](../docs/RUNTIME.md)。
+
+**最后更新：2026-07-12**

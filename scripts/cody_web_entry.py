@@ -1,5 +1,4 @@
 """PyInstaller entry point for cody-web (API-only, no frontend)."""
-import sys
 import argparse
 
 

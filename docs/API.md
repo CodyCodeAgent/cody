@@ -8,7 +8,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 1.8.0
+**版本：** 3.0.0
 
 ---
 
@@ -26,7 +26,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
   "prompt": "创建一个 FastAPI 项目",
   "workdir": "/path/to/project",
   "allowed_roots": [],
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
   "model_base_url": null,
   "model_api_key": null,
   "skills": ["python", "git"],
@@ -43,10 +43,9 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
 | prompt | string | ✅ | 任务描述 |
 | workdir | string | ❌ | 工作目录（执行锚点），默认当前目录 |
 | allowed_roots | string[] | ❌ | 额外允许工具访问的目录（访问边界扩展），追加到配置文件设置之上 |
-| strict_read_boundary | boolean | ❌ | 是否限制读操作也遵守访问边界（默认 `false`） |
 | model | string | ❌ | 模型名称，默认配置中的模型 |
 | model_base_url | string | ❌ | 自定义 OpenAI 兼容 API 地址 |
-| model_api_key | string | ❌ | 自定义模型提供商的 API Key |
+| model_api_key | string | ❌ | 单请求 API Key（不推荐；生产环境应由服务端 secret manager 注入） |
 | enable_thinking | bool | ❌ | 启用 thinking 模式（需模型支持） |
 | thinking_budget | int | ❌ | thinking 最大 token 数（如 10000） |
 | skills | string[] | ❌ | 启用的 Skills 列表 |
@@ -71,7 +70,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
   "prompt": "写一个排序算法",
   "model": "glm-4",
   "model_base_url": "https://open.bigmodel.cn/api/paas/v4/",
-  "model_api_key": "sk-your-key"
+  "model_api_key": "your-api-key"
 }
 ```
 
@@ -81,7 +80,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
   "prompt": "写一个排序算法",
   "model": "qwen3.5",
   "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "model_api_key": "sk-..."
+  "model_api_key": "your-api-key"
 }
 ```
 
@@ -285,29 +284,42 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 - `404` - 目录不存在（`INVALID_PARAMS`）
 - `403` - 权限不足（`PERMISSION_DENIED`）
 
-#### POST /api/projects/init
+#### Projects 与 Tasks
 
-在指定目录初始化 `.cody/` 项目目录。
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/projects` | GET | 列出项目 |
+| `/api/projects` | POST | 创建项目、初始化 `.cody/` 并创建关联 session |
+| `/api/projects/{project_id}` | GET/PUT/DELETE | 查询、更新或删除项目 |
+| `/api/projects/{project_id}/init` | POST | 使用模型分析项目并生成/更新 `CODY.md` |
+| `/api/projects/{project_id}/tasks` | GET/POST | 列出或创建开发任务 |
+| `/api/tasks/{task_id}` | GET/PUT/DELETE | 查询、更新或删除任务 |
 
-**请求体：**
+创建项目：
+
 ```json
 {
-  "workdir": "/path/to/project"
+  "name": "Cody",
+  "description": "Agent Runtime",
+  "workdir": "/path/to/project",
+  "code_paths": []
 }
 ```
 
-**响应：**
+创建 task 会在项目 Git 仓库中创建/切换 `branch_name`，并创建独立 session：
+
 ```json
 {
-  "status": "success",
-  "workdir": "/path/to/project"
+  "name": "Fix runtime recovery",
+  "branch_name": "fix/runtime-recovery"
 }
 ```
 
-**HTTP 状态码：**
-- `200` - 成功
-- `404` - 目录不存在（`INVALID_PARAMS`）
-- `422` - 缺少 workdir 参数
+项目或 task 不存在返回 404；请求字段不合法返回 422。`/init` 需要已配置可用模型。
+
+Web 前端还提供两个项目化 WebSocket：`/ws/chat/{project_id}` 与
+`/ws/chat/task/{task_id}`。两者使用项目/task 的 workdir 和 session，并从 canonical
+RunEvent 投影兼容聊天事件。
 
 ---
 
@@ -350,7 +362,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
     {
       "id": "abc123",
       "title": "My session",
-      "model": "claude-sonnet-4-0",
+      "model": "deepseek-v4-flash",
       "workdir": "/path/to/project",
       "message_count": 4,
       "created_at": "2026-02-13T12:00:00",
@@ -369,7 +381,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 {
   "id": "abc123",
   "title": "My session",
-  "model": "claude-sonnet-4-0",
+  "model": "deepseek-v4-flash",
   "workdir": "/path/to/project",
   "message_count": 2,
   "created_at": "2026-02-13T12:00:00",
@@ -392,7 +404,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 
 ---
 
-### 6. 子 Agent 管理
+### 7. 子 Agent 管理
 
 #### POST /agent/spawn
 
@@ -466,11 +478,11 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 
 ---
 
-### 7. 健康检查
+### 8. 健康检查
 
-#### GET /health
+#### GET /health 与 GET /api/health
 
-检查服务状态。
+两个端点返回相同服务状态。
 
 **响应：**
 ```json
@@ -482,7 +494,7 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 
 ---
 
-### 8. 审计日志
+### 9. 审计日志
 
 #### GET /audit
 
@@ -518,6 +530,9 @@ data: {"type": "error", "error": {"code": "SERVER_ERROR", "message": "..."}}
 ---
 
 ## 认证
+
+生产服务通过 `CODY_AUTH_API_KEY` 配置 API Key 认证。凭证不由 `/config` 持久化，
+也不会在 `GET /config` 返回。
 
 Server 支持可选的认证中间件。配置 `auth` 后，所有非公开端点（`/health`, `/docs` 除外）都需要认证。
 
@@ -567,6 +582,45 @@ Authorization: Bearer your_auth_token
 
 ## WebSocket API
 
+## Canonical Runtime API
+
+所有端点通过 `workdir` 连接与 CLI/TUI 相同的 durable Runtime stores。
+生命周期、恢复语义和部署后端详见 [Runtime 使用与部署](RUNTIME.md)。
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/runtime/runs` | POST | 异步启动 canonical Run，返回 202 |
+| `/runtime/runs` | GET | 分页列出 Runs |
+| `/runtime/runs/{id}` | GET | Run 与 Step 详情 |
+| `/runtime/runs/{id}/timeline` | GET | Timeline、checkpoint、artifact 关联视图 |
+| `/runtime/runs/{id}/metrics` | GET | 时长、usage、重试、工具、gate 和 artifact 指标 |
+| `/runtime/runs/{id}/checkpoints` | GET | Checkpoint 列表 |
+| `/runtime/runs/{id}/artifacts` | GET | Run Artifacts |
+| `/runtime/runs/{id}/pause` | POST | 请求安全边界暂停 |
+| `/runtime/runs/{id}/cancel` | POST | 跨进程取消 |
+| `/runtime/runs/{id}/resume` | POST | 恢复 waiting/paused Run |
+| `/runtime/runs/{id}/retry` | POST | 重试 failed/cancelled Run |
+| `/runtime/runs/{id}/recover` | POST | 恢复进程终止后孤立的 running Run |
+| `/runtime/forks` | POST | 从 checkpoint fork |
+| `/runtime/approvals` | GET | 查询审批 |
+| `/runtime/approvals/{id}/approve` | POST | 批准 |
+| `/runtime/approvals/{id}/reject` | POST | 拒绝 |
+| `/runtime/artifacts/{id}` | GET | Artifact 详情 |
+| `/runtime/audit` | GET | Runtime action audit |
+
+启动示例：
+
+```bash
+curl -X POST http://localhost:8000/runtime/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"修复测试", "workdir":"/path/to/project"}'
+```
+
+接口返回 202 后通过 Run 详情或 timeline 观察进度；取消和审批不会依赖发起请求的
+HTTP 连接持续存在。
+
+---
+
 ### WS /ws
 
 建立 WebSocket 连接，用于实时双向交互。支持流式推送和中途取消。
@@ -587,7 +641,7 @@ Authorization: Bearer your_auth_token
   "data": {
     "prompt": "创建文件",
     "workdir": "/path",
-    "model": "claude-sonnet-4-0",
+    "model": "deepseek-v4-flash",
     "session_id": "abc123",
     "images": [
       {"data": "<base64>", "media_type": "image/png", "filename": "screenshot.png"}
@@ -741,4 +795,4 @@ curl http://localhost:8000/health
 
 ---
 
-**最后更新：** 2026-03-26
+**最后更新：** 2026-07-12

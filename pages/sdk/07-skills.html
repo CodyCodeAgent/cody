@@ -134,7 +134,7 @@
 
     <p>运行后你会看到每条 Skill 的名称、来源与是否启用；<code>get_skill</code> 则返回 <code>documentation</code> 字段（整份 <code>SKILL.md</code> 文本），便于你在 UI 或调试脚本里展示。</p>
 
-    <h2 id="loading">加载机制：四层优先级与 11 个内置 Skill</h2>
+    <h2 id="loading">加载机制：四层优先级与 5 个内置 Skill</h2>
     <p>Cody 按固定顺序合并 Skill 来源，<strong>高优先级覆盖低优先级</strong>中同名 Skill。记忆口诀：</p>
     <p style="text-align:center;font-weight:600;margin:1rem 0;"><code>custom</code> &gt; <code>project</code> &gt; <code>global</code> &gt; <code>builtin</code></p>
 
@@ -150,8 +150,8 @@
       </tbody>
     </table>
 
-    <p>内置共 <strong>11</strong> 个 Skill，名称如下（与 SDK 约定一致）：</p>
-    <p><code>git</code>、<code>github</code>、<code>docker</code>、<code>npm</code>、<code>python</code>、<code>rust</code>、<code>go</code>、<code>java</code>、<code>web</code>、<code>cicd</code>、<code>testing</code>。</p>
+    <p>内置共 <strong>5</strong> 个 Skill，名称如下（与 Cody 3.0.0 一致）：</p>
+    <p><code>docker</code>、<code>git</code>、<code>npm</code>、<code>python</code>、<code>testing</code>。</p>
 
     <h2 id="query-api">查询 API：<code>list_skills</code> 与 <code>get_skill</code></h2>
     <h3><code>list_skills</code></h3>
@@ -250,7 +250,6 @@ client = (
     .workdir(<span class="str">"."</span>)
     .<span class="fn">model</span>(<span class="str">"qwen3.5-plus"</span>)
     .<span class="fn">base_url</span>(<span class="str">"https://coding.dashscope.aliyuncs.com/v1"</span>)
-    .<span class="fn">api_key</span>(<span class="str">"sk-xxx"</span>)
     .<span class="fn">build</span>()
 )</pre>
     </div>
@@ -260,7 +259,7 @@ client = (
     </div>
 
     <h2 id="summary">小结</h2>
-    <p>本篇覆盖了 Skills 的四层优先级、11 个内置名称、<code>list_skills</code> / <code>get_skill</code> 的返回字段，以及自定义 <code>SKILL.md</code> 与 <code>skill_dir</code> / <code>CODY_SKILL_DIRS</code> 的配置方式。下一步建议在真实项目里加一个 <code>.cody/skills/</code> 目录试跑，再阅读 <a href="08-mcp.html">第 08 篇 · 集成 MCP</a>，把外部工具与文档能力接到同一套 Agent 上。</p>
+    <p>本篇覆盖了 Skills 的四层优先级、5 个内置名称、<code>list_skills</code> / <code>get_skill</code> 的返回字段，以及自定义 <code>SKILL.md</code> 与 <code>skill_dir</code> / <code>CODY_SKILL_DIRS</code> 的配置方式。下一步建议在真实项目里加一个 <code>.cody/skills/</code> 目录试跑，再阅读 <a href="08-mcp.html">第 08 篇 · 集成 MCP</a>，把外部工具与文档能力接到同一套 Agent 上。</p>
     <!-- ARTICLE CONTENT END -->
 
     <div class="article-prev-next">

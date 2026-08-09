@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from cody.tui import CodyTUI, MessageBubble, StreamBubble, run_tui
+from cody.core.runtime import RunRecord, RunStatus, RuntimeStoreBundle
 
 
 # ── MessageBubble ────────────────────────────────────────────────────────────
@@ -241,6 +242,37 @@ async def test_tui_slash_unknown(mock_client_cls, mock_config_load, tmp_path):
 
         bubbles = app.query(MessageBubble)
         assert len(bubbles) >= 1
+
+
+@pytest.mark.asyncio
+@patch("cody.tui.app.Config.load")
+@patch("cody.tui.app.AsyncCodyClient")
+async def test_tui_runtime_slash_commands_share_durable_runs(
+    mock_client_cls,
+    mock_config_load,
+    tmp_path,
+    monkeypatch,
+):
+    _setup_tui_mocks(mock_client_cls, mock_config_load)
+    monkeypatch.setenv("CODY_RUNTIME_HOME", str(tmp_path / "runtime-home"))
+    stores = RuntimeStoreBundle.for_workdir(tmp_path)
+    stores.run_store.save_run(
+        RunRecord(
+            task="visible in TUI",
+            run_id="run_tui_shared",
+            status=RunStatus.COMPLETED,
+        )
+    )
+
+    app = CodyTUI(workdir=tmp_path)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#prompt-input")
+        inp.value = "/runs"
+        await pilot.press("enter")
+        await pilot.pause()
+
+        bubbles = list(app.query(MessageBubble))
+        assert any("run_tui_shared" in bubble.content_text for bubble in bubbles)
 
 
 def test_tui_max_bubbles_constant():

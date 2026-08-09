@@ -103,6 +103,91 @@ def serialize_stream_event(event, session_id: Optional[str] = None) -> dict:
     return base
 
 
+def serialize_runtime_event(
+    event, session_id: Optional[str] = None, model_result=None
+) -> Optional[dict]:
+    """Serialize canonical Runtime events into the established Web stream API."""
+
+    from cody.core.runtime.events import RunEventType
+
+    payload = event.payload
+    mapping = {
+        RunEventType.SESSION_STARTED: "session_start",
+        RunEventType.MODEL_THINKING_DELTA: "thinking",
+        RunEventType.MODEL_TEXT_DELTA: "text_delta",
+        RunEventType.TOOL_CALL_STARTED: "tool_call",
+        RunEventType.TOOL_CALL_COMPLETED: "tool_result",
+        RunEventType.CONTEXT_COMPACTED: "compact",
+        RunEventType.CONTEXT_PRUNED: "prune",
+        RunEventType.MODEL_RETRYING: "retry",
+        RunEventType.CIRCUIT_BREAKER_TRIGGERED: "circuit_breaker",
+        RunEventType.HUMAN_INPUT_REQUESTED: "interaction_request",
+        RunEventType.USER_INPUT_RECEIVED: "user_input_received",
+        RunEventType.RUN_CANCELLED: "cancelled",
+        RunEventType.RUN_COMPLETED: "done",
+    }
+    web_type = mapping.get(event.event_type)
+    if web_type is None:
+        return None
+    result: dict[str, Any] = {"type": web_type, "run_id": event.run_id}
+    effective_sid = payload.get("session_id") or session_id
+    if effective_sid:
+        result["session_id"] = effective_sid
+    if web_type in {"thinking", "text_delta", "user_input_received"}:
+        result["content"] = str(payload.get("content") or "")
+    elif web_type == "tool_call":
+        result.update({
+            "tool_name": payload.get("tool_name"),
+            "args": payload.get("args") or {},
+            "tool_call_id": payload.get("tool_call_id"),
+        })
+    elif web_type == "tool_result":
+        result.update({
+            "tool_name": payload.get("tool_name"),
+            "tool_call_id": payload.get("tool_call_id"),
+            "result": str(payload.get("result") or "")[:500],
+        })
+    elif web_type in {"compact", "prune", "retry", "circuit_breaker"}:
+        result.update({
+            key: value for key, value in payload.items()
+            if key not in {"legacy_event_type", "event_scope", "checkpoint_id"}
+        })
+    elif web_type == "interaction_request":
+        request = payload.get("request") or {}
+        result.update({
+            "request_id": request.get("id"),
+            "kind": request.get("kind"),
+            "prompt": request.get("prompt"),
+            "options": request.get("options"),
+        })
+    elif web_type == "done":
+        result["output"] = str(payload.get("output") or "")
+        if model_result is not None:
+            result["thinking"] = model_result.thinking
+            if model_result.tool_traces:
+                result["tool_traces"] = [
+                    {
+                        "tool_name": trace.tool_name,
+                        "args": trace.args,
+                        "result": trace.result[:500],
+                    }
+                    for trace in model_result.tool_traces
+                ]
+            usage = model_result.usage()
+            if usage:
+                result["usage"] = {"total_tokens": usage.total_tokens}
+            if model_result.metadata:
+                result["metadata"] = {
+                    "summary": model_result.metadata.summary,
+                    "confidence": model_result.metadata.confidence,
+                }
+        elif payload.get("usage"):
+            result["usage"] = {
+                "total_tokens": payload["usage"].get("total_tokens", 0)
+            }
+    return result
+
+
 def build_prompt(text: str, images_raw: Optional[List[dict]] = None) -> Prompt:
     """Build a Prompt from text and optional raw image dicts.
 

@@ -96,6 +96,7 @@ describe("createProject", () => {
         name: "Test",
         workdir: "/tmp",
         description: "A description",
+        code_paths: [],
       }),
     });
   });

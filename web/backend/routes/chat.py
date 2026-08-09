@@ -21,11 +21,12 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from cody.core import SessionStore
 from cody.core.auth import AuthError
 from cody.core.interaction import InteractionResponse
+from cody.core.runtime.control import WorkflowCancelled
 
 from ..db import ProjectStore
-from ..helpers import build_prompt, resolve_chat_runner, serialize_stream_event
+from ..helpers import build_prompt, resolve_chat_runner, serialize_runtime_event
 from ..middleware import validate_credential
-from ..state import get_project_store, session_store_dep
+from ..state import create_runtime, get_project_store, session_store_dep
 
 logger = logging.getLogger("cody.web.chat")
 
@@ -123,46 +124,36 @@ async def chat_websocket(
             t0 = time.monotonic()
             event_count = 0
             last_event_type = ""
-
-            if sid:
-                logger.info(
-                    "Chat stream start: project=%s session=%s (with session)",
-                    project_id, sid,
-                )
-                async for event, s in runner.run_stream_with_session(
-                    prompt, session_store, sid,
-                    include_tools=include_tools, exclude_tools=exclude_tools,
-                    cancel_event=run_cancel_event,
-                ):
-                    etype = type(event).__name__
-                    last_event_type = etype
-                    payload = serialize_stream_event(event, session_id=s)
-                    await _safe_send(run, payload)
-                    event_count += 1
-                    if event_count <= 3 or etype == "DoneEvent":
-                        logger.debug(
-                            "Chat event #%d: project=%s type=%s",
-                            event_count, project_id, etype,
-                        )
-            else:
-                logger.info(
-                    "Chat stream start: project=%s (no session)",
-                    project_id,
-                )
-                async for event in runner.run_stream(
-                    prompt, include_tools=include_tools, exclude_tools=exclude_tools,
-                    cancel_event=run_cancel_event,
-                ):
-                    etype = type(event).__name__
-                    last_event_type = etype
-                    payload = serialize_stream_event(event)
-                    await _safe_send(run, payload)
-                    event_count += 1
-                    if event_count <= 3 or etype == "DoneEvent":
-                        logger.debug(
-                            "Chat event #%d: project=%s type=%s",
-                            event_count, project_id, etype,
-                        )
+            runtime = create_runtime(runner, Path(project.workdir))
+            handle = await runtime.start(
+                prompt,
+                session_store=(session_store if sid else None),
+                session_id=sid,
+                include_tools=include_tools,
+                exclude_tools=exclude_tools,
+                cancel_event=run_cancel_event,
+            )
+            async for event in handle.events():
+                model_result = None
+                if event.event_type.value == "run.completed":
+                    completed = await handle.result()
+                    model_result = completed.model_result
+                    sid = completed.session_id
+                payload = serialize_runtime_event(event, sid, model_result)
+                if payload is None:
+                    continue
+                last_event_type = payload["type"]
+                await _safe_send(run, payload)
+                event_count += 1
+                if event_count <= 3 or payload["type"] == "done":
+                    logger.debug(
+                        "Chat event #%d: project=%s type=%s",
+                        event_count, project_id, payload["type"],
+                    )
+            try:
+                await handle.result()
+            except WorkflowCancelled:
+                pass
 
             elapsed = time.monotonic() - t0
             logger.info(

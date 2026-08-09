@@ -75,7 +75,11 @@ def _interactive_setup() -> Config:
     config_path = Path.home() / ".cody" / "config.json"
     cfg.save(config_path)
 
-    console.print(f"\n[green]Configuration saved to {config_path}[/green]")
+    console.print(f"\n[green]Non-secret configuration saved to {config_path}[/green]")
+    console.print(
+        "[yellow]API keys are not persisted. Set CODY_MODEL_API_KEY in each "
+        "shell or inject it with your secret manager.[/yellow]"
+    )
     return cfg
 
 

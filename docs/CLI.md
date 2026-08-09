@@ -27,8 +27,8 @@ cody --version
 # 推荐：交互式配置
 cody config setup
 
-# 或手动设置环境变量
-export CODY_MODEL_API_KEY='sk-ant-...'
+# 密钥通过环境变量或 secret manager 注入
+export CODY_MODEL_API_KEY='your-api-key'
 ```
 
 ### 初始化项目
@@ -48,9 +48,51 @@ cody init
 | `cody chat` | 交互式对话 |
 | `cody tui` | 全屏终端界面 |
 | `cody sessions` | 会话管理 |
+| `cody runs` | Canonical Runtime Run 查询与控制 |
+| `cody approvals` | Runtime 审批 |
+| `cody artifacts` | Runtime 产物 |
+| `cody timeline` | Runtime timeline/checkpoint |
 | `cody skills` | 技能管理 |
 | `cody config` | 配置管理 |
 | `cody init` | 初始化项目 |
+
+> `cody tui` 需要 `pip install 'cody-ai[cli,tui]'`（或 `cody-ai[all]`）；仅安装 `[cli]`
+> 不包含 Textual。
+
+---
+
+## Canonical Runtime 命令
+
+CLI、TUI 和 Web 根据规范化 workdir 连接同一组 durable SQLite stores。默认位置为
+`~/.cody/runtime/<project-id>/`，可通过 `CODY_RUNTIME_HOME` 覆盖。
+
+```bash
+cody runs list --workdir /path/to/project
+cody runs show <run_id>
+cody runs watch <run_id>
+cody runs metrics <run_id>
+cody runs pause <run_id>
+cody runs cancel <run_id>
+cody runs resume <run_id>
+cody runs retry <run_id> [--checkpoint-id <id>]
+cody runs recover <run_id>
+cody runs fork <checkpoint_id> [--new-run-id <id>]
+
+cody approvals list --status pending
+cody approvals approve <approval_id>
+cody approvals reject <approval_id> --reason "needs changes"
+
+cody artifacts list --run-id <run_id>
+cody artifacts show <artifact_id>
+cody timeline show <run_id>
+cody timeline checkpoints <run_id>
+```
+
+`pause`/`cancel` 写入共享 control store，因此可以控制由 Web 或另一个 CLI 进程启动
+的 Run。`recover` 用于服务/进程终止后仍处于 `running` 状态的 Run，从最后安全
+checkpoint 继续。
+
+所有查询命令支持 `--workdir`；主要读取命令支持 `--json`，便于脚本和 CI 使用。
 
 ---
 
@@ -73,6 +115,13 @@ cody run "任务描述" \
   --thinking-budget <token 数> \
   --workdir <工作目录> \
   --allow-root <额外目录> \
+  --session <会话 ID> \
+  --image <图片路径> \
+  --max-tokens <token 数> \
+  --max-cost <美元> \
+  --max-steps <工具步数> \
+  --include-tools <逗号分隔工具> \
+  --exclude-tools <逗号分隔工具> \
   --verbose
 ```
 
@@ -86,9 +135,18 @@ cody run "任务描述" \
 | `--thinking-budget` | 思考模式最大 token 数 | - |
 | `--workdir` | 工作目录（执行锚点，用于 config 加载和命令执行） | 当前目录 |
 | `--allow-root` | 额外允许访问的目录（可重复，扩展访问边界） | - |
+| `--session` | 恢复指定会话 | - |
+| `--continue` | 继续当前 workdir 最近的会话 | `false` |
+| `--image` | 附加图片（可重复；端点模型必须支持视觉） | - |
+| `--max-tokens` | 单次运行 token 熔断上限 | 配置值 |
+| `--max-cost` | 单次运行成本熔断上限（USD） | 配置值 |
+| `--max-steps` | 工具调用步数上限 | 配置值 |
+| `--include-tools` | 只允许逗号分隔的工具集合 | 全部 |
+| `--exclude-tools` | 排除逗号分隔的工具集合 | 无 |
 | `--verbose`, `-v` | 详细输出（显示工具调用结果） | `false` |
 
-> 模型提供商、API Key 等请通过 `cody config setup` 配置，无需每次传参。
+> 模型和 Base URL 可通过 `cody config setup` 配置；API Key 不落盘，使用
+> `CODY_MODEL_API_KEY` 或部署平台 secret manager。
 
 ### 使用示例
 
@@ -160,7 +218,7 @@ cody run "复杂任务分析"
 cody run -v "读取并分析 main.py"
 
 # 输出示例：
-# Model: claude-sonnet-4-0
+# Model: deepseek-v4-flash
 # Workdir: /home/user/project
 #   → read_file(path='main.py')
 #     [内容预览...]
@@ -206,6 +264,11 @@ cody chat \
   --workdir <工作目录> \
   --allow-root <额外目录> \
   --session <会话 ID> \
+  --max-tokens <token 数> \
+  --max-cost <美元> \
+  --max-steps <工具步数> \
+  --include-tools <逗号分隔工具> \
+  --exclude-tools <逗号分隔工具> \
   --continue
 ```
 
@@ -220,6 +283,8 @@ cody chat \
 | `--allow-root` | 额外允许访问的目录（可重复） |
 | `--session` | 恢复指定会话 |
 | `--continue` | 继续上次会话 |
+| `--max-tokens` / `--max-cost` / `--max-steps` | 本次交互会话的熔断上限 |
+| `--include-tools` / `--exclude-tools` | 本次会话的工具过滤 |
 
 ### 使用示例
 
@@ -230,7 +295,7 @@ cody chat \
 cody chat
 
 # 指定模型
-cody chat --model claude-sonnet-4-0
+cody chat --model deepseek-v4-flash
 
 # 指定工作目录
 cody chat --workdir /path/to/project
@@ -268,7 +333,7 @@ cody chat --continue --workdir /new/path
 ```
 ╭────────────────────────────────────────────────────╮
 │                  Cody Chat                          │
-│  Model: claude-sonnet-4-0                │
+│  Model: deepseek-v4-flash                │
 │  Workdir: /home/user/project                       │
 │  Session: abc123                                   │
 ╰────────────────────────────────────────────────────╯
@@ -330,6 +395,9 @@ cody tui \
   --workdir <工作目录> \
   --allow-root <额外目录> \
   --session <会话 ID> \
+  --max-tokens <token 数> \
+  --max-cost <美元> \
+  --max-steps <工具步数> \
   --continue
 ```
 
@@ -423,7 +491,7 @@ cody sessions show <session_id>
 ╭────────────────────────────────────────────────────╮
 │            Session abc123                           │
 │  Title: Flask 应用开发                             │
-│  Model: claude-sonnet-4-0                │
+│  Model: deepseek-v4-flash                │
 │  Workdir: /home/user/project                       │
 │  Created: 2026-02-28T10:00:00                      │
 │  Messages: 4                                       │
@@ -557,13 +625,14 @@ cody config set     # 设置配置项
 
 ### config setup
 
-交互式配置向导，引导选择模型提供商、输入 API Key 等。
+交互式配置向导，引导输入模型、OpenAI-compatible Base URL 和当前进程使用的 API
+Key。模型和 Base URL 会保存；密钥不会写入配置文件。
 
 ```bash
 cody config setup
 ```
 
-首次使用 `cody run`/`chat`/`tui` 时如果未配置 API Key，也会自动触发。
+首次使用 `cody run`/`chat`/`tui` 且模型或 Base URL 缺失时也会自动触发。
 
 ### config show
 
@@ -576,8 +645,8 @@ cody config show
 **输出示例:**
 ```json
 {
-  "model": "claude-sonnet-4-0",
-  "model_api_key": "sk-ant...xyz",
+  "model": "deepseek-v4-flash",
+  "model_base_url": "https://api.deepseek.com/v1",
   "enable_thinking": false,
   "skills": {
     "enabled": ["git", "github"],
@@ -596,13 +665,13 @@ cody config show
 
 ```bash
 # 设置模型
-cody config set model "claude-sonnet-4-0"
+cody config set model "deepseek-v4-flash"
 
 # 设置自定义 API 地址
 cody config set model_base_url "https://..."
 
-# 设置 API Key
-cody config set model_api_key "sk-..."
+# API Key 只通过环境变量或 secret manager 注入
+export CODY_MODEL_API_KEY='your-api-key'
 
 # 启用思考模式
 cody config set enable_thinking true
@@ -612,7 +681,7 @@ cody config set thinking_budget 10000
 **输出:**
 
 ```
-Set model = claude-sonnet-4-0
+Set model = deepseek-v4-flash
 ```
 
 ---
@@ -677,39 +746,33 @@ Initialized Cody in current directory
 | `CODY_ENABLE_THINKING` | 启用思考模式 (`true`/`false`) |
 | `CODY_THINKING_BUDGET` | 思考 token 预算 |
 | `CODY_SKILL_DIRS` | 自定义 Skill 搜索目录（冒号分隔） |
+| `CODY_SANDBOX_ENABLED` | 启用 Sandbox |
+| `CODY_SANDBOX_BACKEND` | Sandbox backend |
+| `CODY_SANDBOX_IMAGE` | 容器 Sandbox 镜像 |
+| `CODY_RUNTIME_HOME` | canonical Runtime 数据根目录 |
 
 ---
 
-## 支持模型
+## 模型接入
 
-### 内置支持
-
-| 提供商 | 模型示例 |
-|--------|----------|
-| Claude | `claude-sonnet-4-0`, `claude-opus-4-0` |
-| OpenAI | `openai:gpt-4`, `openai:gpt-4-turbo` |
-| Google | `google:gemini-pro` |
-| DeepSeek | `deepseek:deepseek-coder` |
-
-### OpenAI 兼容 API
-
-任何 OpenAI 兼容的 API 都可以通过 `cody config setup` 配置：
+Cody 使用 OpenAI-compatible Chat Completions。模型名不是 Cody 的固定枚举，必须与
+目标端点支持的名称一致。DeepSeek、Qwen、GLM、本地模型或企业网关均按相同方式配置：
 
 ```bash
-# 交互式配置（选择 "OpenAI-compatible"）
+# 交互式配置
 cody config setup
 
 # 或手动设置
-cody config set model glm-4
-cody config set model_base_url "https://open.bigmodel.cn/api/paas/v4/"
-cody config set model_api_key "sk-..."
+cody config set model deepseek-v4-flash
+cody config set model_base_url "https://api.deepseek.com/v1"
+export CODY_MODEL_API_KEY='your-api-key'
 ```
 
 ---
 
 ## 工具集
 
-Cody 提供 28+ 个 AI 工具，可在对话中自动使用：
+Cody 提供 30 个 AI 工具（28 core + 2 MCP），可在对话中自动使用：
 
 ### 文件操作
 - `read_file` — 读取文件
@@ -923,4 +986,4 @@ uvicorn api.main:app --reload
 
 ---
 
-**最后更新:** 2026-03-04
+**最后更新:** 2026-07-12

@@ -8,6 +8,33 @@
   padding: 0;
 }
 
+/* Canonical Runtime console */
+.runtime-console { padding: 24px; overflow: auto; background: var(--bg-primary, #0f1115); }
+.runtime-header, .runtime-title, .runtime-start, .runtime-actions, .runtime-approval { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.runtime-header p { margin: 4px 0 0; color: var(--text-secondary, #9299a6); }
+.runtime-header select, .runtime-start input { color: inherit; background: var(--bg-secondary, #181b21); border: 1px solid var(--border, #303641); border-radius: 8px; padding: 10px 12px; }
+.runtime-start { margin: 20px 0; }
+.runtime-start input { flex: 1; }
+.runtime-grid { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 16px; }
+.runtime-panel { background: var(--bg-secondary, #181b21); border: 1px solid var(--border, #303641); border-radius: 12px; padding: 16px; }
+.runtime-run-list { align-self: start; display: grid; gap: 8px; }
+.runtime-run { display: grid; gap: 4px; text-align: left; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 10px; cursor: pointer; }
+.runtime-run:hover, .runtime-run.active { background: rgba(99, 102, 241, .12); border-color: #6366f1; }
+.runtime-run small, .runtime-timeline time, .runtime-timeline span { color: var(--text-secondary, #9299a6); }
+.runtime-status { padding: 4px 9px; border-radius: 999px; background: #303641; font-size: 12px; }
+.status-completed { background: rgba(34, 197, 94, .2); color: #86efac; }
+.status-failed, .status-cancelled { background: rgba(239, 68, 68, .2); color: #fca5a5; }
+.status-running, .status-waiting { background: rgba(245, 158, 11, .2); color: #fcd34d; }
+.runtime-actions { justify-content: flex-start; margin: 12px 0 20px; }
+.runtime-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.runtime-metrics > div { display: grid; gap: 4px; padding: 10px; border-radius: 8px; background: var(--bg-primary, #0f1115); }
+.runtime-approval { margin: 8px 0; padding: 10px; border: 1px solid #f59e0b; border-radius: 8px; }
+.runtime-approval div { display: flex; gap: 6px; }
+.runtime-timeline { max-height: 360px; overflow: auto; }
+.runtime-timeline > div { display: grid; grid-template-columns: 90px minmax(180px, 1fr) minmax(100px, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border, #303641); font-size: 12px; }
+.runtime-artifacts pre { overflow: auto; max-height: 280px; background: var(--bg-primary, #0f1115); padding: 10px; border-radius: 8px; }
+@media (max-width: 850px) { .runtime-grid { grid-template-columns: 1fr; } .runtime-run-list { max-height: 240px; overflow: auto; } }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Helvetica, Arial, sans-serif;
@@ -993,6 +1020,13 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 8px;
+}
+
+.settings-hint {
+  margin: 0;
+  color: var(--text-secondary, #a1a1aa);
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .settings-actions {

@@ -18,11 +18,14 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from itertools import count
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, AsyncGenerator, Literal, Optional, Union
+from uuid import uuid4
 
 from pydantic_ai import Agent
+from pydantic_ai._agent_graph import ModelRequestNode
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
@@ -40,6 +43,7 @@ from pydantic_graph import End
 from .audit import AuditLogger
 from .retry import RetryParams as _RetryDataclass, with_retry, with_retry_sync
 from .config import Config
+from .sandbox import SandboxHandle, SandboxManager, sandbox_spec_from_config
 from .context import (
     CompactResult,
     compact_messages,
@@ -65,6 +69,19 @@ from .user_input import UserInputQueue
 from .model_resolver import resolve_model
 from .project_instructions import load_project_instructions
 from . import tools
+from .runtime import (
+    CheckpointRecord,
+    InMemoryCheckpointStore,
+    InMemoryTraceStore,
+    RunEvent,
+    SQLiteCheckpointStore,
+    SQLiteTraceStore,
+    WorkflowCancelled,
+    WorkflowPaused,
+    WorkflowWaiting,
+    run_event_to_stream_event,
+    stream_event_to_run_event,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -380,9 +397,13 @@ class AgentRunner:
         audit_logger: AuditLoggerProtocol | _UnsetType | None = UNSET,
         file_history: FileHistoryProtocol | _UnsetType | None = UNSET,
         memory_store: MemoryStoreProtocol | _UnsetType | None = UNSET,
+        trace_store: InMemoryTraceStore | SQLiteTraceStore | None = None,
+        checkpoint_store: InMemoryCheckpointStore | SQLiteCheckpointStore | None = None,
     ):
         self.workdir = workdir
         self.config = config
+        self._sandbox_manager = SandboxManager()
+        self._service_sandbox: SandboxHandle | None = None
         self.allowed_roots: list[Path] = _build_allowed_roots(
             workdir, config.security.allowed_roots, extra_roots or []
         )
@@ -458,8 +479,22 @@ class AgentRunner:
         else:
             self._memory_store = memory_store
 
+        # Runtime stores for canonical telemetry and recoverable step snapshots.
+        self._trace_store = trace_store or InMemoryTraceStore()
+        self._checkpoint_store = checkpoint_store or InMemoryCheckpointStore()
+
         # Create agent
         self.agent = self._create_agent()
+
+    @property
+    def trace_store(self) -> InMemoryTraceStore | SQLiteTraceStore:
+        """Append-only runtime trace store for canonical RunEvent telemetry."""
+        return self._trace_store
+
+    @property
+    def checkpoint_store(self) -> InMemoryCheckpointStore | SQLiteCheckpointStore:
+        """Runtime checkpoint store for recoverable step snapshots."""
+        return self._checkpoint_store
 
     @property
     def memory_store(self) -> Optional["MemoryStoreProtocol"]:
@@ -586,7 +621,7 @@ class AgentRunner:
             )
         return self.agent
 
-    def _create_deps(self, interaction_handler=None) -> CodyDeps:
+    def _create_deps(self, interaction_handler=None, sandbox=None) -> CodyDeps:
         """Create dependencies.
 
         *interaction_handler*: async callable ``(InteractionRequest) -> InteractionResponse``.
@@ -609,6 +644,7 @@ class AgentRunner:
             interaction_handler=interaction_handler or self._auto_approve_handler,
             before_tool_hooks=self._before_tool_hooks,
             after_tool_hooks=self._after_tool_hooks,
+            sandbox=sandbox,
         )
 
     # ── MCP lifecycle ────────────────────────────────────────────────────────
@@ -620,7 +656,46 @@ class AgentRunner:
         so they automatically reflect the tools discovered at start time.
         """
         if self._mcp_client:
+            await self._ensure_service_sandbox()
             await self._mcp_client.start_all()
+
+    async def _ensure_service_sandbox(self) -> SandboxHandle:
+        existing = self._mcp_client.sandbox if self._mcp_client is not None else None
+        existing = existing or self._lsp_client.sandbox
+        if existing is not None:
+            return existing
+        spec = sandbox_spec_from_config(
+            self.config,
+            run_id=f"service_{uuid4().hex}",
+            workdir=self.workdir,
+            metadata={"scope": "runner_service"},
+        )
+        self._service_sandbox = await self._sandbox_manager.create(spec)
+        await self.bind_sandbox(self._service_sandbox)
+        return self._service_sandbox
+
+    async def bind_sandbox(self, sandbox: SandboxHandle) -> None:
+        """Bind all process-based capabilities to the current Run sandbox."""
+
+        old_service = self._service_sandbox
+        restart_mcp = bool(
+            self._mcp_client is not None and self._mcp_client.running_servers
+        )
+        restart_lsp = list(self._lsp_client.running_servers)
+        if self._mcp_client is not None and self._mcp_client.sandbox is not sandbox:
+            await self._mcp_client.stop_all()
+            self._mcp_client.sandbox = sandbox
+        if self._lsp_client.sandbox is not sandbox:
+            await self._lsp_client.stop_all()
+            self._lsp_client.sandbox = sandbox
+        self._sub_agent_manager.sandbox = sandbox
+        if old_service is not None and old_service is not sandbox:
+            await old_service.terminate()
+            self._service_sandbox = None
+        if restart_mcp and self._mcp_client is not None:
+            await self._mcp_client.start_all()
+        for language in restart_lsp:
+            await self._lsp_client.start(language)
 
     async def stop_mcp(self) -> None:
         """Stop MCP servers."""
@@ -631,6 +706,7 @@ class AgentRunner:
 
     async def start_lsp(self, language: str) -> bool:
         """Start an LSP server for the given language."""
+        await self._ensure_service_sandbox()
         return await self._lsp_client.start(language)
 
     async def stop_lsp(self) -> None:
@@ -1088,6 +1164,7 @@ class AgentRunner:
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
         cancel_event: Optional[asyncio.Event] = None,
+        sandbox=None,
     ) -> CodyResult:
         """Run agent with prompt, optionally continuing from history.
 
@@ -1100,7 +1177,7 @@ class AgentRunner:
                 a ``CodyResult`` with output ``"(cancelled)"`` is returned.
         """
         self._new_circuit_breaker()
-        deps = self._create_deps()
+        deps = self._create_deps(sandbox=sandbox)
         message_history, _compact = await self._compact_history_if_needed(message_history)
         pydantic_prompt = self._to_pydantic_prompt(prompt)
         agent = self._get_agent(include_tools=include_tools, exclude_tools=exclude_tools)
@@ -1136,8 +1213,125 @@ class AgentRunner:
         self._check_circuit_breaker()
         return cody_result
 
+    def _record_stream_event(
+        self,
+        event: StreamEvent,
+        *,
+        run_id: str,
+        step_id: str | None = None,
+        parent_event_id: str | None = None,
+        message_state: list[dict[str, Any]] | None = None,
+        workflow_state: dict[str, Any] | None = None,
+        artifact_refs: list[str] | None = None,
+        file_refs: list[str] | None = None,
+        child_run_ids: list[str] | None = None,
+        pending_approval_ids: list[str] | None = None,
+        event_scope: str = "run",
+    ) -> RunEvent:
+        """Record a legacy stream event as a canonical runtime RunEvent."""
+
+        runtime_event = stream_event_to_run_event(
+            event,
+            run_id=run_id,
+            step_id=step_id,
+            parent_event_id=parent_event_id,
+            event_scope=event_scope,
+        )
+        if run_id and step_id:
+            checkpoint_workflow_state = {
+                "last_event_type": runtime_event.event_type.value,
+                "last_event_payload": runtime_event.payload,
+            }
+            if workflow_state:
+                checkpoint_workflow_state.update(workflow_state)
+            checkpoint = self._checkpoint_store.save(
+                CheckpointRecord(
+                    run_id=run_id,
+                    step_id=step_id,
+                    workflow_state=checkpoint_workflow_state,
+                    message_state=message_state or [],
+                    artifact_refs=artifact_refs or [],
+                    file_refs=file_refs or [],
+                    child_run_ids=child_run_ids or [],
+                    pending_approval_ids=pending_approval_ids or [],
+                    budget_state=self._checkpoint_budget_state(),
+                    metadata={
+                        "runtime_event_id": runtime_event.event_id,
+                        "runtime_event_type": runtime_event.event_type.value,
+                    },
+                )
+            )
+            runtime_event.payload.setdefault("checkpoint_id", checkpoint.checkpoint_id)
+        self._trace_store.append(runtime_event)
+        return runtime_event
+
+    def _checkpoint_budget_state(self) -> dict[str, Any]:
+        """Capture lightweight circuit-breaker budget state for checkpoints."""
+
+        cb = getattr(self, "_cb", _CircuitBreakerState())
+        return {
+            "total_tokens": cb.total_tokens,
+            "estimated_cost": cb.estimated_cost,
+            "step_count": cb.step_count,
+        }
+
+    def _checkpoint_message_state(
+        self,
+        message_history: Optional[list[ModelMessage]],
+    ) -> list[dict[str, Any]]:
+        """Serialize recent message history into JSON-safe checkpoint state."""
+
+        if not message_history:
+            return []
+
+        state: list[dict[str, Any]] = []
+        for index, message in enumerate(message_history[-20:]):
+            parts = []
+            for part in getattr(message, "parts", []):
+                parts.append({
+                    "part_kind": getattr(part, "part_kind", type(part).__name__),
+                    "content": str(getattr(part, "content", ""))[:2000],
+                })
+            state.append({
+                "index": index,
+                "message_type": type(message).__name__,
+                "parts": parts,
+            })
+        return state
+
+    def _checkpoint_refs_for_event(
+        self,
+        event: StreamEvent,
+    ) -> tuple[list[str], list[str], list[str], list[str]]:
+        """Infer artifact/file/child-run/approval refs from a stream event."""
+
+        artifact_refs: list[str] = []
+        file_refs: list[str] = []
+        child_run_ids: list[str] = []
+        pending_approval_ids: list[str] = []
+
+        if isinstance(event, ToolCallEvent):
+            artifact_refs.append(f"tool-call://{event.tool_call_id}")
+            if event.tool_name in {"read_file", "write_file", "edit_file"}:
+                path = event.args.get("path")
+                if path:
+                    file_refs.append(str(path))
+            if event.tool_name == "spawn_agent":
+                child_run_ids.append(str(event.args.get("agent_id") or event.tool_call_id))
+        elif isinstance(event, ToolResultEvent):
+            artifact_refs.append(f"tool-result://{event.tool_call_id}")
+        elif isinstance(event, InteractionRequestEvent):
+            pending_approval_ids.append(event.request.id)
+
+        return artifact_refs, file_refs, child_run_ids, pending_approval_ids
+
     async def _stream_tool_node(
-        self, node, agent_run, interaction_q, drain_interaction_q,
+        self,
+        node,
+        agent_run,
+        interaction_q,
+        drain_interaction_q,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator:
         """Stream tool calls/results for a single CallToolsNode.
 
@@ -1145,21 +1339,46 @@ class AgentRunner:
         InteractionRequestEvents are yielded to the caller even while
         a tool is blocked waiting for a human response.
         """
-        # Inject proactive user input alongside tool results.
-        user_messages = self._user_input_queue.drain_all()
-        if user_messages:
-            combined = "\n".join(user_messages)
-            node.user_prompt = combined  # type: ignore[union-attr]
-            yield UserInputReceivedEvent(content=combined)
+        # CallToolsNode only honors user_prompt when its model response
+        # contains function calls. A final text response needs to be turned
+        # into another ModelRequest by run_events after this node completes.
+        has_tool_calls = any(
+            getattr(part, "part_kind", "") == "tool-call"
+            for part in getattr(getattr(node, "model_response", None), "parts", ())
+        )
+        if has_tool_calls:
+            user_messages = self._user_input_queue.drain_all()
+            if user_messages:
+                combined = "\n".join(user_messages)
+                node.user_prompt = combined  # type: ignore[union-attr]
+                yield UserInputReceivedEvent(content=combined)
 
         _merged_q: asyncio.Queue = asyncio.Queue()
         _TOOL_STREAM_DONE = object()
+
+        def _drain_user_input() -> UserInputReceivedEvent | None:
+            """Attach queued input before CallToolsNode builds its next request."""
+            messages = self._user_input_queue.drain_all()
+            if not messages:
+                return None
+            combined = "\n".join(messages)
+            existing = getattr(node, "user_prompt", None)
+            if existing:
+                combined = f"{existing}\n{combined}"
+            node.user_prompt = combined  # type: ignore[union-attr]
+            return UserInputReceivedEvent(content="\n".join(messages))
 
         async def _consume_tool_stream():
             try:
                 async with node.stream(agent_run.ctx) as tool_stream:
                     async for ev in tool_stream:
-                        await _merged_q.put(("tool", ev))
+                        # Backpressure is intentional. The public consumer may
+                        # call inject_user_input() after seeing a tool event;
+                        # CallToolsNode must not finish and freeze its next
+                        # ModelRequest until that input has been attached.
+                        acknowledged = asyncio.Event()
+                        await _merged_q.put(("tool", (ev, acknowledged)))
+                        await acknowledged.wait()
                 await _merged_q.put(("done", _TOOL_STREAM_DONE))
             except Exception as exc:
                 await _merged_q.put(("error", exc))
@@ -1171,10 +1390,34 @@ class AgentRunner:
 
         _tool_task = asyncio.create_task(_consume_tool_stream())
         _ia_task = asyncio.create_task(_forward_interactions())
+        _cancel_task = (
+            asyncio.create_task(cancel_event.wait())
+            if cancel_event is not None
+            else None
+        )
+        item_task: asyncio.Task | None = None
 
         try:
             while True:
-                kind, item = await _merged_q.get()
+                item_task = asyncio.create_task(_merged_q.get())
+                waiting = {item_task}
+                if _cancel_task is not None:
+                    waiting.add(_cancel_task)
+                completed, _ = await asyncio.wait(
+                    waiting,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if _cancel_task is not None and _cancel_task in completed:
+                    item_task.cancel()
+                    try:
+                        await item_task
+                    except asyncio.CancelledError:
+                        pass
+                    _tool_task.cancel()
+                    yield CancelledEvent()
+                    return
+                kind, item = item_task.result()
+                item_task = None
                 if kind == "done":
                     break
                 if kind == "error":
@@ -1183,38 +1426,72 @@ class AgentRunner:
                     yield item
                     continue
                 # kind == "tool"
-                event = item
-                if isinstance(event, FunctionToolCallEvent):
-                    part = event.part
-                    args = _parse_tool_args(part.args)
-                    yield ToolCallEvent(
-                        tool_name=part.tool_name,
-                        args=args,
-                        tool_call_id=part.tool_call_id,
-                    )
-                elif isinstance(event, FunctionToolResultEvent):
-                    result_part = event.result
-                    if result_part.part_kind == "tool-return":
-                        content = result_part.content
-                        if not isinstance(content, str):
-                            content = str(content)
-                        yield ToolResultEvent(
-                            tool_name=result_part.tool_name,
-                            tool_call_id=result_part.tool_call_id,
-                            result=content,
+                event, acknowledged = item
+                try:
+                    if isinstance(event, FunctionToolCallEvent):
+                        part = event.part
+                        args = _parse_tool_args(part.args)
+                        yield ToolCallEvent(
+                            tool_name=part.tool_name,
+                            args=args,
+                            tool_call_id=part.tool_call_id,
                         )
-                        self._update_circuit_breaker(content, None)
+                    elif isinstance(event, FunctionToolResultEvent):
+                        result_part = event.result
+                        if result_part.part_kind == "tool-return":
+                            content = result_part.content
+                            if not isinstance(content, str):
+                                content = str(content)
+                            yield ToolResultEvent(
+                                tool_name=result_part.tool_name,
+                                tool_call_id=result_part.tool_call_id,
+                                result=content,
+                            )
+                            self._update_circuit_breaker(content, None)
+
+                    injected = _drain_user_input()
+                    if injected is not None:
+                        yield injected
+                finally:
+                    # Always release the producer, including when the caller
+                    # closes the async generator after receiving an event.
+                    acknowledged.set()
         finally:
+            if item_task is not None and not item_task.done():
+                item_task.cancel()
+                try:
+                    await item_task
+                except asyncio.CancelledError:
+                    pass
+            if _cancel_task is not None:
+                _cancel_task.cancel()
+                try:
+                    await _cancel_task
+                except asyncio.CancelledError:
+                    pass
             _ia_task.cancel()
             try:
                 await _ia_task
             except asyncio.CancelledError:
                 pass
             if not _tool_task.done():
-                try:
-                    await _tool_task
-                except (asyncio.CancelledError, Exception):
-                    pass
+                _tool_task.cancel()
+                if cancel_event is not None and cancel_event.is_set():
+                    # Closing some provider tool streams can perform lengthy
+                    # cleanup. Do not let that delay the public cancellation
+                    # boundary; drain the task when the provider releases it.
+                    def consume_cancelled_tool(task: asyncio.Task) -> None:
+                        try:
+                            task.result()
+                        except (asyncio.CancelledError, Exception):
+                            pass
+
+                    _tool_task.add_done_callback(consume_cancelled_tool)
+                else:
+                    try:
+                        await _tool_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
 
         # Drain any remaining interaction events after tool execution
         for interaction_event in drain_interaction_q():
@@ -1223,16 +1500,21 @@ class AgentRunner:
         # Check circuit breaker after each tool execution round
         self._check_circuit_breaker()
 
-    @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
-    async def run_stream(
+    @log_elapsed("AgentRunner.run_events", level=logging.INFO)
+    async def run_events(
         self,
         prompt: Prompt,
         message_history: Optional[list[ModelMessage]] = None,
         cancel_event: Optional[asyncio.Event] = None,
         include_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
-    ) -> AsyncGenerator[StreamEvent, None]:
-        """Run agent with streaming, yielding structured StreamEvent objects.
+        run_id: str | None = None,
+        event_scope: str = "run",
+        step_id_prefix: str = "step",
+        interaction_handler=None,
+        sandbox=None,
+    ) -> AsyncGenerator[RunEvent, None]:
+        """Run agent with streaming, yielding canonical ``RunEvent`` objects.
 
         Uses pydantic-ai's ``agent.iter()`` API for node-level control,
         which enables proactive user input injection between nodes.
@@ -1243,6 +1525,10 @@ class AgentRunner:
             cancel_event: Set to cancel the run.
             include_tools: If set, only these tools are available for this run.
             exclude_tools: If set, these tools are excluded for this run.
+            run_id: Optional canonical runtime run identifier. Generated when omitted.
+            event_scope: ``run`` for a top-level run or ``step`` when embedded
+                in a runtime workflow node.
+            step_id_prefix: Prefix used for canonical trace step identifiers.
 
         Events:
           - CompactEvent: context was auto-compacted (first event if applicable)
@@ -1260,25 +1546,50 @@ class AgentRunner:
           InteractionTimeoutError: if an interaction request times out
         """
         self._new_circuit_breaker()
+        runtime_run_id = run_id or f"run_{uuid4().hex}"
+        step_ids = count(1)
+
+        def _trace_step(event: StreamEvent) -> RunEvent:
+            artifact_refs, file_refs, child_run_ids, pending_approval_ids = (
+                self._checkpoint_refs_for_event(event)
+            )
+            return self._record_stream_event(
+                event,
+                run_id=runtime_run_id,
+                step_id=f"{step_id_prefix}_{next(step_ids):06d}",
+                message_state=self._checkpoint_message_state(message_history),
+                artifact_refs=artifact_refs,
+                file_refs=file_refs,
+                child_run_ids=child_run_ids,
+                pending_approval_ids=pending_approval_ids,
+                event_scope=event_scope,
+            )
 
         # Side channel for interaction events emitted from within tool execution.
         interaction_q: asyncio.Queue = asyncio.Queue()
 
         # Build interaction handler for this stream.
-        interaction_handler = self._build_stream_interaction_handler(interaction_q)
-        deps = self._create_deps(interaction_handler=interaction_handler)
+        effective_interaction_handler = (
+            interaction_handler
+            if interaction_handler is not None
+            else self._build_stream_interaction_handler(interaction_q)
+        )
+        deps = self._create_deps(
+            interaction_handler=effective_interaction_handler,
+            sandbox=sandbox,
+        )
 
         message_history, compact_result = await self._compact_history_if_needed(
             message_history,
         )
 
         if compact_result is not None:
-            yield CompactEvent(
+            yield _trace_step(CompactEvent(
                 original_messages=compact_result.original_messages,
                 compacted_messages=compact_result.compacted_messages,
                 estimated_tokens_saved=compact_result.estimated_tokens_saved,
                 used_llm=compact_result.used_llm,
-            )
+            ))
 
         pydantic_prompt = self._to_pydantic_prompt(prompt)
 
@@ -1304,7 +1615,7 @@ class AgentRunner:
             ) as agent_run:
                 async for node in agent_run:
                     if cancel_event and cancel_event.is_set():
-                        yield CancelledEvent()
+                        yield _trace_step(CancelledEvent())
                         break
 
                     # UserPromptNode is handled automatically by iter().
@@ -1324,19 +1635,19 @@ class AgentRunner:
                                         if isinstance(event, PartStartEvent):
                                             part = event.part
                                             if part.part_kind == "thinking" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                                yield ThinkingEvent(content=part.content)
+                                                yield _trace_step(ThinkingEvent(content=part.content))
                                             elif part.part_kind == "text" and getattr(part, "content", ""):  # type: ignore[arg-type]
-                                                yield TextDeltaEvent(content=part.content)
+                                                yield _trace_step(TextDeltaEvent(content=part.content))
                                         elif isinstance(event, PartDeltaEvent):
                                             delta = event.delta
                                             if delta.part_delta_kind == "thinking":
                                                 content = getattr(delta, "content_delta", None)
                                                 if content:
-                                                    yield ThinkingEvent(content=content)
+                                                    yield _trace_step(ThinkingEvent(content=content))
                                             elif delta.part_delta_kind == "text":
                                                 content = getattr(delta, "content_delta", None)
                                                 if content:
-                                                    yield TextDeltaEvent(content=content)
+                                                    yield _trace_step(TextDeltaEvent(content=content))
                                 break  # success — exit retry loop
                             except Exception as exc:
                                 from .retry import is_retryable
@@ -1351,18 +1662,52 @@ class AgentRunner:
                                     "retrying in %.1fs: %s",
                                     attempt + 1, max_attempts, delay, exc,
                                 )
-                                yield RetryEvent(
+                                yield _trace_step(RetryEvent(
                                     attempt=attempt + 1,
                                     max_attempts=max_attempts,
                                     error=str(exc),
-                                )
+                                ))
                                 await asyncio.sleep(delay)
 
                     elif agent.is_call_tools_node(node):
                         async for ev in self._stream_tool_node(
-                            node, agent_run, interaction_q, _drain_interaction_q,
+                            node,
+                            agent_run,
+                            interaction_q,
+                            _drain_interaction_q,
+                            cancel_event,
                         ):
-                            yield ev
+                            yield _trace_step(ev)
+
+                        # Input commonly arrives through SDK/Web after the
+                        # persisted tool_result, while the provider is already
+                        # producing its next (possibly final) text response.
+                        # Pydantic AI ignores CallToolsNode.user_prompt for a
+                        # final text response, so replace its cached End with a
+                        # real ModelRequest and keep the same graph/usage state.
+                        pending_input = self._user_input_queue.drain_all()
+                        if pending_input:
+                            combined = "\n".join(pending_input)
+                            yield _trace_step(UserInputReceivedEvent(content=combined))
+                            node_has_tool_calls = any(
+                                getattr(part, "part_kind", "") == "tool-call"
+                                for part in getattr(node.model_response, "parts", ())
+                            )
+                            next_node = getattr(node, "_next_node", None)
+                            if node_has_tool_calls and isinstance(
+                                next_node, ModelRequestNode
+                            ):
+                                # Preserve every tool-return part: providers
+                                # reject an assistant tool_calls message unless
+                                # all IDs are answered in the next request.
+                                next_node.request.parts = [
+                                    *next_node.request.parts,
+                                    UserPromptPart(content=combined),
+                                ]
+                            else:
+                                node._next_node = ModelRequestNode(  # type: ignore[attr-defined]
+                                    ModelRequest(parts=[UserPromptPart(content=combined)])
+                                )
 
                     elif isinstance(node, End):
                         # Final result
@@ -1372,17 +1717,49 @@ class AgentRunner:
                         )
                         self._check_circuit_breaker()
                         cody_result = CodyResult.from_raw(agent_run.result)
-                        yield DoneEvent(result=cody_result)
+                        yield _trace_step(DoneEvent(result=cody_result))
 
         except CircuitBreakerError as e:
-            yield CircuitBreakerEvent(
+            yield _trace_step(CircuitBreakerEvent(
                 reason=e.reason,
                 tokens_used=e.tokens_used,
                 cost_usd=e.cost_usd,
-            )
-        except Exception:
-            logger.exception("run_stream failed unexpectedly")
+            ))
+        except (WorkflowWaiting, WorkflowPaused, WorkflowCancelled):
             raise
+        except Exception:
+            logger.exception("run_events failed unexpectedly")
+            raise
+
+    @log_elapsed("AgentRunner.run_stream", level=logging.INFO)
+    async def run_stream(
+        self,
+        prompt: Prompt,
+        message_history: Optional[list[ModelMessage]] = None,
+        cancel_event: Optional[asyncio.Event] = None,
+        include_tools: list[str] | None = None,
+        exclude_tools: list[str] | None = None,
+        run_id: str | None = None,
+        event_scope: str = "run",
+        step_id_prefix: str = "step",
+        interaction_handler=None,
+        sandbox=None,
+    ) -> AsyncGenerator[StreamEvent, None]:
+        """Yield legacy StreamEvents derived from canonical live RunEvents."""
+
+        async for event in self.run_events(
+            prompt,
+            message_history=message_history,
+            cancel_event=cancel_event,
+            include_tools=include_tools,
+            exclude_tools=exclude_tools,
+            run_id=run_id,
+            event_scope=event_scope,
+            step_id_prefix=step_id_prefix,
+            interaction_handler=interaction_handler,
+            sandbox=sandbox,
+        ):
+            yield run_event_to_stream_event(event)
 
     @log_elapsed("AgentRunner.run_sync", level=logging.INFO)
     def run_sync(
@@ -1489,27 +1866,46 @@ class AgentRunner:
         re-compacting already-summarized messages.
         """
         sid, history = self.prepare_session(store, session_id)
+        runtime_run_id = f"session_{sid}"
+        step_ids = count(1)
+
+        def _trace_session_step(event: StreamEvent) -> StreamEvent:
+            artifact_refs, file_refs, child_run_ids, pending_approval_ids = (
+                self._checkpoint_refs_for_event(event)
+            )
+            self._record_stream_event(
+                event,
+                run_id=runtime_run_id,
+                step_id=f"step_{next(step_ids):06d}",
+                message_state=self._checkpoint_message_state(history),
+                artifact_refs=artifact_refs,
+                file_refs=file_refs,
+                child_run_ids=child_run_ids,
+                pending_approval_ids=pending_approval_ids,
+            )
+            return event
 
         # Yield session ID immediately so callers always receive it,
         # even if the AI call fails later.
-        yield SessionStartEvent(session_id=sid), sid
+        yield _trace_session_step(SessionStartEvent(session_id=sid)), sid
 
         # Pre-compact and save checkpoint before streaming
         history, compact_result = await self._compact_history_if_needed(history)
         if compact_result is not None:
             self._save_compaction_checkpoint(store, sid, compact_result)
-            yield CompactEvent(
+            yield _trace_session_step(CompactEvent(
                 original_messages=compact_result.original_messages,
                 compacted_messages=compact_result.compacted_messages,
                 estimated_tokens_saved=compact_result.estimated_tokens_saved,
                 used_llm=compact_result.used_llm,
-            ), sid
+            )), sid
 
         store.add_message(sid, "user", prompt_text(prompt), images=prompt_images(prompt) or None)
 
         async for event in self.run_stream(
             prompt, message_history=history, cancel_event=cancel_event,
             include_tools=include_tools, exclude_tools=exclude_tools,
+            run_id=runtime_run_id,
         ):
             if isinstance(event, DoneEvent):
                 store.add_message(sid, "assistant", event.result.output)

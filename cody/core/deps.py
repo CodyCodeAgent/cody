@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from .interaction import InteractionRequest, InteractionResponse
+    from .sandbox import SandboxHandle
 
 from .config import Config
 from .lsp_client import LSPClient
@@ -78,3 +79,4 @@ class CodyDeps:
     before_tool_hooks: list[BeforeToolHook] = field(default_factory=list)
     after_tool_hooks: list[AfterToolHook] = field(default_factory=list)
     auto_approved_tools: set[str] = field(default_factory=set)
+    sandbox: Optional[SandboxHandle] = None

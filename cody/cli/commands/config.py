@@ -23,7 +23,7 @@ def config_show():
     if "model_api_key" in data:
         data["model_api_key"] = _mask_api_key(data["model_api_key"])
     if "auth" in data:
-        for key in ("api_key", "token", "refresh_token"):
+        for key in ("api_key",):
             if key in data["auth"]:
                 data["auth"][key] = _mask_api_key(data["auth"][key])
     import json as _json
@@ -36,7 +36,10 @@ def config_show():
 def config_set(key, value):
     """Set configuration value
 
-    Supported keys: model, model_base_url, model_api_key, enable_thinking, thinking_budget
+    Supported keys: model, model_base_url, enable_thinking, thinking_budget.
+
+    Secrets are intentionally not persisted; inject CODY_MODEL_API_KEY through
+    the process environment or a deployment secret manager.
     """
     cfg = Config.load(workdir=Path.cwd())
 
@@ -45,14 +48,17 @@ def config_set(key, value):
     elif key == 'model_base_url':
         cfg.model_base_url = value
     elif key == 'model_api_key':
-        cfg.model_api_key = value
+        raise click.UsageError(
+            "model_api_key is not persisted; set CODY_MODEL_API_KEY in the "
+            "process environment or secret manager"
+        )
     elif key == 'enable_thinking':
         cfg.enable_thinking = value.lower() in ("1", "true", "yes")
     elif key == 'thinking_budget':
         cfg.thinking_budget = int(value)
     else:
         console.print(f"[yellow]Unknown config key: {key}[/yellow]")
-        console.print("[dim]Supported: model, model_base_url, model_api_key, enable_thinking, thinking_budget[/dim]")
+        console.print("[dim]Supported: model, model_base_url, enable_thinking, thinking_budget[/dim]")
         return
 
     cfg.save(resolve_config_path())

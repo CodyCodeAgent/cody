@@ -11,10 +11,22 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
 
 from .config import MCPConfig, MCPServerConfig
+from pathlib import Path
+
+from .sandbox import (
+    FilesystemPolicy,
+    LocalPolicySandboxBackend,
+    SandboxExecutionRequest,
+    SandboxHandle,
+    SandboxProcess,
+    SandboxSpec,
+)
+from .sandbox import NetworkMode, SandboxPolicyError
 from ._process import cancel_task_silently, terminate_process
 from .._version import __version__ as _version
 
@@ -34,7 +46,7 @@ class MCPTool:
 class _ServerProcess:
     """Internal: tracks a running MCP server subprocess (stdio transport)."""
     config: MCPServerConfig
-    process: Optional[asyncio.subprocess.Process] = None
+    process: Optional[SandboxProcess | asyncio.subprocess.Process] = None
     tools: list[MCPTool] = field(default_factory=list)
     _request_id: int = 0
     _pending: dict[int, asyncio.Future] = field(default_factory=dict)
@@ -71,10 +83,27 @@ class MCPClient:
         await mcp.stop_all()
     """
 
-    def __init__(self, config: MCPConfig):
+    def __init__(self, config: MCPConfig, sandbox: SandboxHandle | None = None):
         self.config = config
+        self.sandbox = sandbox
         self._servers: dict[str, _ServerProcess] = {}
         self._http_servers: dict[str, _HttpConnection] = {}
+        self._owned_sandbox: SandboxHandle | None = None
+
+    async def _ensure_process_sandbox(self) -> SandboxHandle:
+        if self.sandbox is not None:
+            return self.sandbox
+        root = Path.cwd().resolve()
+        self._owned_sandbox = await LocalPolicySandboxBackend().create(
+            SandboxSpec(
+                run_id="mcp_service",
+                workdir=root,
+                backend="local-policy",
+                filesystem=FilesystemPolicy(read_roots=(root,), write_roots=(root,)),
+            )
+        )
+        self.sandbox = self._owned_sandbox
+        return self.sandbox
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -101,12 +130,13 @@ class MCPClient:
         """Start a stdio-based MCP server subprocess."""
         env = dict(cfg.env) if cfg.env else None
 
-        process = await asyncio.create_subprocess_exec(
-            cfg.command, *cfg.args,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=env,
+        sandbox = await self._ensure_process_sandbox()
+        process = await sandbox.spawn(
+            SandboxExecutionRequest(
+                argv=(cfg.command, *cfg.args),
+                cwd=sandbox.spec.workdir,
+                env=env or {},
+            )
         )
 
         sp = _ServerProcess(config=cfg, process=process)
@@ -129,7 +159,7 @@ class MCPClient:
 
         logger.info(
             "MCP server '%s' started (stdio, pid=%s, tools=%d)",
-            cfg.name, process.pid, len(sp.tools),
+            cfg.name, getattr(process, "pid", None), len(sp.tools),
         )
 
     async def _start_http_server(self, cfg: MCPServerConfig) -> None:
@@ -137,7 +167,26 @@ class MCPClient:
         if not cfg.url:
             raise ValueError(f"MCP server '{cfg.name}': HTTP transport requires 'url'")
 
-        client = httpx.AsyncClient(timeout=30.0)
+        policy = self.sandbox.spec.network if self.sandbox is not None else None
+        host = (urlparse(cfg.url).hostname or "").lower()
+        if policy is not None and policy.mode == NetworkMode.DISABLED:
+            raise SandboxPolicyError("HTTP MCP is blocked by sandbox network policy")
+        if policy is not None and policy.mode == NetworkMode.ALLOWLIST:
+            allowed = any(
+                host == domain.lower().lstrip("*.")
+                or host.endswith("." + domain.lower().lstrip("*."))
+                for domain in policy.allowed_domains
+            )
+            if not allowed:
+                raise SandboxPolicyError(
+                    f"HTTP MCP host is not allowlisted: {host}"
+                )
+        client_kwargs: dict[str, Any] = {"timeout": 30.0}
+        if policy is not None and policy.mode == NetworkMode.PROXIED:
+            if not policy.proxy_url:
+                raise SandboxPolicyError("Proxied MCP requires sandbox.proxy_url")
+            client_kwargs["proxy"] = policy.proxy_url
+        client = httpx.AsyncClient(**client_kwargs)
         conn = _HttpConnection(config=cfg, client=client)
         self._http_servers[cfg.name] = conn
 
@@ -160,6 +209,10 @@ class MCPClient:
             await self.stop_server(name)
         for name in list(self._http_servers):
             await self.stop_server(name)
+        if self._owned_sandbox is not None:
+            await self._owned_sandbox.terminate()
+            self._owned_sandbox = None
+            self.sandbox = None
 
     async def stop_server(self, name: str) -> None:
         """Stop a single MCP server."""

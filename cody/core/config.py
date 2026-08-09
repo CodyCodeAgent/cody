@@ -5,8 +5,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Literal, Optional, Union
-from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +22,25 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 class AuthConfig(BaseModel):
-    """Authentication configuration"""
-    type: Literal['oauth', 'api_key'] = 'api_key'
-    token: Optional[str] = None
-    refresh_token: Optional[str] = None
+    """Web API-key authentication configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal['api_key'] = 'api_key'
     api_key: Optional[str] = None
-    expires_at: Optional[datetime] = None
+
+
+def _strip_legacy_auth(data: dict) -> None:
+    """Migrate removed pseudo-OAuth fields without persisting secrets."""
+
+    auth = data.get("auth")
+    if not isinstance(auth, dict):
+        return
+    auth.pop("token", None)
+    auth.pop("refresh_token", None)
+    auth.pop("expires_at", None)
+    if auth.get("type") != "api_key":
+        auth["type"] = "api_key"
 
 
 class SkillConfig(BaseModel):
@@ -86,6 +98,29 @@ class SecurityConfig(BaseModel):
     require_confirmation: bool = True
     allow_private_urls: bool = False
     command_timeout: int = 30
+
+
+class SandboxConfig(BaseModel):
+    """Execution sandbox configuration shared by tools and Runtime services."""
+
+    enabled: bool = False
+    backend: str = "auto"
+    image: Optional[str] = None
+    fail_if_unavailable: bool = True
+    private_workspace: bool = False
+    network_mode: Literal["disabled", "allowlist", "proxied", "unrestricted"] = "disabled"
+    allowed_domains: list[str] = Field(default_factory=list)
+    allowed_cidrs: list[str] = Field(default_factory=list)
+    proxy_url: Optional[str] = None
+    network_name: Optional[str] = None
+    denied_roots: list[str] = Field(default_factory=list)
+    cpu_count: Optional[float] = None
+    memory_mb: Optional[int] = None
+    process_limit: Optional[int] = None
+    timeout_seconds: Optional[float] = None
+    image_pull_policy: Literal["never", "if_missing", "always"] = "if_missing"
+    state_root: Optional[str] = None
+    env: dict[str, str] = Field(default_factory=dict)
 
 
 class CompactionConfig(BaseModel):
@@ -174,6 +209,7 @@ class Config(BaseModel):
     skills: SkillConfig = Field(default_factory=SkillConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     permissions: ToolPermissionConfig = Field(default_factory=ToolPermissionConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
     truncation: TruncationConfig = Field(default_factory=TruncationConfig)
@@ -234,6 +270,7 @@ class Config(BaseModel):
             merged.pop("coding_plan_key", None)
             merged.pop("coding_plan_protocol", None)
             merged.pop("claude_oauth_token", None)
+            _strip_legacy_auth(merged)
             return cls._apply_env_overrides(cls(**merged))
 
         path = Path(path)
@@ -249,6 +286,7 @@ class Config(BaseModel):
         data.pop("coding_plan_key", None)
         data.pop("coding_plan_protocol", None)
         data.pop("claude_oauth_token", None)
+        _strip_legacy_auth(data)
         return cls._apply_env_overrides(cls(**data))
 
     @staticmethod
@@ -263,6 +301,9 @@ class Config(BaseModel):
         env_api_key = os.environ.get("CODY_MODEL_API_KEY")
         if env_api_key:
             config.model_api_key = env_api_key
+        env_auth_api_key = os.environ.get("CODY_AUTH_API_KEY")
+        if env_auth_api_key:
+            config.auth.api_key = env_auth_api_key
         # Legacy: CODY_CODING_PLAN_KEY maps to model_api_key
         env_coding_plan = os.environ.get("CODY_CODING_PLAN_KEY")
         if env_coding_plan and not config.model_api_key:
@@ -301,6 +342,17 @@ class Config(BaseModel):
             config.skills.custom_dirs = [
                 d.strip() for d in env_skill_dirs.split(":") if d.strip()
             ]
+        env_sandbox_enabled = os.environ.get("CODY_SANDBOX_ENABLED")
+        if env_sandbox_enabled is not None:
+            config.sandbox.enabled = env_sandbox_enabled.lower() in (
+                "1", "true", "yes", "on",
+            )
+        env_sandbox_backend = os.environ.get("CODY_SANDBOX_BACKEND")
+        if env_sandbox_backend:
+            config.sandbox.backend = env_sandbox_backend
+        env_sandbox_image = os.environ.get("CODY_SANDBOX_IMAGE")
+        if env_sandbox_image:
+            config.sandbox.image = env_sandbox_image
         return config
 
     def apply_overrides(
@@ -363,8 +415,6 @@ class Config(BaseModel):
         if "compaction" in data:
             data["compaction"].pop("model_api_key", None)
         if "auth" in data:
-            data["auth"].pop("token", None)
-            data["auth"].pop("refresh_token", None)
             data["auth"].pop("api_key", None)
         path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
         # Restrict file permissions (owner read/write only)

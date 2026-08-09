@@ -11,11 +11,14 @@ TUI（Terminal User Interface）是 Cody 框架的参考实现之一，提供全
 ### 启动 TUI
 
 ```bash
+# `cody tui` 需要 CLI + TUI 依赖
+pip install 'cody-ai[cli,tui]'
+
 # 基础启动
 cody tui
 
 # 指定模型
-cody tui --model claude-sonnet-4-0
+cody tui --model deepseek-v4-flash
 
 # 继续上次会话
 cody tui --continue
@@ -79,7 +82,7 @@ cody tui --workdir /path/to/project
 
 **空闲时** — 显示当前会话信息：
 ```
-Session: abc123 | Model: claude-sonnet-4-0 | Dir: project | Messages: 4
+Session: abc123 | Model: deepseek-v4-flash | Dir: project | Messages: 4
 ```
 
 | 字段 | 说明 |
@@ -131,6 +134,30 @@ Ctrl+N New  Ctrl+C Cancel/Quit  Ctrl+Q Quit
 
 在输入框中输入 `/` 开头的命令：
 
+| 命令 | 说明 |
+|------|------|
+| `/new` | 新建会话 |
+| `/sessions` | 列出最近会话 |
+| `/skills [enable|disable <name>]` | 查看或启停 Skill |
+| `/settings` | 查看设置 |
+| `/settings model <name>` | 切换当前模型名 |
+| `/settings thinking on|off` | 切换 thinking |
+| `/image <path> <message>` | 发送图片和消息；模型端点必须支持视觉 |
+| `/clear` | 清屏但保留 session |
+| `/help` | 显示帮助 |
+| `/quit`、`/exit`、`/q` | 退出 |
+
+Runtime 命令与 CLI/Web 共享同一 durable 状态：
+
+| 命令 | 说明 |
+|------|------|
+| `/runs` | 列出项目 Run |
+| `/run <id>` | 查看 Run 与 Step |
+| `/timeline <id>` | 查看最近 timeline 事件 |
+| `/approvals` | 列出 pending approvals |
+| `/approve <id>` | 批准请求 |
+| `/cancel-run <id>` | 跨进程请求取消 |
+
 ### /new — 新建会话
 
 ```
@@ -170,11 +197,10 @@ Recent sessions:
 显示所有命令和快捷键：
 ```
 Commands:
-  /new      — Start a new session
-  /sessions — List recent sessions
-  /clear    — Clear screen
-  /quit     — Exit
-  /help     — Show this help
+  /new, /sessions, /skills, /settings
+  /runs, /run <id>, /timeline <id>
+  /approvals, /approve <id>, /cancel-run <id>
+  /image <path> <message>, /clear, /quit, /help
 
 Shortcuts:
   Ctrl+N — New session
@@ -202,7 +228,11 @@ cody tui \
   --thinking/--no-thinking \
   --thinking-budget <token 数> \
   --workdir <工作目录> \
+  --allow-root <额外目录> \
   --session <会话 ID> \
+  --max-tokens <token 数> \
+  --max-cost <美元> \
+  --max-steps <工具步数> \
   --continue
 ```
 
@@ -214,10 +244,13 @@ cody tui \
 | `--thinking` | 启用思考模式 | 配置文件设置 |
 | `--thinking-budget` | 思考 token 预算 | - |
 | `--workdir` | 工作目录 | 当前目录 |
+| `--allow-root` | 额外允许访问的目录（可重复） | - |
 | `--session` | 恢复指定会话 | - |
 | `--continue` | 继续上次会话 | `false` |
+| `--max-tokens` / `--max-cost` / `--max-steps` | 本次 TUI 运行的熔断上限 | 配置值 |
 
-> **模型和 API Key 配置**：使用 `cody config setup` 交互式配置模型提供商和 API Key，不再通过 CLI 参数传递。详见 [配置文件详解](CONFIG.md)。
+> **模型和 API Key 配置**：使用 `cody config setup` 保存模型/Base URL；API Key 通过
+> `CODY_MODEL_API_KEY` 或 secret manager 注入。详见 [配置文件详解](CONFIG.md)。
 
 ### 使用示例
 
@@ -489,8 +522,9 @@ You > /new  # 新任务开始
 
 ### 3. 使用思考模式分析复杂问题
 
-```bash
-cody tui --thinking "分析项目架构问题"
+```text
+$ cody tui --thinking
+You > 分析项目架构问题
 ```
 
 ### 4. 定期清理会话
@@ -504,7 +538,12 @@ cody sessions delete abc123
 
 ## 与其他运行方式的关系
 
-TUI、CLI、Web 都是 Cody 框架的参考实现，直接调用核心引擎（in-process），共享同一个 `cody/core/`。
+TUI 通过 `AsyncCodyClient` 启动 canonical Run。状态行展示 Run 状态和 `run_id`；同一
+workdir 下的运行可同时在 Web Runtime console 或 `cody runs` 中查询和控制。审批等待、
+暂停和取消不会由 TUI 维护独立状态。
+
+TUI、CLI、Web 都是 Cody 的参考产品，最终使用同一 canonical Runtime 和 durable
+stores；SDK 是嵌入式入口。
 
 ```bash
 # TUI — 全屏终端（Textual）
@@ -514,7 +553,7 @@ cody tui
 cody run "任务"
 
 # Web — 浏览器界面 + HTTP API（FastAPI）
-cody-web
+cody-web run
 
 # SDK — 嵌入你的应用（推荐的集成方式）
 from cody import AsyncCodyClient
@@ -522,4 +561,4 @@ from cody import AsyncCodyClient
 
 ---
 
-**最后更新:** 2026-03-04
+**最后更新:** 2026-07-12

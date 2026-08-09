@@ -5,6 +5,10 @@ import type {
   Task,
   SessionDetail,
   WSEvent,
+  RuntimeRun,
+  RuntimeEvent,
+  RuntimeArtifact,
+  RuntimeApproval,
 } from "../types";
 
 const BASE = "";
@@ -178,7 +182,6 @@ export function getConfig(): Promise<Record<string, unknown>> {
 export function updateConfig(data: {
   model?: string;
   model_base_url?: string;
-  model_api_key?: string;
   enable_thinking?: boolean;
   thinking_budget?: number;
 }): Promise<{ status: string }> {
@@ -186,6 +189,61 @@ export function updateConfig(data: {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+// ── Canonical Runtime ──────────────────────────────────────────────────────
+
+const runtimeQuery = (workdir: string) => `workdir=${encodeURIComponent(workdir)}`;
+
+export function listRuntimeRuns(workdir: string): Promise<{ runs: RuntimeRun[] }> {
+  return request(`/runtime/runs?${runtimeQuery(workdir)}`);
+}
+
+export function startRuntimeRun(prompt: string, workdir: string): Promise<{ run_id: string; status: string }> {
+  return request("/runtime/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, workdir }),
+  });
+}
+
+export function getRuntimeRun(runId: string, workdir: string): Promise<{ run: RuntimeRun; steps: unknown[] }> {
+  return request(`/runtime/runs/${runId}?${runtimeQuery(workdir)}`);
+}
+
+export function getRuntimeTimeline(runId: string, workdir: string): Promise<{ events: RuntimeEvent[] }> {
+  return request<{ items: { event: RuntimeEvent }[] }>(
+    `/runtime/runs/${runId}/timeline?${runtimeQuery(workdir)}`
+  ).then((timeline) => ({ events: timeline.items.map((item) => item.event) }));
+}
+
+export function getRuntimeMetrics(runId: string, workdir: string): Promise<{ metrics: Record<string, unknown> }> {
+  return request(`/runtime/runs/${runId}/metrics?${runtimeQuery(workdir)}`);
+}
+
+export function listRuntimeArtifacts(runId: string, workdir: string): Promise<{ artifacts: RuntimeArtifact[] }> {
+  return request(`/runtime/runs/${runId}/artifacts?${runtimeQuery(workdir)}`);
+}
+
+export function listRuntimeApprovals(runId: string, workdir: string): Promise<{ approvals: RuntimeApproval[] }> {
+  return request(`/runtime/approvals?run_id=${encodeURIComponent(runId)}&${runtimeQuery(workdir)}`);
+}
+
+export function controlRuntimeRun(runId: string, action: "cancel" | "pause" | "resume" | "retry", workdir: string): Promise<unknown> {
+  const query = action === "cancel" || action === "pause" ? `?${runtimeQuery(workdir)}` : "";
+  return request(`/runtime/runs/${runId}/${action}${query}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: action === "resume" || action === "retry" ? JSON.stringify({ workdir }) : undefined,
+  });
+}
+
+export function decideRuntimeApproval(approvalId: string, approved: boolean, workdir: string): Promise<unknown> {
+  return request(`/runtime/approvals/${approvalId}/${approved ? "approve" : "reject"}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workdir, response: { action: approved ? "approve" : "reject" } }),
   });
 }
 

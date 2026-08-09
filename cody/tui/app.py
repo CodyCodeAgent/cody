@@ -22,6 +22,7 @@ except ImportError:
 
 from ..core import Config
 from ..core.prompt import Prompt
+from ..core.runtime import RuntimeStoreBundle
 from ..sdk.client import AsyncCodyClient
 from ..shared import (
     SPINNER_FRAMES, compact_message, auto_title, build_multimodal_prompt,
@@ -30,6 +31,17 @@ from ..shared import (
 from .widgets import MessageBubble, StreamBubble, StatusLine
 
 logger = logging.getLogger(__name__)
+
+
+def _status_color(status: str | None) -> str:
+    return {
+        "completed": "green",
+        "failed": "red",
+        "cancelled": "red",
+        "waiting": "yellow",
+        "paused": "yellow",
+        "running": "blue",
+    }.get(status or "", "dim")
 
 
 class CodyTUI(App):
@@ -103,6 +115,9 @@ class CodyTUI(App):
         self._cancel_event: Optional[asyncio.Event] = None
         # Accumulated token usage for status line
         self._total_tokens: int = 0
+        self._runtime_interface = RuntimeStoreBundle.for_workdir(
+            self._workdir
+        ).interface()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -237,6 +252,12 @@ class CodyTUI(App):
         "/sessions": "List recent sessions",
         "/skills": "List available skills",
         "/settings": "Show/change settings",
+        "/runs": "List canonical Runtime runs",
+        "/run": "Show a Runtime run",
+        "/timeline": "Show a Run timeline",
+        "/approvals": "List pending Runtime approvals",
+        "/approve": "Approve a Runtime request",
+        "/cancel-run": "Cancel a Runtime run",
         "/image": "Send image with message",
         "/clear": "Clear screen",
         "/help": "Show help",
@@ -451,6 +472,15 @@ class CodyTUI(App):
             self._show_skills(arg)
         elif cmd == "/settings":
             self._handle_settings(arg)
+        elif cmd in {
+            "/runs",
+            "/run",
+            "/timeline",
+            "/approvals",
+            "/approve",
+            "/cancel-run",
+        }:
+            self._handle_runtime_command(cmd, arg)
         elif cmd == "/image":
             self._handle_image_command(arg)
         elif cmd == "/clear":
@@ -469,6 +499,12 @@ class CodyTUI(App):
                 "  /settings        — Show current settings\n"
                 "  /settings model X — Change model\n"
                 "  /settings thinking on/off — Toggle thinking\n"
+                "  /runs            — List canonical Runtime runs\n"
+                "  /run <id>        — Show Run status and steps\n"
+                "  /timeline <id>   — Show Run timeline\n"
+                "  /approvals       — List pending approvals\n"
+                "  /approve <id>    — Approve a request\n"
+                "  /cancel-run <id> — Request cross-process cancellation\n"
                 "  /image path msg  — Send image with message\n"
                 "  /clear           — Clear screen\n"
                 "  /quit            — Exit\n"
@@ -480,6 +516,85 @@ class CodyTUI(App):
             )
         else:
             self._add_bubble("system", f"[yellow]Unknown command: {cmd}[/yellow]\nType /help")
+
+    def _handle_runtime_command(self, command: str, argument: str) -> None:
+        """Render and control shared durable Runtime state."""
+
+        interface = self._runtime_interface
+        if command == "/runs":
+            response = interface.list_runs(limit=20)
+            if not response.ok:
+                self._add_bubble("system", f"[red]{response.error}[/red]")
+                return
+            runs = response.data.get("runs", [])
+            lines = ["[bold]Runtime runs[/bold]"]
+            lines.extend(
+                f"{run['run_id']}  [{_status_color(run.get('status'))}]"
+                f"{run.get('status', '?')}[/]  {run.get('task', '')}"
+                for run in runs
+            )
+            if not runs:
+                lines.append("[dim]No Runtime runs for this project[/dim]")
+            self._add_bubble("system", "\n".join(lines))
+            return
+
+        if command == "/approvals":
+            response = interface.list_approvals(status="pending")
+            approvals = response.data.get("approvals", []) if response.ok else []
+            lines = ["[bold]Pending approvals[/bold]"]
+            lines.extend(
+                f"{approval['approval_id']}  run={approval['run_id']}  "
+                f"node={approval['node_id']}"
+                for approval in approvals
+            )
+            if not approvals:
+                lines.append("[dim]No pending approvals[/dim]")
+            self._add_bubble("system", "\n".join(lines))
+            return
+
+        if not argument:
+            self._add_bubble("system", f"[yellow]Usage: {command} <id>[/yellow]")
+            return
+        identifier = argument.split()[0]
+        if command == "/approve":
+            response = interface.approve(
+                identifier,
+                {"approved": True, "source": "tui"},
+            )
+            text = "Approval accepted" if response.ok else response.error
+            style = "green" if response.ok else "red"
+            self._add_bubble("system", f"[{style}]{text}[/{style}]")
+            return
+        if command == "/cancel-run":
+            response = interface.request_cancel(identifier)
+            text = "Cancellation requested" if response.ok else response.error
+            self._add_bubble("system", f"[yellow]{text}[/yellow]")
+            return
+        if command == "/timeline":
+            response = interface.get_timeline(identifier)
+            if not response.ok:
+                self._add_bubble("system", f"[red]{response.error}[/red]")
+                return
+            items = response.data.get("items", [])
+            lines = [f"[bold]Timeline {identifier}[/bold]"]
+            lines.extend(
+                f"{item['event']['timestamp']}  {item['event']['event_type']}  "
+                f"{item['event'].get('step_id') or '-'}"
+                for item in items[-30:]
+            )
+            self._add_bubble("system", "\n".join(lines))
+            return
+        response = interface.get_run(identifier)
+        if not response.ok:
+            self._add_bubble("system", f"[red]{response.error}[/red]")
+            return
+        run = response.data["run"]
+        steps = interface.list_steps(identifier).data.get("steps", [])
+        self._add_bubble(
+            "system",
+            f"[bold]{run['run_id']}[/bold]\n"
+            f"Status: {run['status']}\nTask: {run['task']}\nSteps: {len(steps)}",
+        )
 
     def _show_sessions(self) -> None:
         if not self._client:

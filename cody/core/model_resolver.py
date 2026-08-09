@@ -23,7 +23,7 @@ def resolve_model(config: Config):
 
     provider = OpenAIProvider(
         base_url=config.model_base_url,
-        api_key=config.model_api_key or "",  # some providers don't require an API key
+        api_key=config.model_api_key or "not-set",  # some providers don't require a key
     )
     return OpenAIChatModel(config.model, provider=provider)
 
@@ -46,5 +46,5 @@ def resolve_small_model(config: Config):
             "model_base_url is required. Run 'cody config setup' to configure."
         )
 
-    provider = OpenAIProvider(base_url=base_url, api_key=api_key or "")
+    provider = OpenAIProvider(base_url=base_url, api_key=api_key or "not-set")
     return OpenAIChatModel(model_name, provider=provider)

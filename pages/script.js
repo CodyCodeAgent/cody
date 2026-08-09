@@ -226,7 +226,7 @@ function initTerminal() {
   const lines = [
     { text: '$ pip install cody-ai', type: 'cmd', delay: 0 },
     { text: 'Collecting cody-ai...', type: 'output', delay: 600 },
-    { text: 'Successfully installed cody-ai-2.0.2', type: 'output', delay: 1000 },
+    { text: 'Successfully installed cody-ai-3.0.0', type: 'output', delay: 1000 },
     { text: '', type: 'blank', delay: 1200 },
     { text: '$ python', type: 'cmd', delay: 1400 },
     { text: '>>> from cody import AsyncCodyClient', type: 'output', delay: 1900 },

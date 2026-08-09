@@ -1,5 +1,7 @@
 """MCP (Model Context Protocol) tools."""
 
+from typing import Any
+
 from pydantic_ai import RunContext
 
 from ..deps import CodyDeps
@@ -26,13 +28,13 @@ async def mcp_list_tools(ctx: RunContext['CodyDeps']) -> str:
 async def mcp_call(
     ctx: RunContext['CodyDeps'],
     tool_name: str,
-    arguments: str = "{}",
+    arguments: dict[str, Any] | str = "{}",
 ) -> str:
     """Call an MCP tool by qualified name (server/tool)
 
     Args:
         tool_name: Qualified tool name, e.g. "github/create_issue"
-        arguments: JSON string of tool arguments
+        arguments: Tool arguments as a JSON object (preferred) or JSON string
     """
     await _check_permission(ctx, "mcp_call")
     import json as _json
@@ -41,6 +43,8 @@ async def mcp_call(
     if client is None:
         return "[ERROR] No MCP servers configured"
 
-    args = _json.loads(arguments) if arguments else {}
+    args = _json.loads(arguments) if isinstance(arguments, str) and arguments else arguments
+    if not args:
+        args = {}
     result = await client.call_tool(tool_name, args)
     return str(result)

@@ -6,6 +6,93 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [3.0.0] - 2026-08-08
+
+### Breaking
+
+- **Web 认证统一为 API Key**：删除未对接外部 IdP 的本地 HMAC pseudo-OAuth token、
+  refresh token 和过期时间路径。`AuthConfig.type` 只接受 `api_key`；读取旧配置时会
+  安全丢弃遗留 OAuth 字段。真正的企业身份接入应通过 Runtime auth provider 扩展实现，
+  不能把本地签名 token 宣称为 OAuth/SSO
+
+### Added
+
+- **统一 Sandbox 执行边界**：新增 run-scoped `SandboxBackend/Handle`，支持 macOS
+  Seatbelt、Linux bubblewrap、Docker/Podman 与 Remote provider adapter；命令工具、
+  Quality Gate、stdio MCP、LSP 和子 Agent 命令统一经过 Sandbox。等待审批会生成
+  Sandbox Snapshot Artifact 并关联 Checkpoint，恢复/Fork 可重建执行环境；子进程
+  默认不继承宿主 secret，网络与资源策略 fail closed
+- **统一产品执行入口**：SDK `run/stream`、CLI、TUI、Web REST/SSE 与两个聊天
+  WebSocket 均通过 canonical `CodyRuntime` 创建 Run，并从持久化 `RunEvent`
+  派生原有输出格式；结果和流式 chunk 暴露统一 `run_id`
+- **Artifact 对象存储**：新增本地/共享文件系统与 S3-compatible blob backend，
+  Artifact 元数据可保留在 SQLite，而大体积 payload 独立存入对象存储；S3 写入支持
+  `put_options`，可强制 SSE-S3/SSE-KMS 等部署策略
+- **Postgres Runtime stores**：新增统一 JSONB catalog 及 run/step、trace、
+  checkpoint、approval、artifact metadata、audit、跨进程 control typed adapters，
+  通过 `RuntimeStoreBundle.postgres()` 组装生产部署 store bundle
+- **统一 Run metrics**：从 canonical events/checkpoints/artifacts 聚合耗时、step、
+  model/tool 调用、retry、quality failure、token、成本和产物计数，并通过 Runtime
+  API、`cody runs metrics` 与 Web `/runtime/runs/{run_id}/metrics` 暴露
+- **Runtime 扩展注册表**：正式定义 tool、skill、model provider、agent backend、
+  workflow node、evaluator、store、auth 与 presentation adapter 扩展类型，支持
+  Python entry-point 自动发现，第三方节点无需修改内核
+- **Telemetry secret redaction**：canonical event 与 audit 参数在持久化前统一递归
+  脱敏嵌套 API key、token、secret、password、authorization、cookie 及常见 `sk-`
+  凭证值，避免 secret 进入 timeline 与审计记录
+- **真实进程故障恢复验收**：新增独立进程在 workflow 中途 `os._exit` 的 fault
+  injection 测试；新 Runtime 从最后已提交 SQLite batch 恢复，仅执行未完成节点
+- **统一治理上下文与 durable tool approval**：Run 持久化 actor、service account、
+  project、model、permission 与 budget；模型问题和 CONFIRM 工具转为确定性 Approval，
+  waiting 释放 worker 后可跨进程恢复；执行边界校验 step、duration、token 与 cost 预算
+- **Web Runtime Console**：新增项目级 Run 启动/列表、pause/cancel/resume/retry、
+  Approval 决策、metrics/cost、timeline 与 Artifact 浏览界面，统一消费 Runtime API
+- **Canonical Runtime API**：新增 `CodyRuntime`、`RuntimeRun` 和
+  `RuntimeRunResult`，统一管理 Run 生命周期、workflow、canonical events、
+  checkpoint、artifact、approval 与共享 stores
+- **Canonical Agent 事件入口**：新增 `AgentRunner.run_events()`；旧
+  `run_stream()` 由 live `RunEvent` 适配，保持现有 SDK/CLI/TUI/Web 兼容
+- **持久化审批恢复**：workflow 定义随 RunRecord 持久化，waiting approval
+  批准后可由新的 Runtime 实例从 SQLite checkpoint 恢复
+- **Runtime 生命周期与取消**：支持 async context manager，并将取消传播到
+  Agent 模型执行和 workflow 边界
+- **Retry / Fork**：失败或取消的 Run 可从最新或指定 checkpoint 重试；任意历史
+  checkpoint 可 fork 为带父 Run/Checkpoint lineage 的新 Run
+- **工具幂等执行**：Runtime Tool Registry 为成功调用保存确定性 SQLite/in-memory
+  收据，checkpoint 回退或 retry 不会重复执行已完成的副作用；外部 API 工具可接收
+  runtime idempotency key
+- **真正异步 Workflow Scheduler**：ready branches 使用受限 worker pool 并发执行，
+  支持确定性 JOIN、fallback、nested workflow、per-node timeout/retry、取消传播和
+  batch-safe checkpoint；并发输出冲突默认失败而非静默覆盖
+- **异步 Multi-Agent 团队**：新增 `AsyncMultiAgentCoordinator` 与声明式
+  `agent_team` workflow node，支持依赖调度、并发 specialist、fallback agent、局部
+  失败、reducer、任务 Artifact 和取消传播
+- **Quality Gate 自动修复闭环**：新增 async `quality_gate` workflow node，指标失败
+  后通过 fallback 进入 repair 并有界重检；耗尽 `max_repairs` 后阻断 Run。提供 tests、
+  lint、typecheck、security、coverage command evaluator 和 diff-risk evaluator
+
+### Changed
+
+- **生产后端真实验收**：新增 `scripts/verify_production_backends.py`，对 PostgreSQL
+  跨进程 catalog/control/approval、S3/MinIO Artifact、Docker/Podman、Bubblewrap 和
+  Remote transport lifecycle 提供可重复的 opt-in 集成验证；报告不会输出连接凭据
+- **容器隔离收紧**：Docker/Podman root filesystem 强制只读，`/tmp` 使用受限 tmpfs；
+  安全继承 `DOCKER_HOST`、`DOCKER_CONTEXT`、`DOCKER_CONFIG` 和 `CONTAINER_HOST`，使
+  Colima、Docker context、Podman Machine 与远程 daemon 可实际工作，同时仍不继承
+  模型 API key 等宿主 secret
+- **模型框架依赖契约**：将 Pydantic AI 约束为已完成 live/类型/回归验证的
+  `>=1.65,<2`；2.x 的 graph/event breaking API 在完成迁移验收前不会被包管理器静默引入
+
+- **完整文档收束**：新增文档索引、Runtime 使用与部署手册、完整 Sandbox 指南和
+  Runtime 黑盒测试手册；同步 CLI/SDK/API/Web/TUI/Config/Skills/站点教程，并增加
+  `scripts/check_docs.py` 自动检查本地链接、公开命令、配置字段、HTTP 路由和静态站点
+- **密钥配置语义明确化**：CLI `config set model_api_key` 和 Web Settings 不再提供
+  实际无法持久化的密钥入口；后端拒绝密钥字段。API Key 只通过进程环境、SDK 参数或
+  secret manager 注入，与 `Config.save()` 的不落盘策略保持一致；Web 认证仅支持
+  `CODY_AUTH_API_KEY` 的无落盘部署
+
+---
+
 ## [2.0.2] - 2026-03-29
 
 ### Fixed

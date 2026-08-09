@@ -1,6 +1,8 @@
 # Cody SDK - Python SDK 使用文档
 
-Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framework）。**Python SDK（`cody.sdk`）是使用 Cody 框架的首选方式**——它直接包装 `cody.core` 引擎，在你的 Python 应用中以 in-process 方式运行，无需启动 HTTP 服务、无需部署额外进程。
+Cody 是一个开源 AI Agent Runtime 和 Coding Agent 参考实现。**Python SDK
+（`cody.sdk`）是嵌入 Cody 的首选方式**——它在进程内启动 canonical Runtime，无需
+HTTP 服务；CLI、TUI 和 Web 与它共享同一种 Run/Event/Checkpoint 模型。
 
 无论你是构建自动化脚本、IDE 插件、CI/CD 流水线还是自己的 AI 编程产品，SDK 都提供了完整的 API 来驱动 Cody 的全部能力：Agent 执行、流式输出、工具调用、多模态 Prompt、技能管理、事件钩子与指标收集。
 
@@ -11,31 +13,32 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 ## 目录
 
 1. [快速开始](#快速开始)
-2. [四种创建方式](#四种创建方式)
-3. [核心方法](#核心方法)
-4. [多模态 Prompt](#多模态-prompt)
-5. [思考模式](#思考模式)
-6. [多工作目录与 allowed_roots](#多工作目录与-allowed_roots)
-7. [自定义工具（Custom Tools）](#自定义工具custom-tools)
-8. [自定义 Prompt](#自定义-prompt)
-9. [无状态模式（Stateless）](#无状态模式stateless)
-10. [技能管理](#技能管理)
-11. [事件系统](#事件系统)
-12. [指标收集](#指标收集)
-13. [MCP 集成](#mcp-集成)
-14. [熔断器（Circuit Breaker）](#熔断器circuit-breaker)
-15. [结构化输出（Structured Output）](#结构化输出structured-output)
-16. [人工交互（Human Interaction）](#人工交互human-interaction)
-17. [项目记忆（Project Memory）](#项目记忆project-memory)
-18. [工具中间件（Step Hooks）](#工具中间件step-hooks)
-19. [存储层抽象（Storage Abstraction）](#存储层抽象storage-abstraction)
-20. [StreamChunk 类型系统](#streamchunk-类型系统)
-21. [LSP 集成](#lsp-集成)
-22. [便捷方法](#便捷方法)
-23. [错误处理](#错误处理)
-24. [示例文件](#示例文件)
-25. [最佳实践](#最佳实践)
-26. [API 参考](#api-参考)
+2. [Canonical Runtime](#canonical-runtime)
+3. [四种创建方式](#四种创建方式)
+4. [核心方法](#核心方法)
+5. [多模态 Prompt](#多模态-prompt)
+6. [思考模式](#思考模式)
+7. [多工作目录与 allowed_roots](#多工作目录与-allowed_roots)
+8. [自定义工具（Custom Tools）](#自定义工具custom-tools)
+9. [自定义 Prompt](#自定义-prompt)
+10. [无状态模式（Stateless）](#无状态模式stateless)
+11. [技能管理](#技能管理)
+12. [事件系统](#事件系统)
+13. [指标收集](#指标收集)
+14. [MCP 集成](#mcp-集成)
+15. [熔断器（Circuit Breaker）](#熔断器circuit-breaker)
+16. [结构化输出（Structured Output）](#结构化输出structured-output)
+17. [人工交互（Human Interaction）](#人工交互human-interaction)
+18. [项目记忆（Project Memory）](#项目记忆project-memory)
+19. [工具中间件（Step Hooks）](#工具中间件step-hooks)
+20. [存储层抽象（Storage Abstraction）](#存储层抽象storage-abstraction)
+21. [StreamChunk 类型系统](#streamchunk-类型系统)
+22. [LSP 集成](#lsp-集成)
+23. [便捷方法](#便捷方法)
+24. [错误处理](#错误处理)
+25. [示例文件](#示例文件)
+26. [最佳实践](#最佳实践)
+27. [API 参考](#api-参考)
 
 ---
 
@@ -44,7 +47,7 @@ Cody 是一个开源 AI 编程助手框架（Open-source AI Coding Agent Framewo
 ### 安装
 
 ```bash
-# 只装核心 SDK（4 个依赖）
+# 只装核心 SDK（3 个直接核心依赖）
 pip install cody-ai
 
 # 完整安装（包含 CLI、TUI、Web）
@@ -78,7 +81,7 @@ SDK 支持通过环境变量配置模型，无需在代码中硬编码：
 
 ```bash
 export CODY_MODEL=qwen3.5-plus
-export CODY_MODEL_API_KEY=sk-xxx
+export CODY_MODEL_API_KEY='your-api-key'
 export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
 ```
 
@@ -86,17 +89,181 @@ export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
 
 > **注意**：`AsyncCodyClient()` 不传 model 参数时会使用环境变量，不会使用 SDK 默认模型覆盖。
 
+## Canonical Runtime
+
+`CodyRuntime` 是面向工作流和长期运行的新高层入口。Runtime 拥有 Run 生命周期、
+统一 `RunEvent`、checkpoint、artifact 和状态存储；`AgentRunner` 作为 Agent 类型节点的
+执行器。现有 `AsyncCodyClient` 和 `StreamChunk` API 保持兼容。
+
+```python
+from cody import CodyRuntime
+from cody.core import Config
+from cody.core.runtime import (
+    AsyncMultiAgentCoordinator,
+    ToolSpec,
+    RuntimeStoreBundle,
+    Workflow,
+    WorkflowEdgeType,
+    WorkflowNodeType,
+    standard_quality_evaluators,
+)
+
+stores = RuntimeStoreBundle.for_workdir(".")
+runtime = CodyRuntime.from_config(Config.load(workdir="."), ".", stores=stores)
+run = await runtime.start("修复当前项目中失败的测试")
+
+async for event in run.events():
+    print(event.event_type.value, event.payload)
+
+result = await run.result()
+print(result.output)
+print(result.artifact_ids)
+await runtime.close()
+```
+
+也可以传入编译后的 workflow 和结构化输入：
+
+```python
+run = await runtime.start(workflow.compile(), {"task": "审查并修复 PR"})
+```
+
+`run.cancel()` 会同时向模型执行和 workflow 边界传播协作式取消。运行状态、事件、
+checkpoint 和最终结果 artifact 使用同一个 `run_id`。
+
+带人工审批的工作流会持久化为 `waiting`，不需要一直占用原来的执行协程。批准后
+可以在新进程或新 Runtime 实例中恢复：
+
+```python
+runtime.approve(approval_id, {"approved": True})
+resumed = await runtime.resume(run_id)
+result = await resumed.result()
+```
+
+Runtime 会从 RunRecord 中恢复持久化的 workflow 定义，并从最新 checkpoint 继续。
+自定义 node/condition handler 仍需在新 Runtime 实例中注册。
+
+失败或取消的 Run 可以重试，历史 checkpoint 可以 fork 成新 Run：
+
+```python
+retried = await runtime.retry(run_id)
+forked = await runtime.fork(checkpoint_id, metadata={"reason": "alternate approach"})
+```
+
+Runtime Tool Registry 的工具节点默认使用持久化幂等收据。即使显式回退到工具执行前
+的 checkpoint，已经完成的同一 `run_id + node_id + tool + args` 也只会返回原收据，
+不会再次执行副作用。调用外部幂等 API 的工具可以声明参数名：
+
+```python
+registry.register(ToolSpec(
+    "deploy",
+    deploy,
+    metadata={"idempotency_arg": "request_id"},
+))
+runtime = CodyRuntime.from_config(config, ".", tool_registry=registry)
+```
+
+### 并行工作流与 Agent 团队
+
+`parallel` 分支会由 async worker pool 真正并发执行，`join` 仅在所有来源完成后运行：
+
+```python
+workflow = (
+    Workflow("parallel-review")
+    .node("plan", WorkflowNodeType.AGENT)
+    .node("security", WorkflowNodeType.AGENT)
+    .node("tests", WorkflowNodeType.TOOL)
+    .node("join", WorkflowNodeType.FUNCTION)
+    .edge("plan", "security", edge_type=WorkflowEdgeType.PARALLEL)
+    .edge("plan", "tests", edge_type=WorkflowEdgeType.PARALLEL)
+    .edge("security", "join", edge_type=WorkflowEdgeType.JOIN)
+    .edge("tests", "join", edge_type=WorkflowEdgeType.JOIN)
+)
+```
+
+节点 metadata 支持 `timeout_seconds`、`max_retries` 和
+`retry_backoff_seconds`。Runtime 构造参数 `max_concurrency` 限制并发资源。
+
+`agent_team` 节点可以声明 specialist task DAG：
+
+```python
+coordinator = AsyncMultiAgentCoordinator()
+coordinator.register_agent(code_role, code_backend)
+coordinator.register_agent(test_role, test_backend)
+
+runtime = CodyRuntime.from_config(
+    config,
+    ".",
+    multi_agent_coordinator=coordinator,
+    max_concurrency=4,
+)
+```
+
+每个 task 支持 `required_capabilities`、`depends_on`、`preferred_agent_id`、
+`fallback_agent_ids`，以及 metadata 中的 timeout/retry 配置。
+
+### Quality Gate 与自动修复
+
+Runtime 原生支持 async quality gate。Gate 失败后可沿 fallback edge 进入 repair，
+修复完成后通过 `allow_revisit` edge 重新检查：
+
+```python
+workflow = (
+    Workflow("verified-change")
+    .node("implement", WorkflowNodeType.AGENT)
+    .node(
+        "quality",
+        WorkflowNodeType.QUALITY_GATE,
+        metadata={
+            "max_repairs": 2,
+            "quality_gate": {
+                "gate_id": "release",
+                "metrics": [
+                    {"metric_id": "tests", "required": True},
+                    {"metric_id": "lint", "required": True},
+                    {"metric_id": "diff_risk", "threshold": 0.7},
+                ],
+            },
+        },
+    )
+    .node("repair", WorkflowNodeType.AGENT)
+    .node("done", WorkflowNodeType.FUNCTION)
+    .edge("implement", "quality")
+    .edge("quality", "done")
+    .edge(
+        "quality",
+        "repair",
+        edge_type=WorkflowEdgeType.FALLBACK,
+        metadata={"allow_revisit": True},
+    )
+    .edge("repair", "quality", metadata={"allow_revisit": True})
+)
+
+evaluators = standard_quality_evaluators(".")
+runtime = CodyRuntime.from_config(config, ".", quality_evaluators=evaluators)
+```
+
+每次 gate decision 都保存为 REVIEW Artifact 并写入 timeline。标准 command evaluator
+不使用 shell，支持 timeout 和结构化 stdout/stderr/returncode；也可以注册任意同步或
+异步 evaluator。
+
+Runtime 的 durable store、治理预算、进程恢复、PostgreSQL/S3 部署、Sandbox 和扩展
+接口见独立的 [Runtime 使用与部署](RUNTIME.md) 与 [Sandbox 指南](SANDBOX.md)。
+
 ## 四种创建方式
 
 ```python
+import os
+
 from cody.sdk import AsyncCodyClient, Cody, config
+
+api_key = os.environ["CODY_MODEL_API_KEY"]
 
 # 1. Builder 模式（推荐）
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("claude-sonnet-4-0")
-    .api_key("sk-ant-xxx")
+    .model("deepseek-v4-flash")
+    .api_key(api_key)
     .thinking(True, budget=10000)
     .allowed_roots(["/path/to/project", "/shared/libs"])
     .enable_metrics()
@@ -107,17 +274,17 @@ client = (
 # 2. 直接构造
 client = AsyncCodyClient(
     workdir="/path/to/project",
-    model="claude-sonnet-4-0",
-    api_key="sk-ant-xxx",
-    base_url="https://api.example.com/v1",
+    model="deepseek-v4-flash",
+    api_key=api_key,
+    base_url="https://api.deepseek.com/v1",
     db_path="/path/to/sessions.db",
 )
 
 # 3. Config 对象
 cfg = config(
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     workdir=".",
-    api_key="sk-ant-xxx",
+    api_key=api_key,
     enable_thinking=True,
     thinking_budget=10000,
     allowed_roots=["/path/to/project", "/shared/libs"],
@@ -146,7 +313,7 @@ client = (
     .workdir("/path/to/project")
     .model("qwen3.5-plus")
     .base_url("https://coding.dashscope.aliyuncs.com/v1")
-    .api_key("sk-xxx")
+    .api_key(api_key)
     .build()
 )
 
@@ -154,9 +321,9 @@ client = (
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("deepseek-chat")
+    .model("deepseek-v4-flash")
     .base_url("https://api.deepseek.com/v1")
-    .api_key("sk-xxx")
+    .api_key(api_key)
     .build()
 )
 
@@ -165,7 +332,7 @@ client = AsyncCodyClient(
     workdir="/path/to/project",
     model="glm-4",
     base_url="https://open.bigmodel.cn/api/paas/v4/",
-    api_key="your-zhipu-api-key",
+    api_key=api_key,
 )
 ```
 
@@ -442,7 +609,7 @@ r3 = await client.run("添加用户认证", session_id=sid)
 # 也可以手动创建会话（可自定义标题）
 session = await client.create_session(
     title="My Project",
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     workdir="/path/to/project",
 )
 r4 = await client.run("分析项目结构", session_id=session.id)
@@ -659,7 +826,7 @@ async with client:
 from cody.sdk import AsyncCodyClient, config
 
 cfg = config(
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     enable_thinking=True,
     thinking_budget=8000,
 )
@@ -676,7 +843,7 @@ from cody.sdk import SDKConfig, ModelConfig, AsyncCodyClient
 cfg = SDKConfig(
     workdir="/path/to/project",
     model=ModelConfig(
-        model="claude-sonnet-4-0",
+        model="deepseek-v4-flash",
         enable_thinking=True,
         thinking_budget=10000,
     ),
@@ -1125,7 +1292,7 @@ SDK 支持配置自定义 Skill 搜索目录，自定义目录优先级最高（
 client = (
     Cody()
     .workdir("/my/project")
-    .model("claude-sonnet-4-0")
+    .model("deepseek-v4-flash")
     .skill_dir("/shared/team-skills")
     .skill_dir("/home/user/my-skills")
     .build()
@@ -1133,7 +1300,7 @@ client = (
 
 # config() 便捷函数
 cfg = config(
-    model="claude-sonnet-4-0",
+    model="deepseek-v4-flash",
     workdir="/my/project",
     skill_dirs=["/shared/team-skills", "/home/user/my-skills"],
 )
@@ -1429,7 +1596,7 @@ cb = CircuitBreakerConfig(
     max_cost_usd=10.0,
     max_tokens=500_000,
     max_steps=50,
-    model_prices={"claude-sonnet-4-0": 0.000009},
+    model_prices={"my-model": 0.000003},  # 按供应商实际单价设置
 )
 client = Cody().circuit_breaker(cb).build()
 
@@ -2028,6 +2195,7 @@ async with client:
 | `ModelConfig` | 模型配置（模型名、API Key、思考模式等） |
 | `PermissionConfig` | 工具权限配置 |
 | `SecurityConfig` | 安全配置（`allowed_roots`、`blocked_commands`、`strict_read_boundary` 等） |
+| `SandboxConfig` | Sandbox 后端、文件/网络策略与 CPU/内存/进程限制 |
 | `MCPConfig` | MCP 服务器配置 |
 | `MCPServerConfig` | 单个 MCP 服务器配置（v1.9.0+，支持 stdio/http 传输） |
 | `LSPConfig` | LSP 语言配置 |
@@ -2080,4 +2248,4 @@ async with client:
 
 ---
 
-**最后更新:** 2026-03-20
+**最后更新:** 2026-07-12

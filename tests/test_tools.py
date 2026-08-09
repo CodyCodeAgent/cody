@@ -10,6 +10,9 @@ from cody.core.tools import (
 )
 from cody.core.tools._file_filter import _is_binary, _parse_gitignore, _is_gitignored, _iter_files
 from cody.core.tools.command import _BLOCKED_COMMAND_PATTERNS, exec_command
+from cody.core.tools.mcp import mcp_call
+from cody.core.tools._base import _with_model_retry
+from cody.core.runtime import WorkflowWaiting
 from cody.core.config import Config
 from cody.core.skill_manager import SkillManager
 from cody.core.deps import CodyDeps
@@ -28,6 +31,28 @@ class MockContext:
             allowed_roots=allowed_roots or [],
             strict_read_boundary=strict_read_boundary,
         )
+
+
+class FakeMCPClient:
+    def __init__(self):
+        self.calls = []
+
+    async def call_tool(self, tool_name, arguments):
+        self.calls.append((tool_name, arguments))
+        return {"ok": True}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", [{"value": "beta"}, '{"value":"beta"}'])
+async def test_mcp_call_accepts_object_or_json_string(tmp_path, arguments):
+    ctx = MockContext(tmp_path)
+    client = FakeMCPClient()
+    ctx.deps.mcp_client = client
+
+    result = await mcp_call(ctx, "live/echo", arguments)
+
+    assert client.calls == [("live/echo", {"value": "beta"})]
+    assert "True" in result
 
 
 # ── File operation tests ─────────────────────────────────────────────────────
@@ -171,6 +196,16 @@ async def test_strict_read_boundary_exec_command_no_abs_path_ok(tmp_path):
 
     result = await exec_command(ctx, "echo hello")
     assert "hello" in result
+
+
+@pytest.mark.asyncio
+async def test_tool_wrapper_propagates_runtime_control_signals():
+    async def waiting_tool(_ctx):
+        raise WorkflowWaiting("approval required")
+
+    wrapped = _with_model_retry(waiting_tool)
+    with pytest.raises(WorkflowWaiting, match="approval required"):
+        await wrapped(object())
 
 
 @pytest.mark.asyncio
