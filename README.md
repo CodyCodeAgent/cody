@@ -233,6 +233,7 @@ uv run ruff check .
 
 ### 入门
 - [快速入门](docs/QUICKSTART.md) — 15 分钟上手教程
+- [场景 Demo](examples/README.md) — 22 个可运行示例，覆盖 SDK、Runtime、Workflow、治理、Sandbox 与 Store
 - [CLI 使用指南](docs/CLI.md) — 命令行详细用法
 - [TUI 使用指南](docs/TUI.md) — 全屏终端用法
 

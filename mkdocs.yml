@@ -132,6 +132,7 @@ nav:
   - 首页: index.md
   - 教程:
       - 教程路线: tutorials/index.md
+      - 场景 Demo: DEMOS.md
       - 01 · 跑通第一个任务: tutorials/01-first-run.md
       - 02 · 会话与流式输出: tutorials/02-sessions-streaming.md
       - 03 · 工具、Skills 与 MCP: tutorials/03-tools-skills-mcp.md
