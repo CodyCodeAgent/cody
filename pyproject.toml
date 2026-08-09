@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cody-ai"
 dynamic = ["version"]
-description = "Open-source AI Coding Agent framework with SDK, Skills, and MCP integration"
+description = "Open-source Agent Runtime with a production-ready Coding Agent reference implementation"
 authors = [{name = "GouChao"}]
 readme = "README.md"
 license = "MIT"
@@ -35,7 +35,7 @@ cody-web = "web.backend.app:run"
 [project.urls]
 Homepage = "https://github.com/CodyCodeAgent/cody"
 Repository = "https://github.com/CodyCodeAgent/cody"
-Documentation = "https://github.com/CodyCodeAgent/cody/tree/main/docs"
+Documentation = "https://codycodeagent.github.io/cody/"
 Changelog = "https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md"
 Issues = "https://github.com/CodyCodeAgent/cody/issues"
 

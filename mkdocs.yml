@@ -1,0 +1,169 @@
+site_name: Cody
+site_description: 面向开发者的开源 Agent Runtime 与 Coding Agent 参考实现
+site_url: https://codycodeagent.github.io/cody/
+repo_url: https://github.com/CodyCodeAgent/cody
+repo_name: CodyCodeAgent/cody
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Cody Contributors · MIT License
+
+docs_dir: docs
+use_directory_urls: false
+strict: true
+exclude_docs: |
+  README.md
+  QUICKSTART.md
+  AGENT_KERNEL_REVIEW.md
+  HARNESS.md
+  iterations/
+  overrides/
+
+theme:
+  name: material
+  language: zh
+  custom_dir: docs/overrides
+  logo: assets/images/logo.svg
+  favicon: assets/images/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - announce.dismiss
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色模式
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色模式
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+  - redirects:
+      redirect_maps:
+        docs.md: guides/index.md
+        sdk.md: tutorials/index.md
+        sdk/01-single-run.md: tutorials/01-first-run.md
+        sdk/02-multi-turn.md: tutorials/02-sessions-streaming.md
+        sdk/03-streaming.md: tutorials/02-sessions-streaming.md
+        sdk/04-tools.md: tutorials/03-tools-skills-mcp.md
+        sdk/05-custom-tools.md: tutorials/13-custom-tools.md
+        sdk/06-prompt.md: tutorials/14-multimodal-interaction.md
+        sdk/07-skills.md: tutorials/03-tools-skills-mcp.md
+        sdk/08-mcp.md: tutorials/03-tools-skills-mcp.md
+        sdk/09-security.md: tutorials/09-sandbox.md
+        sdk/10-events.md: tutorials/15-memory-observability.md
+        sdk/11-memory.md: tutorials/15-memory-observability.md
+        sdk/12-human-in-loop.md: tutorials/14-multimodal-interaction.md
+        sdk/13-storage.md: tutorials/10-production-storage.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: 本页内容
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
+  - assets/javascripts/mermaid.js
+  - assets/javascripts/site.js
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/CodyCodeAgent/cody
+      name: Cody on GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/cody-ai/
+      name: Cody on PyPI
+
+nav:
+  - 首页: index.md
+  - 教程:
+      - 教程路线: tutorials/index.md
+      - 01 · 跑通第一个任务: tutorials/01-first-run.md
+      - 02 · 会话与流式输出: tutorials/02-sessions-streaming.md
+      - 03 · 工具、Skills 与 MCP: tutorials/03-tools-skills-mcp.md
+      - 04 · 启动持久化 Run: tutorials/04-runtime-run.md
+      - 05 · 编排并行 Workflow: tutorials/05-workflow.md
+      - 06 · 组织多 Agent 团队: tutorials/06-multi-agent.md
+      - 07 · 审批、暂停与恢复: tutorials/07-approval-recovery.md
+      - 08 · Quality Gate 修复循环: tutorials/08-quality-gate.md
+      - 09 · 在 Sandbox 中执行: tutorials/09-sandbox.md
+      - 10 · PostgreSQL 与 S3: tutorials/10-production-storage.md
+      - 11 · CLI、TUI 与 Web 协作: tutorials/11-product-surfaces.md
+      - 12 · 扩展 Runtime: tutorials/12-extensions.md
+      - 13 · 自定义工具与中间件: tutorials/13-custom-tools.md
+      - 14 · 多模态与人工交互: tutorials/14-multimodal-interaction.md
+      - 15 · 记忆、事件与指标: tutorials/15-memory-observability.md
+  - 指南:
+      - 指南总览: guides/index.md
+      - Runtime:
+          - 生命周期、Workflow 与恢复: RUNTIME.md
+          - 生产部署: guides/production.md
+          - 运行观测与故障处理: guides/operations.md
+      - 使用界面:
+          - Python SDK: SDK.md
+          - CLI: CLI.md
+          - TUI: TUI.md
+          - HTTP / WebSocket API: API.md
+      - 能力与扩展:
+          - Sandbox: SANDBOX.md
+          - Skills: SKILLS.md
+          - 配置参考: CONFIG.md
+          - 完整功能清单: FEATURES.md
+          - 架构设计: ARCHITECTURE.md
+  - 项目:
+      - 贡献指南: https://github.com/CodyCodeAgent/cody/blob/main/CONTRIBUTING.md
+      - 更新日志: https://github.com/CodyCodeAgent/cody/blob/main/CHANGELOG.md

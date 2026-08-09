@@ -2,13 +2,13 @@
 
 ## 概述
 
-Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部系统集成。这是框架的四种运行方式之一。
+Cody 通过 Web Backend（FastAPI）暴露 HTTP/WebSocket 与 Canonical Runtime API，供浏览器和非 Python 系统集成。Web 是 Runtime 的产品表面之一，不维护独立运行状态。
 
 > **推荐**：如果你的应用是 Python，优先使用 [Python SDK](SDK.md)（in-process，无需启动服务）。HTTP API 适用于非 Python 环境或需要远程访问的场景。
 
 **Base URL:** `http://localhost:8000`
 
-**版本：** 3.0.0
+**版本：** 3.0.1
 
 ---
 
@@ -26,7 +26,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
   "prompt": "创建一个 FastAPI 项目",
   "workdir": "/path/to/project",
   "allowed_roots": [],
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": null,
   "model_api_key": null,
   "skills": ["python", "git"],
@@ -78,7 +78,7 @@ Cody 框架通过 Web Backend（FastAPI）提供 HTTP/WebSocket API，供外部�
 ```json
 {
   "prompt": "写一个排序算法",
-  "model": "qwen3.5",
+  "model": "qwen-plus",
   "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
   "model_api_key": "your-api-key"
 }
@@ -362,7 +362,7 @@ RunEvent 投影兼容聊天事件。
     {
       "id": "abc123",
       "title": "My session",
-      "model": "deepseek-v4-flash",
+      "model": "deepseek-chat",
       "workdir": "/path/to/project",
       "message_count": 4,
       "created_at": "2026-02-13T12:00:00",
@@ -381,7 +381,7 @@ RunEvent 投影兼容聊天事件。
 {
   "id": "abc123",
   "title": "My session",
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "workdir": "/path/to/project",
   "message_count": 2,
   "created_at": "2026-02-13T12:00:00",
@@ -641,7 +641,7 @@ HTTP 连接持续存在。
   "data": {
     "prompt": "创建文件",
     "workdir": "/path",
-    "model": "deepseek-v4-flash",
+    "model": "deepseek-chat",
     "session_id": "abc123",
     "images": [
       {"data": "<base64>", "media_type": "image/png", "filename": "screenshot.png"}

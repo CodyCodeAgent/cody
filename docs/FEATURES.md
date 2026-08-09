@@ -11,7 +11,7 @@ Quality Gate、Sandbox，以及 CLI/TUI/Web/SDK 四种产品表面。
 ## 核心定位
 
 > **Cody 是可嵌入、可编排、可恢复、可治理、可观测的 Agent Runtime；CLI、Web、TUI 是参考产品，SDK 是第一等集成入口。**
-> 引擎做厚，壳子做薄。框架完整度是核心竞争力。
+> Runtime 做厚，产品表面做薄。可靠、统一的执行主链是核心竞争力。
 
 **目标用户：**
 - **团队/公司构建 AI 编程工具** — 通过 Python SDK 或 HTTP API 将 Cody 框架集成到自己的产品中（**核心场景**）
@@ -266,7 +266,7 @@ pip install cody-ai[production] # PostgreSQL + S3 adapters
 from cody import Cody
 
 # Builder 模式创建客户端
-client = Cody().workdir("/path/to/project").model("deepseek-v4-flash").build()
+client = Cody().workdir("/path/to/project").model("deepseek-chat").build()
 
 # 同步执行
 result = client.run("重构 auth.py，提取通用逻辑到 utils.py")
@@ -472,7 +472,7 @@ cody tui --session <id>      # 恢复指定会话
 **`.cody/config.json`（项目级）：**
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["github", "docker"],
@@ -495,7 +495,7 @@ cody tui --session <id>      # 恢复指定会话
 **`~/.cody/config.json`（全局）：**
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["git"]
@@ -648,7 +648,7 @@ await client.clear_memory()
 from cody import Cody
 
 # 构建自己的 AI 代码审查系统
-client = Cody().workdir(repo_path).model("deepseek-v4-flash").build()
+client = Cody().workdir(repo_path).model("deepseek-chat").build()
 
 # 自动代码审查
 diff = get_pr_diff()

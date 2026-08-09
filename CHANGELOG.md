@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [3.0.1] - 2026-08-09
+
+### Changed
+
+- **重建 GitHub Pages 文档站**：改为从仓库 Markdown 使用 ProperDocs 与 MkDocs
+  Material 自动生成，统一深浅色主题、响应式布局、搜索、代码复制和 Mermaid 渲染，
+  并保留旧 `/docs.html`、`/sdk.html` 与 `/sdk/*` 地址的兼容跳转
+- **教程与指南分层**：新增 15 篇任务式教程，覆盖 SDK、Tools、Skills、MCP、
+  Runtime、Workflow、多 Agent、审批恢复、Quality Gate、Sandbox、生产存储、扩展、
+  多模态和可观测性；补充生产部署及运行排障指南
+- **文档与代码重新对齐**：修正模型示例、CLI 命令、Workflow 条件语义、Web 鉴权变量、
+  Quality Gate 参数，以及 Remote Sandbox、S3/MinIO、PostgreSQL 和 OAuth/SSO 的能力边界
+- **文档 CI 硬化**：Pages 构建在 push 与 pull request 中执行严格模式，并检查 Markdown
+  示例语法、公开接口覆盖、生成页面链接、锚点、静态资源和潜在凭据泄漏
+
+---
+
 ## [3.0.0] - 2026-08-08
 
 ### Breaking

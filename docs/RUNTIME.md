@@ -94,8 +94,8 @@ workflow = (
 run = await runtime.start(workflow, {"task": "修复失败测试"})
 ```
 
-节点类型包括 Agent、Tool、Function、Condition、Human Approval、Agent Team、Quality
-Gate 和 Nested Workflow。Edge 支持 sequential、parallel、join、condition 和
+节点类型包括 Agent、Tool、Function、Checkpoint、Human Approval、Agent Team、Quality
+Gate 和 Nested Workflow。条件路由由 Conditional Edge 表达；Edge 支持 sequential、parallel、join、conditional 和
 fallback。编译阶段会拒绝悬空边、非法 join、无入口图和不允许的环。
 
 节点 `metadata` 常用字段：
@@ -303,7 +303,7 @@ Model provider、Agent backend、Workflow node、Evaluator、Store、Auth 和 Pr
 adapter。扩展应只依赖公共类型，不修改 Runtime 内核；恢复所需的 handler 必须使用
 稳定名称和兼容版本。
 
-## 12. 当前边界
+## 12. 当前边界 {#12-当前边界}
 
 - SQLite 适合单机；多进程生产部署使用 PostgreSQL 或自定义 Store。
 - S3/PostgreSQL、Docker/Podman 和 Bubblewrap 需要对应外部服务或系统依赖，安装包

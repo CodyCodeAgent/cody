@@ -1,6 +1,6 @@
 # Cody - CLI 使用文档
 
-命令行界面 (CLI) 是 Cody 框架的参考实现之一，提供单次任务执行、交互式对话、会话管理等功能，适合终端中快速使用。
+命令行界面 (CLI) 是 Cody Runtime 的参考产品之一，既能执行编码任务和管理会话，也能查询、审批、暂停、恢复和 fork 持久化 Run。
 
 ---
 
@@ -193,7 +193,7 @@ cody run --workdir /proj --allow-root /data/train --allow-root /data/test "运�
 cody config setup
 
 # 临时使用不同模型名称
-cody run --model qwen3.5 "写个排序算法"
+cody run --model qwen-plus "写个排序算法"
 ```
 
 #### 启用思考模式
@@ -218,7 +218,7 @@ cody run "复杂任务分析"
 cody run -v "读取并分析 main.py"
 
 # 输出示例：
-# Model: deepseek-v4-flash
+# Model: deepseek-chat
 # Workdir: /home/user/project
 #   → read_file(path='main.py')
 #     [内容预览...]
@@ -295,7 +295,7 @@ cody chat \
 cody chat
 
 # 指定模型
-cody chat --model deepseek-v4-flash
+cody chat --model deepseek-chat
 
 # 指定工作目录
 cody chat --workdir /path/to/project
@@ -333,7 +333,7 @@ cody chat --continue --workdir /new/path
 ```
 ╭────────────────────────────────────────────────────╮
 │                  Cody Chat                          │
-│  Model: deepseek-v4-flash                │
+│  Model: deepseek-chat                │
 │  Workdir: /home/user/project                       │
 │  Session: abc123                                   │
 ╰────────────────────────────────────────────────────╯
@@ -491,7 +491,7 @@ cody sessions show <session_id>
 ╭────────────────────────────────────────────────────╮
 │            Session abc123                           │
 │  Title: Flask 应用开发                             │
-│  Model: deepseek-v4-flash                │
+│  Model: deepseek-chat                │
 │  Workdir: /home/user/project                       │
 │  Created: 2026-02-28T10:00:00                      │
 │  Messages: 4                                       │
@@ -645,7 +645,7 @@ cody config show
 **输出示例:**
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "enable_thinking": false,
   "skills": {
@@ -665,7 +665,7 @@ cody config show
 
 ```bash
 # 设置模型
-cody config set model "deepseek-v4-flash"
+cody config set model "deepseek-chat"
 
 # 设置自定义 API 地址
 cody config set model_base_url "https://..."
@@ -681,7 +681,7 @@ cody config set thinking_budget 10000
 **输出:**
 
 ```
-Set model = deepseek-v4-flash
+Set model = deepseek-chat
 ```
 
 ---
@@ -763,7 +763,7 @@ Cody 使用 OpenAI-compatible Chat Completions。模型名不是 Cody 的固定�
 cody config setup
 
 # 或手动设置
-cody config set model deepseek-v4-flash
+cody config set model deepseek-chat
 cody config set model_base_url "https://api.deepseek.com/v1"
 export CODY_MODEL_API_KEY='your-api-key'
 ```
@@ -923,7 +923,7 @@ cody run --model glm-4 "任务"
 
 ---
 
-## CODY.md 项目说明文件
+## CODY.md 项目说明文件 {#codymd-项目说明文件}
 
 `CODY.md` 是 Cody 的项目说明文件，类似于 Claude Code 的 `CLAUDE.md`，
 每次启动 session 时自动读取并注入到 AI 的系统提示中。

@@ -3,7 +3,17 @@ name: Deploy Pages
 on:
   push:
     branches: [main]
-    paths: ['pages/**']
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-pages.txt'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-pages.txt'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,19 +26,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-pages.txt
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-pages.txt
+
+      - name: Build documentation
+        run: properdocs build -f mkdocs.yml --strict --site-dir site
+
+      - name: Check generated links and assets
+        run: python scripts/check_built_site.py site
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: pages/
+          path: site/
 
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
         uses: actions/deploy-pages@v4

@@ -10,35 +10,7 @@ HTTP 服务；CLI、TUI 和 Web 与它共享同一种 Run/Event/Checkpoint 模�
 
 ---
 
-## 目录
-
-1. [快速开始](#快速开始)
-2. [Canonical Runtime](#canonical-runtime)
-3. [四种创建方式](#四种创建方式)
-4. [核心方法](#核心方法)
-5. [多模态 Prompt](#多模态-prompt)
-6. [思考模式](#思考模式)
-7. [多工作目录与 allowed_roots](#多工作目录与-allowed_roots)
-8. [自定义工具（Custom Tools）](#自定义工具custom-tools)
-9. [自定义 Prompt](#自定义-prompt)
-10. [无状态模式（Stateless）](#无状态模式stateless)
-11. [技能管理](#技能管理)
-12. [事件系统](#事件系统)
-13. [指标收集](#指标收集)
-14. [MCP 集成](#mcp-集成)
-15. [熔断器（Circuit Breaker）](#熔断器circuit-breaker)
-16. [结构化输出（Structured Output）](#结构化输出structured-output)
-17. [人工交互（Human Interaction）](#人工交互human-interaction)
-18. [项目记忆（Project Memory）](#项目记忆project-memory)
-19. [工具中间件（Step Hooks）](#工具中间件step-hooks)
-20. [存储层抽象（Storage Abstraction）](#存储层抽象storage-abstraction)
-21. [StreamChunk 类型系统](#streamchunk-类型系统)
-22. [LSP 集成](#lsp-集成)
-23. [便捷方法](#便捷方法)
-24. [错误处理](#错误处理)
-25. [示例文件](#示例文件)
-26. [最佳实践](#最佳实践)
-27. [API 参考](#api-参考)
+页面右侧目录由站点自动生成；教程与部署类主题请从顶部“教程”入口开始。
 
 ---
 
@@ -80,9 +52,9 @@ from cody.client import AsyncCodyClient    # 向后兼容
 SDK 支持通过环境变量配置模型，无需在代码中硬编码：
 
 ```bash
-export CODY_MODEL=qwen3.5-plus
+export CODY_MODEL=qwen-plus
 export CODY_MODEL_API_KEY='your-api-key'
-export CODY_MODEL_BASE_URL=https://coding.dashscope.aliyuncs.com/v1
+export CODY_MODEL_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
 配置优先级（从高到低）：代码参数 > 环境变量 > 项目配置文件 > 全局配置文件 > 默认值
@@ -262,7 +234,7 @@ api_key = os.environ["CODY_MODEL_API_KEY"]
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("deepseek-v4-flash")
+    .model("deepseek-chat")
     .api_key(api_key)
     .thinking(True, budget=10000)
     .allowed_roots(["/path/to/project", "/shared/libs"])
@@ -274,7 +246,7 @@ client = (
 # 2. 直接构造
 client = AsyncCodyClient(
     workdir="/path/to/project",
-    model="deepseek-v4-flash",
+    model="deepseek-chat",
     api_key=api_key,
     base_url="https://api.deepseek.com/v1",
     db_path="/path/to/sessions.db",
@@ -282,7 +254,7 @@ client = AsyncCodyClient(
 
 # 3. Config 对象
 cfg = config(
-    model="deepseek-v4-flash",
+    model="deepseek-chat",
     workdir=".",
     api_key=api_key,
     enable_thinking=True,
@@ -311,8 +283,8 @@ client = (
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("qwen3.5-plus")
-    .base_url("https://coding.dashscope.aliyuncs.com/v1")
+    .model("qwen-plus")
+    .base_url("https://dashscope.aliyuncs.com/compatible-mode/v1")
     .api_key(api_key)
     .build()
 )
@@ -321,7 +293,7 @@ client = (
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("deepseek-v4-flash")
+    .model("deepseek-chat")
     .base_url("https://api.deepseek.com/v1")
     .api_key(api_key)
     .build()
@@ -609,7 +581,7 @@ r3 = await client.run("添加用户认证", session_id=sid)
 # 也可以手动创建会话（可自定义标题）
 session = await client.create_session(
     title="My Project",
-    model="deepseek-v4-flash",
+    model="deepseek-chat",
     workdir="/path/to/project",
 )
 r4 = await client.run("分析项目结构", session_id=session.id)
@@ -826,7 +798,7 @@ async with client:
 from cody.sdk import AsyncCodyClient, config
 
 cfg = config(
-    model="deepseek-v4-flash",
+    model="deepseek-chat",
     enable_thinking=True,
     thinking_budget=8000,
 )
@@ -843,7 +815,7 @@ from cody.sdk import SDKConfig, ModelConfig, AsyncCodyClient
 cfg = SDKConfig(
     workdir="/path/to/project",
     model=ModelConfig(
-        model="deepseek-v4-flash",
+        model="deepseek-chat",
         enable_thinking=True,
         thinking_budget=10000,
     ),
@@ -1292,7 +1264,7 @@ SDK 支持配置自定义 Skill 搜索目录，自定义目录优先级最高（
 client = (
     Cody()
     .workdir("/my/project")
-    .model("deepseek-v4-flash")
+    .model("deepseek-chat")
     .skill_dir("/shared/team-skills")
     .skill_dir("/home/user/my-skills")
     .build()
@@ -1300,7 +1272,7 @@ client = (
 
 # config() 便捷函数
 cfg = config(
-    model="deepseek-v4-flash",
+    model="deepseek-chat",
     workdir="/my/project",
     skill_dirs=["/shared/team-skills", "/home/user/my-skills"],
 )

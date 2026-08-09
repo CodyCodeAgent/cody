@@ -1,10 +1,14 @@
 # Cody — Architecture Design
 
-## Open-source AI Coding Agent Framework
+## Open-source Agent Runtime + Coding Agent Reference Implementation
 
-Cody's architecture follows a **framework + reference implementations** pattern. The `core/` package is a reusable AI agent framework — it owns all logic, tools, and orchestration. CLI, TUI, Web Backend, and Python SDK are four independent consumers that import core directly, each demonstrating a different integration surface (command-line, terminal UI, HTTP/WebSocket, programmatic).
+Cody follows a **runtime kernel + reference products** pattern. `cody/core/runtime/` owns the
+canonical Run、Workflow、Event、Checkpoint、Approval、Artifact、Audit 与控制语义；
+`AgentRunner` 是 Runtime 调度的一种 Step executor，而不是并行存在的第二条权威执行路径。
 
-**Why this structure?** By keeping every capability inside `core/`, anyone can build a new integration (IDE plugin, CI bot, Slack app, custom agent) without duplicating logic. The four built-in consumers serve as reference implementations and cover the most common use cases.
+CLI、TUI、Web Backend 和 Python SDK 都通过同一 Runtime API 读取和控制状态。新的 IDE
+插件、CI bot、协作机器人或企业工作流可以复用公共 Runtime 类型和扩展点，而不复制执行、
+恢复、治理和观测逻辑。
 
 ## 系统总览
 
@@ -478,7 +482,7 @@ Main Agent → spawn_agent("task", "research") tool call
 
 ```
 Config
-├── model: str                    # e.g. "deepseek-v4-flash"
+├── model: str                    # e.g. "deepseek-chat"
 ├── skills: SkillConfig           # enabled[], disabled[]
 ├── mcp: MCPConfig                # servers[]
 ├── permissions: PermissionsConfig # overrides{}, default_level

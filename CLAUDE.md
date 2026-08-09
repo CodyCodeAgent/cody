@@ -17,7 +17,7 @@ Cody 是一个**开源 AI Coding Agent 框架**，提供构建 AI 编程 Agent �
 
 `cody/client.py` 为向后兼容 shim，re-export `sdk/` 的公开符号。新代码应直接用 `cody.sdk`。
 
-当前版本：**v3.0.0**（单一来源：`cody/_version.py`）
+当前版本：**v3.0.1**（单一来源：`cody/_version.py`）
 
 ## 核心定位
 

@@ -1,6 +1,6 @@
 # Cody
 
-**开源 AI Coding Agent 框架** — 构建、定制和部署你自己的 AI 编程 Agent。
+**开源 Agent Runtime + Coding Agent 参考实现** — 构建可嵌入、可编排、可恢复、可治理的 AI Agent。
 
 [![PyPI](https://img.shields.io/pypi/v/cody-ai.svg)](https://pypi.org/project/cody-ai/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://pypi.org/project/cody-ai/)
@@ -128,8 +128,8 @@ Cody 的模型层使用 OpenAI-compatible Chat Completions 接口。配置模型
 
 | 提供商/部署 | 模型示例 | Base URL 示例 |
 |-------------|----------|---------------|
-| DeepSeek | `deepseek-v4-flash`、`deepseek-v4-pro` | `https://api.deepseek.com/v1` |
-| 阿里云百炼 | `qwen3.5` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| DeepSeek | `deepseek-chat`、`deepseek-reasoner` | `https://api.deepseek.com/v1` |
+| 阿里云百炼 | `qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | 智谱 GLM | `glm-4` | `https://open.bigmodel.cn/api/paas/v4/` |
 | 本地或企业网关 | 由网关决定 | 任意 OpenAI-compatible `/v1` 地址 |
 
@@ -194,7 +194,7 @@ export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
 export CODY_MODEL_API_KEY='your-api-key'
 
 # 阿里云百炼 Coding Plan
-export CODY_MODEL='qwen3.5'
+export CODY_MODEL='qwen-plus'
 export CODY_MODEL_API_KEY='your-api-key'
 ```
 
@@ -226,6 +226,10 @@ uv run ruff check .
 ---
 
 ## 文档
+
+完整、可搜索的 GitHub Pages 文档：[https://codycodeagent.github.io/cody/](https://codycodeagent.github.io/cody/)
+
+站点将内容分为两类：**教程**按真实任务带你完成闭环，**指南**按能力域提供完整参考。
 
 ### 入门
 - [快速入门](docs/QUICKSTART.md) — 15 分钟上手教程
@@ -263,4 +267,4 @@ MIT License
 
 ---
 
-**最后更新:** 2026-08-08 | **版本:** 3.0.0
+**最后更新:** 2026-08-09 | **版本:** 3.0.1
