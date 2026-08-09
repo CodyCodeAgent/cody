@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **教程与指南分层**：新增 15 篇任务式教程，覆盖 SDK、Tools、Skills、MCP、
   Runtime、Workflow、多 Agent、审批恢复、Quality Gate、Sandbox、生产存储、扩展、
   多模态和可观测性；补充生产部署及运行排障指南
+- **可运行场景 Demo**：新增 22 个完整示例，覆盖 SDK、只读审查、自定义 Tool、
+  多模态、人工交互、Skills、MCP、项目记忆、canonical events、并行 Workflow、
+  多 Agent、审批恢复、Quality Gate、Retry/Fork、Sandbox、PostgreSQL、S3/MinIO 和
+  Web Runtime API；13 个离线场景在测试套件中真实执行，外部服务场景执行 smoke test
 - **文档与代码重新对齐**：修正模型示例、CLI 命令、Workflow 条件语义、Web 鉴权变量、
   Quality Gate 参数，以及 Remote Sandbox、S3/MinIO、PostgreSQL 和 OAuth/SSO 的能力边界
 - **文档 CI 硬化**：Pages 构建在 push 与 pull request 中执行严格模式，并检查 Markdown
