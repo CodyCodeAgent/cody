@@ -35,7 +35,7 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": null,
   "model_api_key": null,
   "small_model": null,
@@ -139,12 +139,12 @@ Cody 使用 JSON 配置文件，支持多层级配置和运行时覆盖。本文
 
 ```json
 {
-  "model": "deepseek-v4-flash"
+  "model": "deepseek-chat"
 }
 ```
 
 模型列表不在 Cody 中硬编码。只要目标服务实现 OpenAI-compatible Chat Completions，
-即可使用该服务提供的模型名，例如 DeepSeek V4、Qwen、GLM 或企业内部网关模型。
+即可使用该服务当前提供的模型名，例如 DeepSeek、Qwen、GLM 或企业内部网关模型。
 
 ---
 
@@ -1047,7 +1047,7 @@ cody config show
 **输出示例：**
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "enable_thinking": false,
   "skills": {
@@ -1066,7 +1066,7 @@ cody config show
 
 ```bash
 # 设置模型
-cody config set model "deepseek-v4-flash"
+cody config set model "deepseek-chat"
 
 # 设置 API 地址
 cody config set model_base_url "https://..."
@@ -1087,7 +1087,7 @@ cody config set thinking_budget 10000
 
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["git", "github", "python"]
@@ -1115,7 +1115,7 @@ cody config set thinking_budget 10000
 
 ```json
 {
-  "model": "qwen3.5",
+  "model": "qwen-plus",
   "model_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
   "enable_thinking": true,
   "thinking_budget": 10000
@@ -1128,7 +1128,7 @@ cody config set thinking_budget 10000
 
 ```json
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "mcp": {
     "servers": [
@@ -1233,7 +1233,7 @@ export CODY_MODEL_API_KEY='your-api-key'
 ```bash
 # 全局配置（~/.cody/config.json）
 {
-  "model": "deepseek-v4-flash",
+  "model": "deepseek-chat",
   "model_base_url": "https://api.deepseek.com/v1",
   "skills": {
     "enabled": ["git", "github"]

@@ -1,8 +1,8 @@
 # Cody - TUI 使用文档
 
-TUI（Terminal User Interface）是 Cody 框架的参考实现之一，提供全屏终端界面。基于 [Textual](https://textual.textualize.io/) 构建，支持实时流式输出、多会话管理和键盘快捷键。
+TUI（Terminal User Interface）是 Cody Runtime 的全屏终端产品。它基于 [Textual](https://textual.textualize.io/) 构建，支持实时流式输出、多会话管理和键盘快捷键。
 
-> **定位**：TUI 和 CLI 都是框架的参考实现（dogfooding），展示如何基于 Cody 核心引擎构建交互式工具。如需将 Cody 嵌入你自己的应用，请使用 [Python SDK](SDK.md)。
+> **定位**：TUI 和 CLI 是同一 Runtime 的不同视图，不维护独立执行状态。如需将 Cody 嵌入自己的应用，请使用 [Python SDK](SDK.md)。
 
 ---
 
@@ -18,7 +18,7 @@ pip install 'cody-ai[cli,tui]'
 cody tui
 
 # 指定模型
-cody tui --model deepseek-v4-flash
+cody tui --model deepseek-chat
 
 # 继续上次会话
 cody tui --continue
@@ -82,7 +82,7 @@ cody tui --workdir /path/to/project
 
 **空闲时** — 显示当前会话信息：
 ```
-Session: abc123 | Model: deepseek-v4-flash | Dir: project | Messages: 4
+Session: abc123 | Model: deepseek-chat | Dir: project | Messages: 4
 ```
 
 | 字段 | 说明 |

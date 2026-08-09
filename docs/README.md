@@ -1,6 +1,6 @@
 # Cody 文档索引
 
-本文档目录以 Cody 3.0.0 的代码为准。CLI、TUI、Web 和 SDK 都是 Canonical
+本文档目录以 Cody 3.0.1 的代码为准。CLI、TUI、Web 和 SDK 都是 Canonical
 Runtime 的产品表面；历史评审和迭代记录不作为当前 API 规范。
 
 ## 从这里开始
@@ -33,7 +33,8 @@ Runtime 的产品表面；历史评审和迭代记录不作为当前 API 规范�
 | 内置 Skill | `cody/skills/*/SKILL.md` | 运行时加载的 Agent 指令，不是用户手册 |
 | 历史迭代记录 | `docs/iterations/` | 记录每轮设计与交付，不承诺当前 API 形态 |
 | 历史评审/需求 | `AGENT_KERNEL_REVIEW.md`、`HARNESS.md` | 保留决策背景；当前状态以代码和本索引为准 |
-| 教程生成源 | `pages/prompts/` | 生成站点教程的源稿，不替代 API 文档 |
+| 站点教程 | `tutorials/` | 按真实任务组织的端到端学习路径 |
+| 站点指南补充 | `guides/` | 生产部署、运行观测等跨主题指南 |
 
 ## 文档维护规则
 
@@ -47,4 +48,27 @@ Runtime 的产品表面；历史评审和迭代记录不作为当前 API 规范�
 6. 不在文档、测试夹具或日志中写入真实密钥。
 7. 运行文档检查：Markdown 本地链接、Python fenced code 编译、Ruff 和测试。
 
-**最后更新：2026-07-12**
+## GitHub Pages 信息架构
+
+发布站点使用 MkDocs Material 构建，并将内容明确分为：
+
+- `tutorials/`：按任务推进的教程，覆盖 SDK、Runtime、Workflow、多 Agent、恢复、
+  Quality Gate、Sandbox、生产存储与扩展。
+- `guides/` 与本目录现有主题文档：按能力域查阅的完整指南。
+- `index.md`：站点首页与产品定位，不承担 API 规范职责。
+
+本地预览：
+
+```bash
+cd ..
+python -m pip install -r requirements-pages.txt
+properdocs serve -f mkdocs.yml
+```
+
+严格构建：
+
+```bash
+properdocs build -f mkdocs.yml --strict
+```
+
+**最后更新：2026-08-09**

@@ -51,7 +51,7 @@ cody config setup
 
 ```bash
 # DeepSeek（示例）
-export CODY_MODEL='deepseek-v4-flash'
+export CODY_MODEL='deepseek-chat'
 export CODY_MODEL_BASE_URL='https://api.deepseek.com/v1'
 export CODY_MODEL_API_KEY='your-api-key'
 
@@ -61,7 +61,7 @@ export CODY_MODEL_BASE_URL='https://open.bigmodel.cn/api/paas/v4/'
 export CODY_MODEL_API_KEY='your-api-key'
 
 # 阿里云百炼 Coding Plan
-export CODY_MODEL='qwen3.5'
+export CODY_MODEL='qwen-plus'
 export CODY_MODEL_API_KEY='your-api-key'
 ```
 
@@ -128,7 +128,7 @@ from cody import Cody
 client = (
     Cody()
     .workdir("/path/to/project")
-    .model("deepseek-v4-flash")
+    .model("deepseek-chat")
     .thinking(enabled=True, budget=10000)
     .enable_metrics()
     .enable_events()

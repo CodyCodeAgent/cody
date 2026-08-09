@@ -1,0 +1,27 @@
+{% extends "main.html" %}
+
+{% block content %}
+  <section class="cody-hero" aria-labelledby="cody-hero-title">
+    <div class="cody-hero__content">
+      <div class="cody-eyebrow">Cody 3.0 · Open-source Agent Runtime</div>
+      <h1 id="cody-hero-title">让 Agent 从能运行，走向<span class="cody-gradient-text">可恢复、可治理</span></h1>
+      <p class="cody-hero__lead">
+        Cody 把一次 Agent 任务建模为持久化 Run，把 Workflow、模型、工具、审批、
+        Quality Gate、Sandbox 与多 Agent 协作收束到同一条执行主链。你可以直接使用
+        CLI / TUI / Web，也可以通过 Python SDK 嵌入自己的产品。
+      </p>
+      <div class="cody-actions">
+        <a class="cody-button cody-button--primary" href="{{ 'tutorials/01-first-run.html' | url }}">开始第一个任务 →</a>
+        <a class="cody-button" href="{{ 'guides/index.html' | url }}">浏览完整指南</a>
+        <a class="cody-button" href="https://github.com/CodyCodeAgent/cody">GitHub ↗</a>
+      </div>
+      <div class="cody-proof" aria-label="项目概览">
+        <div class="cody-proof__item"><span class="cody-proof__value">30</span><span class="cody-proof__label">内置工具</span></div>
+        <div class="cody-proof__item"><span class="cody-proof__value">4</span><span class="cody-proof__label">统一产品表面</span></div>
+        <div class="cody-proof__item"><span class="cody-proof__value">15</span><span class="cody-proof__label">任务式教程</span></div>
+        <div class="cody-proof__item"><span class="cody-proof__value">3.10–3.13</span><span class="cody-proof__label">支持的 Python</span></div>
+      </div>
+    </div>
+  </section>
+  {{ super() }}
+{% endblock %}
