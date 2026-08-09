@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 
 import pytest
 
@@ -43,16 +44,24 @@ EXTERNAL_MODULES = (
 
 
 def run_module(module: str, *args: str) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "PYTHONPATH": str(ROOT)}
-    return subprocess.run(
-        [sys.executable, "-m", module, *args],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    env = {key: value for key, value in os.environ.items() if not key.startswith("CODY_")}
+    with TemporaryDirectory(prefix="cody-example-home-") as home:
+        env.update(
+            {
+                "HOME": home,
+                "PYTHONPATH": str(ROOT),
+                "XDG_CONFIG_HOME": str(Path(home) / ".config"),
+            }
+        )
+        return subprocess.run(
+            [sys.executable, "-m", module, *args],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
 
 
 def test_every_example_is_listed_in_the_demo_index():

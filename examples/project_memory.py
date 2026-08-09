@@ -3,30 +3,40 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from cody import AsyncCodyClient
+from cody.core.memory import MemoryEntry, ProjectMemoryStore
 
 
 async def run() -> None:
     with TemporaryDirectory(prefix="cody-memory-demo-") as workdir:
-        async with AsyncCodyClient(workdir=workdir) as client:
-            await client.add_memory(
-                category="conventions",
-                content="Public Python functions require type annotations.",
-                confidence=0.95,
-                tags=["python", "style"],
-            )
-            await client.add_memory(
-                category="decisions",
-                content="Runtime state uses PostgreSQL in production.",
-                source_task_id="architecture-review",
-            )
-            memory = await client.get_memory()
-            print("categories:", sorted(memory))
-            print("conventions:", memory["conventions"])
-            await client.clear_memory()
-            print("after clear:", await client.get_memory())
+        root = Path(workdir)
+        store = ProjectMemoryStore.from_workdir(root, base_dir=root / ".memory")
+        await store.add_entries(
+            "conventions",
+            [
+                MemoryEntry(
+                    content="Public Python functions require type annotations.",
+                    confidence=0.95,
+                    tags=["python", "style"],
+                )
+            ],
+        )
+        await store.add_entries(
+            "decisions",
+            [
+                MemoryEntry(
+                    content="Runtime state uses PostgreSQL in production.",
+                    source_task_id="architecture-review",
+                )
+            ],
+        )
+        memory = store.get_all_entries()
+        print("categories:", sorted(memory))
+        print("conventions:", [entry.content for entry in memory["conventions"]])
+        store.clear()
+        print("after clear:", store.get_all_entries())
 
 
 if __name__ == "__main__":

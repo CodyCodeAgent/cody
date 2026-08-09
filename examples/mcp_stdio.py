@@ -6,23 +6,29 @@ import asyncio
 from pathlib import Path
 import sys
 
-from cody.sdk import Cody
+from cody.core.config import MCPConfig, MCPServerConfig
+from cody.core.mcp_client import MCPClient
 
 
 async def run() -> None:
     root = Path(__file__).resolve().parents[1]
     server = root / "scripts" / "live_mcp_server.py"
-    client = (
-        Cody()
-        .workdir(str(root))
-        .mcp_stdio_server("demo", command=sys.executable, args=[str(server)])
-        .build()
+    config = MCPConfig(
+        servers=[
+            MCPServerConfig(
+                name="demo",
+                command=sys.executable,
+                args=[str(server)],
+            )
+        ]
     )
-    async with client:
-        await client.start_mcp()
-        tools = await client.mcp_list_tools()
-        result = await client.mcp_call("demo/echo_marker", {"value": "hello"})
-        print("Tools:", [tool["name"] for tool in tools])
+    async with MCPClient(config) as client:
+        failures = await client.start_all()
+        if failures:
+            raise RuntimeError("; ".join(failures))
+        tools = client.list_tools()
+        result = await client.call_tool("demo/echo_marker", {"value": "hello"})
+        print("Tools:", [tool.name for tool in tools])
         print("Result:", result)
 
 
